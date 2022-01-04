@@ -19,6 +19,7 @@ export ZSH="/Users/vladimir/.oh-my-zsh"
 # Set name of the theme to load --- if set to "random", it will
 # load a random theme each time oh-my-zsh is loaded, in which case,
 # to know which specific one was loaded, run: echo $RANDOM_THEME
+# themes can be found here: .oh-my-zsh/themes/
 # See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
 # ZSH_THEME="avit"
 # ZSH_THEME="eastwood"
