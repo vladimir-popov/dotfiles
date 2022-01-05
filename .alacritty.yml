@@ -710,10 +710,11 @@ shell:
 # If the same trigger is assigned to multiple actions, all of them are executed
 # in the order they were defined in.
 key_bindings:
-  - { key: F,  mods: Alt,                        chars: "\x1bf"                 }
-  - { key: B,  mods: Alt,                        chars: "\x1bb"                 }
-  - { key: D,  mods: Alt,                        chars: "\x1bd"                 }
-  - { key: W,  mods: Alt,                        chars: "\x1bw"                 }
+  - { key: F,       mods: Alt,         chars: "\x1bf"                 }
+  - { key: B,       mods: Alt,         chars: "\x1bb"                 }
+  - { key: D,       mods: Alt,         chars: "\x1bd"                 }
+  - { key: W,       mods: Alt,         chars: "\x1bw"                 }
+  - { key: Escape,  mods: Alt,         chars: "\x1b\x1b"                 }
   - { key: B,  mods: Command, mode: ~Search,     chars: "\x02"                  }
 
   #- { key: Paste,                                       action: Paste          }

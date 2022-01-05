@@ -3,7 +3,7 @@
 #bindkey -v 
 
 # file with aliases
-. ~/.aliases
+. $HOME/.aliases
 
 # allow v to edit the command line (standard behaviour)
 #autoload -Uz edit-command-line
@@ -14,7 +14,7 @@ bindkey '^v' edit-command-line
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Path to your oh-my-zsh installation.
-export ZSH="/Users/vladimir/.oh-my-zsh"
+export ZSH="$HOME/.oh-my-zsh"
 
 # Set name of the theme to load --- if set to "random", it will
 # load a random theme each time oh-my-zsh is loaded, in which case,
@@ -128,14 +128,12 @@ test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell
 
 
 # The next line updates PATH for the Google Cloud SDK.
-if [ -f '/Users/vladimir/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vladimir/google-cloud-sdk/path.zsh.inc'; fi
+if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 
 # The next line enables shell command completion for gcloud.
-if [ -f '/Users/vladimir/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vladimir/google-cloud-sdk/completion.zsh.inc'; fi
+if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
 export KUBE_EDITOR="nvim"
-alias gcli='docker run -v /Users/vladimir:/defs --rm -it namely/grpc-cli'
-
 
 [[ /usr/local/bin/kubectl ]] && source <(kubectl completion zsh)
 
@@ -155,7 +153,8 @@ export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -f -g ""'
 export GDISK='/Volumes/GoogleDrive/My Drive'
 export PROJECTS=$HOME'/Projects'
 export VIM_PATH=$HOME'/.vim'
-export NVIM_PATH=$HOME'/.local/share/nvim'
+export NVIM_PATH=$HOME'/.config/nvim'
+export NVIM_PLUG=$HOME'/.local/share/nvim'
 
 B_HOME='h:'$HOME';'
 B_PROJECTS='p:'$PROJECTS';'
@@ -165,10 +164,11 @@ B_GDISK='G:'$GDISK';'
 B_SETTINGS='S:'$GDISK'/Settings;'
 B_VIM='v:'$VIM_PATH'/plugged;'
 B_NVIM='V:'$NVIM_PATH';'
+B_NVIMP='P:'$NVIM_PLUG';'
 
-export NNN_BMS=$B_HOME$B_PROJECTS$B_DASH$B_DASH_WIKI$B_VIM$B_NVIM$B_GDISK$B_SETTINGS
+export NNN_BMS=$B_HOME$B_PROJECTS$B_DASH$B_DASH_WIKI$B_VIM$B_NVIM$B_GDISK$B_SETTINGS$B_NVIMP
 
-export NNN_OPENER=~/.config/nnn/plugins/nuke
+export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 
 # setup FIFO for preview feature
 export NNN_FIFO='/tmp/nnn.fifo'
@@ -176,6 +176,13 @@ export NNN_FIFO='/tmp/nnn.fifo'
 # useful plugins:
 export NNN_PLUG='f:fzopen;n:nuke;d:diffs;i:batview;v:imgview'
 
+# context colors [default: '4444' (blue)]
+export NNN_COLORS='2354'
+
+# color theme onedark
+# https://github.com/jarun/nnn/wiki/Themes
+BLK="04" CHR="04" DIR="04" EXE="00" REG="00" HARDLINK="00" SYMLINK="06" MISSING="00" ORPHAN="01" FIFO="0F" SOCK="0F" OTHER="02"
+export NNN_FCOLORS="$BLK$CHR$DIR$EXE$REG$HARDLINK$SYMLINK$MISSING$ORPHAN$FIFO$SOCK$OTHER"
 
 n ()
 {
@@ -207,4 +214,4 @@ n ()
     fi
 }
 
-alias luamake=/Users/vladimir/Projects/lua-language-server/3rd/luamake/luamake
+alias luamake="$HOME/Projects/lua-language-server/3rd/luamake/luamake"
