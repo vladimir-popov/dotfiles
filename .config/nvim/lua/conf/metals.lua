@@ -5,7 +5,6 @@ local on_attach = require'conf/setup_lsp'.on_attach
 
 metals_config = require'metals'.bare_config()
 metals_config.init_options.statusBarProvider = "on"
-metals_config.root_patterns = { ".bloop", "build.sbt", "build.sc", ".git" }
 metals_config.settings = {
    showImplicitArguments = true,
    showInferredType = true,

@@ -23,6 +23,7 @@ require'utils'.nmap('<leader>]', '<cmd>MetalsRunDoctor<CR>')
 function M.keys_mapping(bufnr)
   local function nmap(...) require'utils'.b.nmap(bufnr, ...) end
   local function imap(...) require'utils'.b.imap(bufnr, ...) end
+  local function vmap(...) require'utils'.b.vmap(bufnr, ...) end
 
   -- go to definition
   nmap('gd', "<cmd>lua vim.lsp.buf.definition()<CR>")
@@ -34,6 +35,8 @@ function M.keys_mapping(bufnr)
   nmap('gt', "<cmd>lua vim.lsp.buf.type_definition()<CR>")
   -- show description of the symbol under cursor
   nmap('K', "<cmd>lua vim.lsp.buf.hover()<CR>")
+  -- show type of selected code
+  vmap('K', "<Esc><cmd>lua require('metals').type_of_range()<CR>")
   -- show signature of current method
   nmap('<c-k>', "<cmd>lua vim.lsp.buf.signature_help()<CR>")
   imap('<c-k>', "<cmd>lua vim.lsp.buf.signature_help()<CR>")
@@ -46,9 +49,9 @@ function M.keys_mapping(bufnr)
   -- show all possible actions
   nmap('<space>qf', '<cmd>lua vim.lsp.buf.code_action()<CR>')
   -- go to error before cursor
-  nmap('[c', '<cmd>lua vim.diagnostic.goto_prev({ float = false })<CR>')
+  nmap('[e', '<cmd>lua vim.diagnostic.goto_prev({ float = false })<CR>')
   -- go to error after cursor
-  nmap(']c', '<cmd>lua vim.diagnostic.goto_next({ float = false })<CR>')
+  nmap(']e', '<cmd>lua vim.diagnostic.goto_next({ float = false })<CR>')
   -- show current buffer in the tree view
   nmap('<leader>tr', '<cmd>lua require"metals.tvp".reveal_in_tree()<CR>')
   -- toggle the tree view

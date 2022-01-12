@@ -150,6 +150,12 @@ nnoremap <leader>gs :Git<CR>
 nnoremap <leader>gk :Git push
 " git pull
 nnoremap <leader>gj :Git pull
+" git diff to resolve conflicts
+nnoremap <leader>gh :Gvdiffsplit!<cr>
+" get changes from the current brunch (HEAD) - left buffer
+nnoremap ghh :diffget //2<cr>
+" get changes from the merge branch - right buffer
+nnoremap ghl :diffget //3<cr>
 
 " add marks about git status on the left line
 Plug 'airblade/vim-gitgutter'

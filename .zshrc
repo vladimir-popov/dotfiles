@@ -1,3 +1,5 @@
+zmodload zsh/zprof
+
 # bindkey -l    --- to list all variants
 # bindkey -M    --- to read key binds in specified scheme
 #bindkey -v 
@@ -124,8 +126,6 @@ bindkey '^v' edit-command-line
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
-test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
-
 
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
@@ -139,8 +139,8 @@ export KUBE_EDITOR="nvim"
 
 export PATH="$HOME/.pyenv/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
 export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
+# eval "$(pyenv init -)"
+# eval "$(pyenv virtualenv-init -)"
 
 export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -f -g ""'
 

@@ -47,11 +47,13 @@ require('telescope').setup {
   }
 }
 
+-- show all builin pickers
+nmap(";;", "<cmd>lua require'telescope.builtin'.builtin()<cr>")
 -- find files
 local ignore_patterns = "file_ignore_patterns = { 'target/' }"
 nmap(";f", "<cmd>lua require('telescope.builtin').find_files({" .. ignore_patterns .. "})<CR>")
 nmap(";F", "<cmd>lua require('telescope.builtin').find_files({ hidden = true})<CR>")
-nmap(";a", "<cmd>lua require('telescope.builtin').find_files({ hidden = true, search_dirs = { '" .. vim.env.HOME .. "' }})<CR>")
+nmap(";~", "<cmd>lua require('telescope.builtin').find_files({ hidden = true, search_dirs = { '" .. vim.env.HOME .. "' }})<CR>")
 -- find buffers
 nmap(";e", "<cmd>lua require('telescope.builtin').buffers()<cr>")
 -- find recent files
@@ -64,13 +66,15 @@ nmap(";m", "<cmd>lua require('telescope.builtin').marks({path_display={'shorten'
 nmap(";r", "<cmd>lua require('telescope.builtin').registers()<cr>")
 imap(";r", "<cmd>lua require('telescope.builtin').registers()<cr>")
 -- live grep
-nmap(";g", "<cmd>lua require('telescope.builtin').live_grep()<CR>")
+nmap(";gg", "<cmd>lua require('telescope.builtin').live_grep()<CR>")
+-- lists current changes per file with diff preview and add action.
+nmap(";gh", "<cmd>lua require('telescope.builtin').git_status()<CR>")
 -- find metals commands
 nmap("<leader>m", "<cmd>Telescope metals commands<CR>")
 -- lists LSP document symbols in the current buffer
 nmap(";s", "<cmd>lua require('telescope.builtin').lsp_document_symbols()<CR>")
 -- lists LSP diagnostics for the current workspace if supported, otherwise searches in all open buffers
-nmap(";d", "<cmd>lua require('telescope.builtin').lsp_workspace_diagnostics()<CR>")
+nmap(";d", "<cmd>lua require('telescope.builtin').diagnostics()<CR>")
 -- git branches
 nmap("<leader>gb", "<cmd>lua require('telescope.builtin').git_branches()<CR>")
 -- spell suggest

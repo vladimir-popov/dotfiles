@@ -7,7 +7,7 @@ require('packer').startup(function(use)
     use({ 'wbthomason/packer.nvim', opt = true })
     -- colorschemes
     use('EdenEast/nightfox.nvim')
-    use('sonph/onehalf')
+    use('Th3Whit3Wolf/one-nvim')
     -- icons with extended symbols
     use('kyazdani42/nvim-web-devicons')
     -- prettyfier a code
