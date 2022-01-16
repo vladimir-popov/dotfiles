@@ -29,6 +29,9 @@ filetype plugin on
 " turn on line numbers
 set number
 
+" highlight the current line
+set cursorline
+
 " turn relative line numbers on only for active window
 augroup numbertoggle
   autocmd!
@@ -128,11 +131,6 @@ Plug 'tpope/vim-commentary'
 " ds{"} 'Hello w█rld!' ds' Hello world!
 " ys{move}{"}   'Hello w█rld!' ysiw[ 'Hello [world]!'
 Plug 'tpope/vim-surround'
-" }}}
-
-" -- n3 ---------------------------------------------------------------------{{{
-" <leader>n
-Plug 'mcchrish/nnn.vim'
 " }}}
 
 " -- tmux -------------------------------------------------------------------{{{

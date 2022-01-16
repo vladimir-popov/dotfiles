@@ -29,6 +29,16 @@ require('packer').startup(function(use)
     use('kevinhwang91/nvim-bqf')
     -- file tree
     use('kyazdani42/nvim-tree.lua')
+    -- nnn
+    use({
+        'mcchrish/nnn.vim',
+        config = function()
+            vim.g['nnn#session'] = 'local'
+            require('utils').nmap('<c-n>', '<cmd>NnnPicker %:p:h<cr>')
+        end,
+    })
+    -- side bar
+    use('sidebar-nvim/sidebar.nvim')
     -- telescope
     use({
         'nvim-telescope/telescope.nvim',
@@ -40,12 +50,12 @@ require('packer').startup(function(use)
         'famiu/feline.nvim',
         branch = 'develop',
         config = function()
-        	local nightfox = require("conf.feline-cosmos.themes").nightfox
-        	require("feline").setup({
-        		theme = nightfox,
-        		vi_mode_colors = nightfox.vi_mode_colors,
-        		components = require("conf.feline-cosmos").preset(),
-        	})
+            local nightfox = require('conf.feline-cosmos.themes').nightfox
+            require('feline').setup({
+                theme = nightfox,
+                vi_mode_colors = nightfox.vi_mode_colors,
+                components = require('conf.feline-cosmos').preset(),
+            })
         end,
     })
     -- treesitter

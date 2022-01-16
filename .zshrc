@@ -154,7 +154,7 @@ export GDISK='/Volumes/GoogleDrive/My Drive'
 export PROJECTS=$HOME'/Projects'
 export VIM_PATH=$HOME'/.vim'
 export NVIM_PATH=$HOME'/.config/nvim'
-export NVIM_PLUG=$HOME'/.local/share/nvim'
+export NVIM_PLUG=$HOME'/.local/share/nvim/site/pack/packer/start'
 
 B_HOME='h:'$HOME';'
 B_PROJECTS='p:'$PROJECTS';'

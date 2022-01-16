@@ -27,6 +27,10 @@ local function is_table(t)
     return type(t) == 'table'
 end
 
+local function is_metals(client)
+    return client and client.name == 'metals'
+end
+
 local function lsp_client()
     local clients = vim.lsp.buf_get_clients(0)
     if is_empty(clients) then
@@ -168,11 +172,14 @@ M.highlights = function()
         lsp_client = function()
             local client = lsp_client()
             local icon = lsp_client_icon(client)
-            local color = (icon and icon.color) or (icon and 'fg') or 'inactive'
-            return {
-                name = 'LspClientIcon' .. ((client and client.name) or 'Off'),
-                fg = color,
-            }
+            if is_metals(client) and not vim.b['is_metals_ok'] then
+                return { name = 'LspClientIconMetalsInactive', fg = 'inactive' }
+            else
+                return {
+                    name = 'LspClientIcon' .. ((client and client.name) or 'Off'),
+                    fg = (icon and icon.color) or (icon and 'fg') or 'inactive',
+                }
+            end
         end,
 
         treesitter = function()

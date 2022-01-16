@@ -43,4 +43,17 @@ function M.b.vmap(bufnr, keys, action, opts)
   M.b.map(bufnr, 'v', keys, action, opts)
 end
 
+function M.is_empty(x)
+    if x == nil then
+        return true
+    end
+    if type(x) == 'table' and next(x) == nil then
+        return true
+    end
+    if type(x) == 'string' and string.len(x) < 1 then
+        return true
+    end
+    return false
+end
+
 return M

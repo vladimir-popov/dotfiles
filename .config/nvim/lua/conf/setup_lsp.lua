@@ -17,7 +17,8 @@ end
 -- check LSP client
 require'utils'.nmap('<leader>[', '<cmd>LspInfo<CR>')
 -- run Metals doctor
-require'utils'.nmap('<leader>]', '<cmd>MetalsRunDoctor<CR>')
+-- require'utils'.nmap('<leader>]', '<cmd>MetalsRunDoctor<CR>')
+require'utils'.nmap('<leader>]', '<cmd>lua require("conf/metals").toggle_doctor()<cr>')
 
 -- buffer local keys mapping
 function M.keys_mapping(bufnr)
