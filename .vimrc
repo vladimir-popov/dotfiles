@@ -137,6 +137,38 @@ Plug 'tpope/vim-surround'
 Plug 'christoomey/vim-tmux-navigator'
 " }}}
 
+" -- fxf --------------------------------------------------------------------{{{
+let g:fzf_layout = { 'window': { 'width': 0.6, 'height': 0.9, 'relative': v:true } }
+let g:fzf_preview_window = ['down:70%', 'ctrl-/']
+let g:fzf_colors = {
+      \ 'fg':      ['fg', 'Normal'],
+      \ 'bg':      ['bg', 'Normal'],
+      \ 'hl':      ['fg', 'Comment'],
+      \ 'fg+':     ['fg', 'CursorLine', 'CursorColumn', 'Normal'],
+      \ 'bg+':     ['bg', 'CursorLine', 'CursorColumn'],
+      \ 'hl+':     ['fg', 'Identifier', 'Statement'],
+      \ 'info':    ['fg', 'PreProc'],
+      \ 'gutter':  ['bg', 'Normal'],
+      \ 'border':  ['fg', 'FloatBorder'],
+      \ 'prompt':  ['fg', 'Identifier'],
+      \ 'pointer': ['fg', 'Identifier'],
+      \ 'marker':  ['fg', 'Identifier'],
+      \ 'spinner': ['fg', 'Label'],
+      \ 'header':  ['fg', 'Comment'] }
+
+Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
+Plug 'junegunn/fzf.vim'
+nnoremap ;f <cmd>Files<cr>
+nnoremap ;gg <cmd>Ag<cr>
+nnoremap ;gf <cmd>GFiles<cr>
+nnoremap ;gs <cmd>GFiles?<cr>
+nnoremap ;gh <cmd>Commits<cr>
+nnoremap ;gH <cmd>BCommits<cr>
+nnoremap ;l <cmd>BLines<cr>
+nnoremap ;o <cmd>History<cr>
+nnoremap ;e <cmd>Buffers<cr>
+" }}}
+
 " -- Git support ------------------------------------------------------------{{{ 
 Plug 'tpope/vim-fugitive'
 set updatetime=700
@@ -292,19 +324,6 @@ nnoremap <leader>' :NERDTreeToggle<cr>
 nnoremap <leader>" :NERDTreeFind<cr>
 Plug 'preservim/nerdtree'         
 Plug 'Xuyuanp/nerdtree-git-plugin'
-" }}}
-
-" -- CtrlP: fuzzy file, buffer, mru, tag finder for Vim ---------------------{{{
-let g:ctrlp_working_path_mode = 'a'
-let g:ctrlp_custom_ignore = {
-      \ 'dir':  '\v[\/](.git|.idea|.bloop|.metals|target)$',
-      \ 'file': '\v\.(class|so|dll)$',
-      \ }
-" Change the default mappin
-let g:ctrlp_map = ';f'
-nnoremap ;e :CtrlPBuffer<cr>
-nnoremap ;o :CtrlPMRU<cr>
-Plug 'ctrlpvim/ctrlp.vim'
 " }}}
 
 endif

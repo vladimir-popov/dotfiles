@@ -34,7 +34,8 @@ require('packer').startup(function(use)
         'mcchrish/nnn.vim',
         config = function()
             vim.g['nnn#session'] = 'local'
-            require('utils').nmap('<c-n>', '<cmd>NnnPicker %:p:h<cr>')
+            require('utils').nmap('<c-b>', '<cmd>NnnPicker %:p:h<cr>')
+            require('utils').nmap('<c-n>', '<cmd>NnnPicker<cr>')
         end,
     })
     -- side bar
