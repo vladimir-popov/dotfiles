@@ -13,12 +13,12 @@ require('telescope').setup {
     },
   },
   pickers = {
-    -- ;f
+    -- <space>f
     find_files = {
       sort_lastused = true,
       layout_strategy='horizontal'
     },
-    -- ;e
+    -- <space>e
     buffers = {
       sort_lastused = true,
       theme = "dropdown",
@@ -27,20 +27,20 @@ require('telescope').setup {
       layout_strategy='center',
       sorting_strategy='ascending'
     },
-    -- ;o
+    -- <space>o
     oldfiles = {
       sort_lastused = true,
       previewer = false,
     },
-    -- ;r
+    -- <space>r
     registers = {
       theme="dropdown"
     },
-    -- ;s
+    -- <space>s
     lsp_document_symbols = {
       theme="dropdown"
     },
-    -- ;d
+    -- <space>d
     lsp_workspace_diagnostics = {
       severity="error"
     }
@@ -48,36 +48,36 @@ require('telescope').setup {
 }
 
 -- show all builin pickers
-nmap(";;", "<cmd>lua require'telescope.builtin'.builtin()<cr>")
+nmap("<space>;", "<cmd>lua require'telescope.builtin'.builtin()<cr>")
 -- find files
 -- local ignore_patterns = "file_ignore_patterns = { 'target/' }"
--- nmap(";f", "<cmd>lua require('telescope.builtin').find_files({" .. ignore_patterns .. "})<CR>")
--- nmap(";F", "<cmd>lua require('telescope.builtin').find_files({ hidden = true})<CR>")
--- nmap(";~", "<cmd>lua require('telescope.builtin').find_files({ hidden = true, search_dirs = { '" .. vim.env.HOME .. "' }})<CR>")
+-- nmap("<space>f", "<cmd>lua require('telescope.builtin').find_files({" .. ignore_patterns .. "})<CR>")
+-- nmap("<space>F", "<cmd>lua require('telescope.builtin').find_files({ hidden = true})<CR>")
+-- nmap("<space>~", "<cmd>lua require('telescope.builtin').find_files({ hidden = true, search_dirs = { '" .. vim.env.HOME .. "' }})<CR>")
 -- find buffers
--- nmap(";e", "<cmd>lua require('telescope.builtin').buffers()<cr>")
+-- nmap("<space>e", "<cmd>lua require('telescope.builtin').buffers()<cr>")
 -- find recent files
--- nmap(";o", "<cmd>lua require('telescope.builtin').oldfiles()<cr>")
+-- nmap("<space>o", "<cmd>lua require('telescope.builtin').oldfiles()<cr>")
 -- find help
-nmap(";h", "<cmd>Telescope help_tags<cr>")
+nmap("<space>h", "<cmd>Telescope help_tags<cr>")
 -- find marks
-nmap(";m", "<cmd>lua require('telescope.builtin').marks({path_display={'shorten'}})<cr>")
+nmap("<space>m", "<cmd>lua require('telescope.builtin').marks({path_display={'shorten'}})<cr>")
 -- show registers and insert selected content
-nmap(";r", "<cmd>lua require('telescope.builtin').registers()<cr>")
-imap(";r", "<cmd>lua require('telescope.builtin').registers()<cr>")
+nmap("<space>r", "<cmd>lua require('telescope.builtin').registers()<cr>")
+imap("<space>r", "<cmd>lua require('telescope.builtin').registers()<cr>")
 -- live grep
--- nmap(";gg", "<cmd>lua require('telescope.builtin').live_grep()<CR>")
+-- nmap("<space>gg", "<cmd>lua require('telescope.builtin').live_grep()<CR>")
 -- lists current changes per file with diff preview and add action.
--- nmap(";gs", "<cmd>lua require('telescope.builtin').git_status()<CR>")
+-- nmap("<space>gs", "<cmd>lua require('telescope.builtin').git_status()<CR>")
 -- find metals commands
 nmap("<leader>m", "<cmd>Telescope metals commands<CR>")
 -- lists LSP document symbols in the current buffer
-nmap(";s", "<cmd>lua require('telescope.builtin').lsp_document_symbols()<CR>")
+nmap("<space>s", "<cmd>lua require('telescope.builtin').lsp_document_symbols()<CR>")
 -- lists LSP diagnostics for the current workspace if supported, otherwise searches in all open buffers
-nmap(";d", "<cmd>lua require('telescope.builtin').diagnostics()<CR>")
+nmap("<space>d", "<cmd>lua require('telescope.builtin').diagnostics()<CR>")
 -- git branches
-nmap("<leader>gb", "<cmd>lua require('telescope.builtin').git_branches()<CR>")
+nmap("<space>gb", "<cmd>lua require('telescope.builtin').git_branches()<CR>")
 -- spell suggest
 nmap("zs", "<cmd>lua require('telescope.builtin').spell_suggest()<CR>")
 -- treesitter
-nmap("<leader>t", "<cmd>lua require('telescope.builtin').treesitter()<CR>")
+nmap("<space>t", "<cmd>lua require('telescope.builtin').treesitter()<CR>")

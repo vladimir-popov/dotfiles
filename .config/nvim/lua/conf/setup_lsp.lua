@@ -41,7 +41,8 @@ function M.keys_mapping(bufnr)
     -- show place where type is defined
     nmap('gt', '<cmd>lua vim.lsp.buf.type_definition()<CR>')
     -- show description of the symbol under cursor
-    nmap('K', '<cmd>lua vim.lsp.buf.hover()<CR>')
+    -- nmap('K', '<cmd>lua vim.lsp.buf.hover()<CR>')
+    nmap('K', "<cmd>lua require('lspsaga.signaturehelp').signature_help()<CR>")
     -- show type of selected code
     vmap('K', "<Esc><cmd>lua require('metals').type_of_range()<CR>")
     -- show signature of current method
@@ -52,9 +53,10 @@ function M.keys_mapping(bufnr)
     -- format current buffer
     nmap('<leader>f', '<cmd>lua vim.lsp.buf.formatting()<CR>')
     -- rename the symbol under cursor
-    nmap('<space>rn', '<cmd>lua vim.lsp.buf.rename()<CR>')
+    nmap('<space>rn', "<cmd>lua require('lspsaga.rename').rename()<CR>")
     -- show all possible actions
-    nmap('<space>qf', '<cmd>lua vim.lsp.buf.code_action()<CR>')
+    -- nmap('<space>qf', '<cmd>lua vim.lsp.buf.code_action()<CR>')
+    nmap('<space>qf', '<cmd>lua require("lspsaga.codeaction").code_action()<CR>')
     -- go to error before cursor
     nmap('[e', '<cmd>lua vim.diagnostic.goto_prev({ float = false })<CR>')
     -- go to error after cursor

@@ -158,15 +158,15 @@ let g:fzf_colors = {
 
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
-nnoremap ;f <cmd>Files<cr>
-nnoremap ;gg <cmd>Ag<cr>
-nnoremap ;gf <cmd>GFiles<cr>
-nnoremap ;gs <cmd>GFiles?<cr>
-nnoremap ;gh <cmd>Commits<cr>
-nnoremap ;gH <cmd>BCommits<cr>
-nnoremap ;l <cmd>BLines<cr>
-nnoremap ;o <cmd>History<cr>
-nnoremap ;e <cmd>Buffers<cr>
+nnoremap <nowait><space>a <cmd>Files<cr>
+nnoremap <nowait><space>gg <cmd>Ag<cr>
+nnoremap <nowait><space>gf <cmd>GFiles<cr>
+nnoremap <nowait><space>gs <cmd>GFiles?<cr>
+nnoremap <nowait><space>gh <cmd>Commits<cr>
+nnoremap <nowait><space>gH <cmd>BCommits<cr>
+nnoremap <nowait><space>f <cmd>BLines<cr>
+nnoremap <nowait><space>o <cmd>History<cr>
+nnoremap <nowait><space>e <cmd>Buffers<cr>
 " }}}
 
 " -- Git support ------------------------------------------------------------{{{ 
@@ -207,6 +207,7 @@ xnoremap <silent> ah :GitGutterTextObjectOuterVisual<cr>
 " -- EasyMotion -------------------------------------------------------------{{{
 Plug 'easymotion/vim-easymotion'
 " let g:EasyMotion_do_mapping = 0 " Disable default mappings
+map <space><space> <Plug>(easymotion-prefix)
 
 hi EasyMotionTarget2First ctermbg=none ctermfg=red
 hi EasyMotionTarget2Second ctermbg=none ctermfg=red
