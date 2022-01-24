@@ -4,6 +4,12 @@ zmodload zsh/zprof
 # bindkey -M    --- to read key binds in specified scheme
 #bindkey -v 
 
+# custom git settings to manage dot files
+# see https://www.atlassian.com/git/tutorials/dotfiles
+# run on new machine:
+# dot config --local status.showUntrackedFiles no
+alias dot='git --git-dir=$HOME/.git_dot/ --work-tree=$HOME'
+
 # file with aliases
 . $HOME/.aliases
 
