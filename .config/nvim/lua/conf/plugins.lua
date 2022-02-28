@@ -59,6 +59,19 @@ require('packer').startup(function(use)
             })
         end,
     })
+    -- barbar
+    -- use({
+    --     'romgrk/barbar.nvim',
+    --     config = function()
+    --         local nmap = require('utils').nmap
+    --         nmap('<space>b', '<cmd>BufferPick<cr>')
+    --         nmap('<space>1', '<cmd>BufferGoto 1<cr>')
+    --         nmap('<space>2', '<cmd>BufferGoto 2<cr>')
+    --         nmap('<space>3', '<cmd>BufferGoto 3<cr>')
+    --         nmap('<space>4', '<cmd>BufferGoto 4<cr>')
+    --         nmap('<space>5', '<cmd>BufferGoto 5<cr>')
+    --     end,
+    -- })
     -- treesitter
     use({
         'nvim-treesitter/nvim-treesitter',
@@ -69,6 +82,7 @@ require('packer').startup(function(use)
     -- lsp
     use('neovim/nvim-lspconfig')
     use('tami5/lspsaga.nvim')
+    use('ray-x/lsp_signature.nvim')
     -- dap
     use('mfussenegger/nvim-dap')
     -- scala lsp

@@ -59,6 +59,9 @@ metals_config.on_attach = function(client, bufnr)
         },
     }
     require('metals').setup_dap()
+
+    -- turn on plugin for better signature help
+    require('lsp_signature').on_attach()
 end
 
 -- Run metals on open scala file

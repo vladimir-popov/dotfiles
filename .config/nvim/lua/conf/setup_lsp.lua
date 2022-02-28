@@ -46,21 +46,25 @@ function M.keys_mapping(bufnr)
     -- show type of selected code
     vmap('K', "<Esc><cmd>lua require('metals').type_of_range()<CR>")
     -- show signature of current method
-    nmap('<c-k>', '<cmd>lua vim.lsp.buf.signature_help()<CR>')
-    imap('<c-k>', '<cmd>lua vim.lsp.buf.signature_help()<CR>')
-    -- open new window with list of code-entities in the current document
+    nmap('<c-p>', '<cmd>lua vim.lsp.buf.signature_help()<CR>')
+    imap('<c-p>', '<cmd>lua vim.lsp.buf.signature_help()<CR>')
+    -- open a new window with a list of code-entities in the current document
     nmap('<leader>p', '<cmd>lua vim.lsp.buf.document_symbol()<CR>')
     -- format current buffer
     nmap('<leader>f', '<cmd>lua vim.lsp.buf.formatting()<CR>')
     -- rename the symbol under cursor
-    nmap('<space>rn', "<cmd>lua require('lspsaga.rename').rename()<CR>")
+    -- nmap('<space>rn', "<cmd>lua require('lspsaga.rename').rename()<CR>")
+    nmap('<space>rn', "<cmd>lua vim.lsp.buf.rename()<CR>")
     -- show all possible actions
     -- nmap('<space>qf', '<cmd>lua vim.lsp.buf.code_action()<CR>')
     nmap('<space>qf', '<cmd>lua require("lspsaga.codeaction").code_action()<CR>')
+    vmap('<space>qf', '<cmd>lua require("lspsaga.codeaction").code_action()<CR>')
     -- go to error before cursor
-    nmap('[e', '<cmd>lua vim.diagnostic.goto_prev({ float = false })<CR>')
+    nmap('[e', '<cmd>lua vim.diagnostic.goto_prev({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>')
+    nmap('[E', '<cmd>lua vim.diagnostic.goto_prev({ severity={min=vim.diagnostic.severity.INFO} })<CR>')
     -- go to error after cursor
-    nmap(']e', '<cmd>lua vim.diagnostic.goto_next({ float = false })<CR>')
+    nmap(']e', '<cmd>lua vim.diagnostic.goto_next({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>')
+    nmap(']E', '<cmd>lua vim.diagnostic.goto_next({ severity={min=vim.diagnostic.severity.INFO} })<CR>')
     -- show current buffer in the tree view
     nmap('<leader>tr', '<cmd>lua require"metals.tvp".reveal_in_tree()<CR>')
     -- toggle the tree view
@@ -103,33 +107,28 @@ nvim_lsp.yamlls.setup({
     filetypes = { 'yaml' },
 })
 
--- blacklist
+-- spellcheck
 local configs = require('lspconfig.configs')
-if not configs.bll then
-    configs.bll = {
+if not configs.spellcheck then
+    configs.spellcheck = {
         default_config = {
-            cmd = { 'blacklist-server', '--stdio' },
-            filetypes = { 'bll' },
-            root_dir = nvim_lsp.util.root_pattern('test.bll'),
+            cmd = { '/Users/vladimir/Projects/spellcheck-lsp/target/scala-3.1.0/spellcheck-lsp' },
+            filetypes = { 'text' },
+            root_dir = nvim_lsp.util.root_pattern('/Users/vladimir/Projects/spellcheck-lsp'),
             settings = {},
         },
     }
 end
 
-nvim_lsp.bll.setup({
-    on_attach = function(client)
-        print('BLL LSP started.')
-    end,
-})
-
 -- Setup ---------------------------------------------------
-local servers = { 'bashls', 'vimls', 'jsonls', 'yamlls' }
+local servers = { 'bashls', 'vimls', 'jsonls', 'yamlls', 'spellcheck' }
 
 function M.on_attach(client, bufnr)
-    if client.name ~= 'yamlls' and client.name ~= 'jsonls' then
+    if client.name ~= 'yamlls' and client.name ~= 'jsonls' and client.name ~= 'spellcheck' then
         M.highlight_setup()
     end
     M.keys_mapping(bufnr)
+    require('lsp_signature').on_attach()
 end
 
 for _, lsp in ipairs(servers) do

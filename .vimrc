@@ -137,7 +137,7 @@ Plug 'tpope/vim-surround'
 Plug 'christoomey/vim-tmux-navigator'
 " }}}
 
-" -- fxf --------------------------------------------------------------------{{{
+" -- fzf --------------------------------------------------------------------{{{
 let g:fzf_layout = { 'window': { 'width': 0.6, 'height': 0.9, 'relative': v:true } }
 let g:fzf_preview_window = ['down:70%', 'ctrl-/']
 let g:fzf_colors = {
@@ -166,7 +166,7 @@ nnoremap <nowait><space>gh <cmd>Commits<cr>
 nnoremap <nowait><space>gH <cmd>BCommits<cr>
 nnoremap <nowait><space>f <cmd>BLines<cr>
 nnoremap <nowait><space>o <cmd>History<cr>
-nnoremap <nowait><space>e <cmd>Buffers<cr>
+nnoremap <nowait><space>w <cmd>Buffers<cr>
 " }}}
 
 " -- Git support ------------------------------------------------------------{{{ 
@@ -254,6 +254,10 @@ endfunction
 
 " -- Yaml -------------------------------------------------------------------{{{
 Plug 'stephpy/vim-yaml'
+"  }}}
+
+" -- Goyo -------------------------------------------------------------------{{{
+Plug 'junegunn/goyo.vim'
 "  }}}
 
 " -- Vader ------------------------------------------------------------------{{{
@@ -362,8 +366,8 @@ nnoremap <silent> qc :cclose<CR>
 
 " hotkeys to swap between buffers
 nnoremap <silent> gb <C-^>
-nnoremap <silent> [b :bprevious<CR> 
-nnoremap <silent> ]b :bnext<CR>
+nnoremap <silent> ]b :bprevious<CR> 
+nnoremap <silent> [b :bnext<CR>
 " open new tab
 " nnoremap <C-n> :tabnew<CR>
 " hotkeys to swap between tabs
@@ -397,6 +401,18 @@ nnoremap <leader>cd :cd %:p:h<CR>:pwd<CR>
 
 " Enter to the Normal mod in the terminal
 tnoremap <leader><leader> <c-\><c-n>
+" }}}
+ 
+" *****************************************************************************
+" *                      Custom commands and functions                        *  
+" ***************************************************************************** 
+" " {{{
+
+" Distraction free mode
+command! DistractionFree Goyo 110x100 | set nu | set rnu
+
+" Open help in the right vert split window
+command! -nargs=1 H vertical bo h <args>
 
 function! g:ToggleConceallevel()
   if &conceallevel 
@@ -415,16 +431,18 @@ function! g:ToggleSpellcheck()
   endif
 endfunction  
 
-" Open help in the right vert split window
-command! -nargs=1 H vertical bo h <args>
-" }}
- 
-" *****************************************************************************
-" *                               Custom commands                             *  
-" ***************************************************************************** 
-" " {{{
-
 " Turn on/off spellchecking
 command! ToggleSpellCheck call g:ToggleSpellcheck()
+
+function! g:BracesFold(lnum)
+  let a1 = getline(a:lnum)=~'{' 
+  let s1 = getline(a:lnum)=~'}' 
+  return a1 ? 'a1' : s1 ? 's1' : '='
+endfunction
+
+augroup scalafiles
+  autocmd! 
+  autocmd FileType scala,sbt set foldexpr=g:BracesFold(v:lnum) | set foldmethod=expr 
+augroup end
 
 " }}}
