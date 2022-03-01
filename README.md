@@ -27,7 +27,7 @@ $ dot checkout
 
 5. Set the flag showUntrackedFiles to no on this specific (local) repository:
 ```sh
-$ config config --local status.showUntrackedFiles no
+$ dot config --local status.showUntrackedFiles no
 ```
 
 _Thanks Atlassian for the advice https://www.atlassian.com/git/tutorials/dotfiles_
