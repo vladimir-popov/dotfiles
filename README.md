@@ -59,23 +59,23 @@ brew install --cask alacritty
 
 To apply dotfiles to a new machine:
 
-2. In the new sh session create alias:
+1. In the new sh session create alias:
 ```sh
 alias dot='git --git-dir=$HOME/.git_dot/ --work-tree=$HOME'
 ```
 
-3. Clone this repo:
+2. Clone this repo:
 ```sh 
 git clone --bare git@github.com:vladimir-popov/dotfiles.git $HOME/.git_dot
 ```
 
-4. Checkout repo to the $HOME directory:
+3. Checkout repo to the $HOME directory:
 ```sh
 cd ~
 dot checkout
 ```
 
-5. Set the flag showUntrackedFiles to no on this specific (local) repository:
+4. Set the flag showUntrackedFiles to no on this specific (local) repository:
 ```sh
 dot config --local status.showUntrackedFiles no
 ```
