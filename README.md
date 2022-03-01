@@ -32,16 +32,18 @@ _Thanks Atlassian for the advice https://www.atlassian.com/git/tutorials/dotfile
 
 # Vim & Neovim
 
-MacVim can be downloaded here: https://macvim-dev.github.io/macvim/
+### MacVim
 
-## Plug manager for Vim
+Can be downloaded here: https://macvim-dev.github.io/macvim/
+
+### Plug manager for Vim
 
 ```sh
 curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
     https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
 ```
 
-## Nerd fonts
+### Nerd fonts
 
 ```sh
 brew tap homebrew/cask-fonts
