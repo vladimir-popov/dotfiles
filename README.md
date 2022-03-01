@@ -1,4 +1,10 @@
-# dotfiles
+### Oh My Zsh
+
+```sh
+sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+```
+
+### dotfiles
 
 To apply dotfiles to a new machine:
 
@@ -30,12 +36,6 @@ dot config --local status.showUntrackedFiles no
 
 _Thanks Atlassian for the advice https://www.atlassian.com/git/tutorials/dotfiles_
 
-# Vim & Neovim
-
-### MacVim
-
-Can be downloaded here: https://macvim-dev.github.io/macvim/
-
 ### Plug manager for Vim
 
 ```sh
@@ -51,7 +51,7 @@ brew install --cask font-fira-code-nerd-font
 ```
 
 
-# Alacritty
+### Alacritty
 
 ```sh
 brew install --cask alacritty
