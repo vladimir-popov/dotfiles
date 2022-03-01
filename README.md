@@ -1,17 +1,63 @@
+# Dotfiles
+
+
+## Preparation
+
+Some dotfiles need additional tools and preparations. Before applying dotfiles some additional tools must be installed:
+
+### Git
+
+```sh
+brew install git
+```
+
 ### Oh My Zsh
 
 ```sh
 sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 ```
 
-### dotfiles
+### Nerd fonts
+
+```sh
+brew tap homebrew/cask-fonts
+brew install --cask font-fira-code-nerd-font
+```
+
+### Plugins manager for Vim
+
+```sh
+curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
+    https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+```
+
+### Plugins manager for Neovim
+
+```sh
+git clone --depth 1 https://github.com/wbthomason/packer.nvim \
+ ~/.local/share/nvim/site/pack/packer/start/packer.nvim
+```
+
+### Tmux
+
+```sh
+brew install tmux
+```
+
+To reattach process (e.g., tmux) to background, the follow should be installed:
+```sh
+brew install reattach-to-user-namespace
+```
+
+### Alacritty
+
+```sh
+brew install --cask alacritty
+```
+
+## Apply dotfiles 
 
 To apply dotfiles to a new machine:
-
-1. Install git
-```sh
-brew install git
-```
 
 2. In the new sh session create alias:
 ```sh
@@ -35,24 +81,3 @@ dot config --local status.showUntrackedFiles no
 ```
 
 _Thanks Atlassian for the advice https://www.atlassian.com/git/tutorials/dotfiles_
-
-### Plug manager for Vim
-
-```sh
-curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
-    https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-```
-
-### Nerd fonts
-
-```sh
-brew tap homebrew/cask-fonts
-brew install --cask font-fira-code-nerd-font
-```
-
-
-### Alacritty
-
-```sh
-brew install --cask alacritty
-```
