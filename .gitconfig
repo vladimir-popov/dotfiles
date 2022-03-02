@@ -5,18 +5,10 @@
 	co = checkout
 	st = status -sb
 	ci = commit
-  cm = commit -am
+  	cm = commit -am
 	br = branch
+	review = merge --no-ff --no-commit 
 	hist = log --pretty=format:%h %ad | %s%d [%an] --graph --date=short
-	type = cat-file -t
-	dump = cat-file -p
-	l = log --pretty=%Cgreen%cn%Creset %C(auto)%h%Creset %Cred%ad%Creset%n      %s --date=relative
-	lg = log --pretty=%Cgreen%cn%Creset %C(auto)%h%Creset %Cred%ad%Creset%n      %s --date=relative --graph
-  ls = ls-tree -r main --name-only
-	forget = update-index --assume-unchanged
-	recall = update-index --no-assume-unchanged
-	in = '!git remote update -p ; git log ..@{u}'
-	out = 'log @{u}..'
 [core]
 	excludesfile = /Users/vladimir/.gitignore_global
 	autocrlf = input
