@@ -1,5 +1,7 @@
 zmodload zsh/zprof
 
+alias v=nvim
+
 # bindkey -l    --- to list all variants
 # bindkey -M    --- to read key binds in specified scheme
 #bindkey -v 
@@ -9,9 +11,6 @@ zmodload zsh/zprof
 # run on new machine:
 # dot config --local status.showUntrackedFiles no
 alias dot='git --git-dir=$HOME/.git_dot/ --work-tree=$HOME'
-
-# file with aliases
-. $HOME/.aliases
 
 # allow v to edit the command line (standard behaviour)
 #autoload -Uz edit-command-line
@@ -156,7 +155,7 @@ export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -f -g ""'
 
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
-export GDISK='/Volumes/GoogleDrive/My Drive'
+export GDISK=$HOME'/My Drive'
 export PROJECTS=$HOME'/Projects'
 export VIM_PATH=$HOME'/.vim'
 export NVIM_PATH=$HOME'/.config/nvim'
@@ -164,10 +163,7 @@ export NVIM_PLUG=$HOME'/.local/share/nvim/site/pack/packer/start'
 
 B_HOME='h:'$HOME';'
 B_PROJECTS='p:'$PROJECTS';'
-B_DASH='d:'$PROJECTS'/dash;'
-B_DASH_WIKI='w:'$PROJECTS'/dash.wiki;'
 B_GDISK='G:'$GDISK';'
-B_SETTINGS='S:'$GDISK'/Settings;'
 B_VIM='v:'$VIM_PATH'/plugged;'
 B_NVIM='V:'$NVIM_PATH';'
 B_NVIMP='P:'$NVIM_PLUG';'

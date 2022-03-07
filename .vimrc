@@ -3,17 +3,6 @@
 " ***************************************************************************** 
 " {{{
 
-" set backupdir=.backup/,~/.backup/,/tmp//
-" set directory=.swp/,~/.swp/,/tmp//
-set undodir=.undo/,~/.undo/,/tmp//
-
-" fold this file
-augroup vimrc 
-  autocmd!
-  autocmd BufRead .vimrc setlocal foldmethod=marker
-  autocmd BufRead .vimrc setlocal foldenable
-augroup END
-
 " use UTF as encoding by default
 set encoding=UTF-8
 
@@ -300,9 +289,6 @@ Plug 'vladimir-popov/vim-navigator'
 " {{{
 if !has('nvim')
 
-set background=light
-colorscheme PaperColor
-
 " -- Devicons: adds icons for files -----------------------------------------{{{
 Plug 'ryanoasis/vim-devicons' 
 if exists("g:loaded_webdevicons")
@@ -374,8 +360,14 @@ nnoremap <silent> [b :bnext<CR>
 nnoremap <silent> [t :tabprevious<CR> 
 nnoremap <silent> ]t :tabnext<CR>
 
-" swap ' and `
-nnoremap ' `
+" use ' to choose register
+nnoremap ' "
+vnoremap ' "
+
+" use " to go to marked position
+nnoremap " `
+
+" use ` to go to marked line
 nnoremap ` '
 
 " indent block without loosing selection
@@ -434,15 +426,11 @@ endfunction
 " Turn on/off spellchecking
 command! ToggleSpellCheck call g:ToggleSpellcheck()
 
-function! g:BracesFold(lnum)
-  let a1 = getline(a:lnum)=~'{' 
-  let s1 = getline(a:lnum)=~'}' 
-  return a1 ? 'a1' : s1 ? 's1' : '='
-endfunction
+" }}}
 
-augroup scalafiles
-  autocmd! 
-  autocmd FileType scala,sbt set foldexpr=g:BracesFold(v:lnum) | set foldmethod=expr 
-augroup end
-
+" fold this file by markers {{{
+augroup myvimrc 
+  autocmd!
+  autocmd BufRead .vimrc setlocal foldmethod=marker | setlocal foldenable 
+augroup END
 " }}}
