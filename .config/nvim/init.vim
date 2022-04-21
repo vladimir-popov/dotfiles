@@ -12,6 +12,7 @@ source ~/.vimrc
 " endif
 set background=dark
 colorscheme nightfox
+hi! def link TSKeywordFunction Keyword
 " set termguicolors
 " colorscheme onehalfdark
 
@@ -37,11 +38,10 @@ lua require'conf.sumneko'
 lua require'conf.metals'
 lua require'conf.treesitter'.setup()
 
-
 let g:neoformat_verbose = 0
 let g:neoformat_lua_stylua = {
       \ 'exe': 'stylua',
-      \ 'args': ['--config-path ', $HOME .. '/.stylua.toml', '--', '-'],
+      \ 'args': ['--config-path ', $HOME .. '/.stylua.default', '--', '-'],
       \ 'stdin': 1,
       \ }
 let g:neoformat_enabled_lua = ['stylua']

@@ -320,6 +320,10 @@ Plug 'vim-airline/vim-airline'
 Plug 'vim-airline/vim-airline-themes'
 " let g:airline_section_y = airline#section#create(['tagbar', 'filetype'])
 " }}}
+
+" -- Buffers ----------------------------------------------------------------{{{
+Plug 'ap/vim-buftabline'                  
+" }}}
   
 " -- The NERDTree is a file system explorer for the Vim editor --------------{{{
 " show hidden files
@@ -366,8 +370,8 @@ nnoremap <silent> qc :cclose<CR>
 
 " hotkeys to swap between buffers
 nnoremap <silent> gb <C-^>
-nnoremap <silent> ]b :bprevious<CR> 
-nnoremap <silent> [b :bnext<CR>
+nnoremap <silent> [b :bprevious<CR> 
+nnoremap <silent> ]b :bnext<CR>
 " open new tab
 " nnoremap <C-n> :tabnew<CR>
 " hotkeys to swap between tabs

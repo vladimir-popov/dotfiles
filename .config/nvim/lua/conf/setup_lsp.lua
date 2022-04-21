@@ -54,17 +54,29 @@ function M.keys_mapping(bufnr)
     nmap('<leader>f', '<cmd>lua vim.lsp.buf.formatting()<CR>')
     -- rename the symbol under cursor
     -- nmap('<space>rn', "<cmd>lua require('lspsaga.rename').rename()<CR>")
-    nmap('<space>rn', "<cmd>lua vim.lsp.buf.rename()<CR>")
+    nmap('<space>rn', '<cmd>lua vim.lsp.buf.rename()<CR>')
     -- show all possible actions
     -- nmap('<space>qf', '<cmd>lua vim.lsp.buf.code_action()<CR>')
     nmap('<space>qf', '<cmd>lua require("lspsaga.codeaction").code_action()<CR>')
     vmap('<space>qf', '<cmd>lua require("lspsaga.codeaction").code_action()<CR>')
     -- go to error before cursor
-    nmap('[e', '<cmd>lua vim.diagnostic.goto_prev({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>')
-    nmap('[E', '<cmd>lua vim.diagnostic.goto_prev({ severity={min=vim.diagnostic.severity.INFO} })<CR>')
+    nmap(
+        '[e',
+        '<cmd>lua vim.diagnostic.goto_prev({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>'
+    )
+    nmap(
+        '[E',
+        '<cmd>lua vim.diagnostic.goto_prev({ severity={min=vim.diagnostic.severity.INFO} })<CR>'
+    )
     -- go to error after cursor
-    nmap(']e', '<cmd>lua vim.diagnostic.goto_next({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>')
-    nmap(']E', '<cmd>lua vim.diagnostic.goto_next({ severity={min=vim.diagnostic.severity.INFO} })<CR>')
+    nmap(
+        ']e',
+        '<cmd>lua vim.diagnostic.goto_next({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>'
+    )
+    nmap(
+        ']E',
+        '<cmd>lua vim.diagnostic.goto_next({ severity={min=vim.diagnostic.severity.INFO} })<CR>'
+    )
     -- show current buffer in the tree view
     nmap('<leader>tr', '<cmd>lua require"metals.tvp".reveal_in_tree()<CR>')
     -- toggle the tree view
@@ -111,13 +123,13 @@ nvim_lsp.yamlls.setup({
 local configs = require('lspconfig.configs')
 if not configs.spellcheck then
     configs.spellcheck = {
-        default_config = {
-            cmd = { '/Users/vladimir/Projects/spellcheck-lsp/target/scala-3.1.0/spellcheck-lsp' },
-            filetypes = { 'text' },
-            root_dir = nvim_lsp.util.root_pattern('/Users/vladimir/Projects/spellcheck-lsp'),
-            settings = {},
-        },
+    default_config = {
+        cmd = { vim.env.HOME .. '/Projects/spellcheck-lsp/target/scala-3.1.0/spellcheck-lsp' },
+        filetypes = { 'text' },
+        settings = {},
+        root_dir = nvim_lsp.util.root_pattern('/Users/vladimir/Projects/spellcheck-lsp'),
     }
+  }
 end
 
 -- Setup ---------------------------------------------------

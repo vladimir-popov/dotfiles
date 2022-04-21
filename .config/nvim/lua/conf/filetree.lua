@@ -3,8 +3,6 @@ local M = {}
 M.setup = function()
     -- will enable file highlight for git attributes
     vim.g.nvim_tree_git_hl = 1
-    -- force closing neovim when the tree is the last window in the view.
-    vim.g.nvim_tree_quit_on_open = 0
     vim.g.nvim_tree_icons = {
         default = '',
         symlink = '',
