@@ -138,10 +138,6 @@ if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/
 # The next line enables shell command completion for gcloud.
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
-export KUBE_EDITOR="nvim"
-
-[[ /usr/local/bin/kubectl ]] && source <(kubectl completion zsh)
-
 export PATH="$HOME/.pyenv/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
 export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
 # eval "$(pyenv init -)"
