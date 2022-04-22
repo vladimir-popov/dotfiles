@@ -19,8 +19,9 @@ end
 nvim_lsp.sumneko_lua.setup({
     cmd = { sumneko_binary, '-E', sumneko_root_path .. '/main.lua' },
     on_attach = on_attach,
+    -- see description here https://github.com/sumneko/vscode-lua/blob/master/setting/schema.json
     settings = {
-        Lua = { 
+        Lua = {
             runtime = {
                 -- Tell the language server which version of Lua you're using (most likely LuaJIT in the case of Neovim)
                 version = 'LuaJIT',
@@ -39,15 +40,19 @@ nvim_lsp.sumneko_lua.setup({
             telemetry = {
                 enable = false,
             },
-            -- EmmyLuaCodeStyle config
+            -- Configuration of the EmmyLuaCodeStyle
+            -- ! doesn't work on 04/21/22 !
             format = {
                 enable = false,
                 -- Put format options here
                 -- NOTE: the value should be STRING!!
                 defaultConfig = {
                     indent_style = 'space',
-                    indent_size = '2',
+                    indent_size = '4',
                 },
+            },
+            IntelliSense = {
+                traceLocalSet = true,
             },
         },
     },

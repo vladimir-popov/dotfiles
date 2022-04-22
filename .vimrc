@@ -234,6 +234,10 @@ Plug 'vim-airline/vim-airline'
 Plug 'vim-airline/vim-airline-themes'
 " let g:airline_section_y = airline#section#create(['tagbar', 'filetype'])
 " }}}
+
+" -- Buffers ----------------------------------------------------------------{{{
+Plug 'ap/vim-buftabline'                  
+" }}}
   
 " -- The NERDTree is a file system explorer for the Vim editor --------------{{{
 " show hidden files
