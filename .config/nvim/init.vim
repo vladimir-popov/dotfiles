@@ -3,18 +3,6 @@ set runtimepath+=~/.vim runtimepath+=~/.vim/after
 let &packpath = &runtimepath
 source ~/.vimrc
 
-" if empty($LC_TERMINAL)
-"   set background=light
-"   colorscheme PaperColor
-" else
-"   set background=dark
-"   colorscheme nightfox
-" endif
-set background=dark
-colorscheme nightfox
-" set termguicolors
-" colorscheme onehalfdark
-
 " a comma separated list of options for Insert mode completion
 " menuone  - use a popup menu to show the possible completions,
 "            also when there is only one match;

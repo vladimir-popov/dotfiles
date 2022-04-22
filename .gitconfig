@@ -5,24 +5,17 @@
 	co = checkout
 	st = status -sb
 	ci = commit
-  	cm = commit -am
+  cm = commit -am
 	br = branch
 	review = merge --no-ff --no-commit 
 	hist = log --pretty=format:%h %ad | %s%d [%an] --graph --date=short
-[core]
-	excludesfile = /Users/vladimir/.gitignore_global
-	autocrlf = input
-[pager]
-	branch = false
-[difftool "sourcetree"]
-	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
-	path =
-[mergetool "sourcetree"]
-	cmd = /Applications/Sourcetree.app/Contents/Resources/opendiff-w.sh \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
-	trustExitCode = true
-[commit]
-[filesystem "AdoptOpenJDK|11.0.5|/dev/disk1s1"]
-	timestampResolution = 10000 nanoseconds
-	minRacyThreshold = 0 nanoseconds
 [init]
 	defaultBranch = main
+[merge]
+  tool = vimdiff
+[diff]
+  tool = vimdiff
+[difftool "vimdiff"]
+  cmd = vimdiff "$LOCAL" "$REMOTE"
+[mergetool "vimdiff"]
+  cmd = vimdiff "$LOCAL" "$MERGED" "$REMOTE"

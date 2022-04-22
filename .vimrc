@@ -1,79 +1,3 @@
-" *****************************************************************************
-" *                               Settings                                    *  
-" ***************************************************************************** 
-" {{{
-
-" use UTF as encoding by default
-set encoding=UTF-8
-
-" use mouse in the terminal
-set mouse=a
-
-" turn on indent
-filetype indent on
-
-" Enable filetype plugins
-filetype plugin on
-
-" turn on line numbers
-set number
-
-" highlight the current line
-set cursorline
-
-" turn relative line numbers on only for active window
-augroup numbertoggle
-  autocmd!
-  autocmd BufEnter,FocusGained,InsertLeave,WinEnter * if &nu && mode() != "i" | set rnu   | endif
-  autocmd BufLeave,FocusLost,InsertEnter,WinLeave   * if &nu                  | set nornu | endif
-augroup END
-
-" do not wrap lines
-set nowrap
-
-" searching configuration:
-set ignorecase
-set smartcase
-
-" open all folds on the start
-set nofoldenable
-
-" use syntax for folding by default
-set foldmethod=syntax
-
-" Expand TABs to spaces.
-set expandtab
-
-" The width of a TAB is set to 2.
-" Still it is a \t. It is just that
-" vim will interpret it to be having
-" a width of 2.
-set tabstop=2
-
-" Indents will have a width of 2.
-set shiftwidth=2    
-
-" Sets the number of columns for a TAB.
-set softtabstop=2   
-
-" use russian keymapping in the normal mode
-let ru_up='ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖХЪБЮЭ'
-let en_up='ABCDEFGHIJKLMNOPQRSTUVWXYZ:{}<>\"'
-let ru_low='фисвуапршолдьтщзйкыегмцчняёэхъжю'
-let en_low="abcdefghijklmnopqrstuvwxyz§'[]\;."
-execute "set langmap=" .. printf("%s;%s,%s;%s", ru_up, en_up, ru_low, en_low)
-set keymap=russian-jcukenwin
-set iminsert=0
-set imsearch=0
-
-" turn on spellcheck in some files by default
-augroup spellcheckdefault 
-  autocmd!
-  autocmd BufRead COMMIT_EDITMSG,*.md setlocal spell | setlocal spelllang=ru,en
-augroup END
-
-" }}} 
- 
 " ***************************************************************************** 
 " *                               Plugins                                     * 
 " ***************************************************************************** 
@@ -103,6 +27,10 @@ let g:PaperColor_Theme_Options = {
   \   }
   \ }
 Plug 'NLKNguyen/papercolor-theme'
+" }}}
+
+" -- Nightfox theme ---------------------------------------------------------{{{
+Plug 'EdenEast/nightfox.nvim'
 " }}}
 
 " -- Auto-save --------------------------------------------------------------{{{
@@ -170,11 +98,11 @@ nnoremap <leader>gk :Git push
 " git pull
 nnoremap <leader>gj :Git pull
 " git diff to resolve conflicts
-nnoremap <leader>gh :Gvdiffsplit!<cr>
-" get changes from the current brunch (HEAD) - left buffer
-nnoremap ghh :diffget //2<cr>
-" get changes from the merge branch - right buffer
-nnoremap ghl :diffget //3<cr>
+nnoremap <leader>gr :Gvdiffsplit!<cr>
+" `g`et changes `f`rom the current brunch (HEAD or LOCAL) - left buffer
+nnoremap gfh :execute 'diffget ' .. (&diff ? 'LO' : '//2')<cr>
+" `g`et changes `f`rom the merge branch (REMOTE) - right buffer
+nnoremap gfl :execute 'diffget ' .. (&diff ? 'RE' : '//3')<cr>
 
 " add marks about git status on the left line
 Plug 'airblade/vim-gitgutter'
@@ -324,6 +252,91 @@ call plug#end()
 " }}}
  
 " *****************************************************************************
+" *                               Settings                                    *  
+" ***************************************************************************** 
+" {{{
+set termguicolors
+set background=dark
+colorscheme nightfox
+" Nightfox customization
+hi! DiffAdd guibg=#526176
+hi! DiffDelete guibg=#526176
+hi! DiffChange guibg=#526176
+
+
+" use UTF as encoding by default
+set encoding=UTF-8
+
+" use mouse in the terminal
+set mouse=a
+
+" turn on indent
+filetype indent on
+
+" Enable filetype plugins
+filetype plugin on
+
+" turn on line numbers
+set number
+
+" highlight the current line
+set cursorline
+
+" turn relative line numbers on only for active window
+" and not in diff mode
+augroup numbertoggle
+  autocmd!
+  autocmd BufEnter,FocusGained,InsertLeave,WinEnter * if &nu && mode() != "i" && !&diff  | set rnu   | endif
+  autocmd BufLeave,FocusLost,InsertEnter,WinLeave   * if &nu                             | set nornu | endif
+augroup END
+
+" do not wrap lines
+set nowrap
+
+" searching configuration:
+set ignorecase
+set smartcase
+
+" open all folds on the start
+set nofoldenable
+
+" use syntax for folding by default
+set foldmethod=syntax
+
+" Expand TABs to spaces.
+set expandtab
+
+" The width of a TAB is set to 2.
+" Still it is a \t. It is just that
+" vim will interpret it to be having
+" a width of 2.
+set tabstop=2
+
+" Indents will have a width of 2.
+set shiftwidth=2    
+
+" Sets the number of columns for a TAB.
+set softtabstop=2   
+
+" use russian keymapping in the normal mode
+let ru_up='ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖХЪБЮЭ'
+let en_up='ABCDEFGHIJKLMNOPQRSTUVWXYZ:{}<>\"'
+let ru_low='фисвуапршолдьтщзйкыегмцчняёэхъжю'
+let en_low="abcdefghijklmnopqrstuvwxyz§'[]\;."
+execute "set langmap=" .. printf("%s;%s,%s;%s", ru_up, en_up, ru_low, en_low)
+set keymap=russian-jcukenwin
+set iminsert=0
+set imsearch=0
+
+" turn on spellcheck in some files by default
+augroup spellcheckdefault 
+  autocmd!
+  autocmd BufRead COMMIT_EDITMSG,*.md setlocal spell | setlocal spelllang=ru,en
+augroup END
+
+" }}} 
+ 
+" *****************************************************************************
 " *                               Key mappin                                  *  
 " ***************************************************************************** 
 " {{{
@@ -352,8 +365,8 @@ nnoremap <silent> qc :cclose<CR>
 
 " hotkeys to swap between buffers
 nnoremap <silent> gb <C-^>
-nnoremap <silent> ]b :bprevious<CR> 
-nnoremap <silent> [b :bnext<CR>
+nnoremap <silent> [b :bprevious<CR> 
+nnoremap <silent> ]b :bnext<CR>
 " open new tab
 " nnoremap <C-n> :tabnew<CR>
 " hotkeys to swap between tabs

@@ -6,7 +6,6 @@ require('packer').startup(function(use)
     -- packer can manage itself
     use({ 'wbthomason/packer.nvim', opt = true })
     -- colorschemes
-    use('EdenEast/nightfox.nvim')
     use('Th3Whit3Wolf/one-nvim')
     -- icons with extended symbols
     use('kyazdani42/nvim-web-devicons')
@@ -38,8 +37,6 @@ require('packer').startup(function(use)
             require('utils').nmap('<c-n>', '<cmd>NnnPicker<cr>')
         end,
     })
-    -- side bar
-    use('sidebar-nvim/sidebar.nvim')
     -- telescope
     use({
         'nvim-telescope/telescope.nvim',
