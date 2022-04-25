@@ -159,13 +159,13 @@ let g:table_mode_corner='|'
 " : MarkdownPreviewToggle
 " set to 1, the vim will auto close current preview window when change
 " from markdown buffer to another buffer
-let g:mkdp_auto_close = 0
-let g:mkdp_browserfunc = 'g:Open_browser'
-Plug 'iamcco/markdown-preview.nvim', { 'do': 'cd app & yarn install'  }
+" let g:mkdp_auto_close = 0
+" let g:mkdp_browserfunc = 'g:Open_browser'
+" Plug 'iamcco/markdown-preview.nvim', { 'do': 'cd app & yarn install'  }
 " uncomment to change browser
-function! g:Open_browser(url)
-    silent exe 'silent !open -na "Google Chrome" ' . a:url
-endfunction
+" function! g:Open_browser(url)
+"     silent exe 'silent !open -na "Google Chrome" ' . a:url
+" endfunction
 
 " }}}
 
@@ -322,6 +322,11 @@ set shiftwidth=2
 " Sets the number of columns for a TAB.
 set softtabstop=2   
 
+augroup my_luastyle
+  autocmd!
+  autocmd BufRead *.lua setlocal tabstop=4 | setlocal shiftwidth=4 | setlocal softtabstop=4
+augroup END
+
 " use russian keymapping in the normal mode
 let ru_up='ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖХЪБЮЭ'
 let en_up='ABCDEFGHIJKLMNOPQRSTUVWXYZ:{}<>\"'
@@ -333,7 +338,7 @@ set iminsert=0
 set imsearch=0
 
 " turn on spellcheck in some files by default
-augroup spellcheckdefault 
+augroup my_spellcheckdefault 
   autocmd!
   autocmd BufRead COMMIT_EDITMSG,*.md setlocal spell | setlocal spelllang=ru,en
 augroup END
@@ -422,6 +427,21 @@ command! DistractionFree Goyo 110x100 | set nu | set rnu
 
 " Open help in the right vert split window
 command! -nargs=1 H vertical bo h <args>
+
+" Run grip server to render current buffer
+" see https://github.com/joeyespo/grip
+command! MarkdownPreview call g:MarkdownPreview()
+function! g:MarkdownPreview()
+  if &filetype == 'markdown'
+    if has('nvim')
+      call execute('below 10split term://grip ' .. expand('%') .. ' 8080')
+    else
+      call execute('bo term grip ' .. expand('%') .. ' 8080')
+    endif
+  else
+    echo 'Only for markdown. Not for ' .. &filetype
+  endif
+endfunction
 
 function! g:ToggleConceallevel()
   if &conceallevel 

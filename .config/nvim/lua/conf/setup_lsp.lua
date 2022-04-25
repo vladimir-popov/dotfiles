@@ -41,8 +41,7 @@ function M.keys_mapping(bufnr)
     -- show place where type is defined
     nmap('gt', '<cmd>lua vim.lsp.buf.type_definition()<CR>')
     -- show description of the symbol under cursor
-    -- nmap('K', '<cmd>lua vim.lsp.buf.hover()<CR>')
-    nmap('K', "<cmd>lua require('lspsaga.signaturehelp').signature_help()<CR>")
+    nmap('K', '<cmd>lua vim.lsp.buf.hover()<CR>')
     -- show type of selected code
     vmap('K', "<Esc><cmd>lua require('metals').type_of_range()<CR>")
     -- show signature of current method
@@ -130,7 +129,6 @@ if not configs.spellcheck then
             settings = {},
         },
     }
-  }
 end
 
 -- Setup ---------------------------------------------------

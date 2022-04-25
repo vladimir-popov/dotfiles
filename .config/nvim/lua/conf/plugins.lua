@@ -12,8 +12,6 @@ require('packer').startup(function(use)
     -- prettyfier a code
     use('sbdchd/neoformat')
     -- autocompletion
-    use('hrsh7th/nvim-compe')
-    use('onsails/lspkind-nvim')
     -- Install nvim-cmp, and buffer source as a dependency
     use({
         'hrsh7th/nvim-cmp',
@@ -21,6 +19,7 @@ require('packer').startup(function(use)
             'hrsh7th/cmp-buffer',
             'hrsh7th/cmp-path',
             'hrsh7th/cmp-nvim-lsp',
+            'hrsh7th/cmp-nvim-lsp-signature-help',
             'onsails/lspkind-nvim',
         },
     })
