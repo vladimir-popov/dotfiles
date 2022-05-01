@@ -41,7 +41,6 @@ Plug '907th/vim-auto-save'
 " -- Commentary -------------------------------------------------------------{{{
 " gc - for comment
 Plug 'tpope/vim-commentary'
-autocmd FileType lua setlocal commentstring=---%s
 " }}}
 
 " -- Surround ---------------------------------------------------------------{{{
@@ -327,6 +326,9 @@ set shiftwidth=2
 
 " Sets the number of columns for a TAB.
 set softtabstop=2   
+
+" do not comment new line
+set formatoptions-=cro
 
 augroup my_luastyle
   autocmd!
