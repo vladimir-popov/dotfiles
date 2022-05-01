@@ -41,6 +41,7 @@ Plug '907th/vim-auto-save'
 " -- Commentary -------------------------------------------------------------{{{
 " gc - for comment
 Plug 'tpope/vim-commentary'
+autocmd FileType lua setlocal commentstring=---%s
 " }}}
 
 " -- Surround ---------------------------------------------------------------{{{
@@ -48,6 +49,11 @@ Plug 'tpope/vim-commentary'
 " ds{"} 'Hello w█rld!' ds' Hello world!
 " ys{move}{"}   'Hello w█rld!' ysiw[ 'Hello [world]!'
 Plug 'tpope/vim-surround'
+" }}}
+
+" -- Lexima -----------------------------------------------------------------{{{
+Plug 'cohama/lexima.vim'
+" see custom setting below
 " }}}
 
 " -- tmux -------------------------------------------------------------------{{{
@@ -371,6 +377,8 @@ nnoremap <silent> qQ :bd<CR>
 nnoremap <silent> QQ :bd!<CR>
 " close quickfix window
 nnoremap <silent> qc :cclose<CR>
+" close the help window
+nnoremap <silent> qh :helpclose<cr>
 
 " hotkeys to swap between buffers
 nnoremap <silent> gb <C-^>
@@ -382,12 +390,8 @@ nnoremap <silent> ]b :bnext<CR>
 nnoremap <silent> [t :tabprevious<CR> 
 nnoremap <silent> ]t :tabnext<CR>
 
-" use ' to choose register
-nnoremap ' "
-vnoremap ' "
-
-" use " to go to marked position
-nnoremap " `
+" use ' to go to marked position
+nnoremap ' `
 
 " use ` to go to marked line
 nnoremap ` '
@@ -425,8 +429,9 @@ tnoremap <leader><leader> <c-\><c-n>
 " Distraction free mode
 command! DistractionFree Goyo 110x100 | set nu | set rnu
 
-" Open help in the right vert split window
-command! -nargs=1 H vertical bo h <args>
+" lua lexima rules to put `end` on the new line after cursor
+call lexima#add_rule({'char': '<CR>', 'at': 'function()\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
+call lexima#add_rule({'char': '<CR>', 'at': 'then\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
 
 " Run grip server to render current buffer
 " see https://github.com/joeyespo/grip
