@@ -123,7 +123,7 @@ local configs = require('lspconfig.configs')
 if not configs.spellcheck then
     configs.spellcheck = {
         default_config = {
-            cmd = { vim.env.HOME .. '/Projects/spellcheck-lsp/target/scala-3.1.0/spellcheck-lsp' },
+            cmd = { 'java', '-jar', vim.env.HOME .. '/Projects/spellcheck-lsp/target/scala-3.1.0/spellcheck-lsp' },
             filetypes = { 'text' },
             root_dir = nvim_lsp.util.root_pattern(vim.env.HOME .. '/Projects/spellcheck-lsp'),
             settings = {},
