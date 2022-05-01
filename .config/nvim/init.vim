@@ -23,7 +23,7 @@ lua require'conf.filetree'.setup()
 lua require'conf.setup_lsp'
 lua require'conf.sumneko'
 lua require'conf.metals'
-lua require'conf.treesitter'.setup()
+lua require'conf.treesitter'
 
 let g:neoformat_verbose = 0
 let g:neoformat_lua_stylua = {
