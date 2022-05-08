@@ -84,8 +84,8 @@ nnoremap <nowait><space>a <cmd>Files<cr>
 nnoremap <nowait><space>gg <cmd>Ag<cr>
 nnoremap <nowait><space>gf <cmd>GFiles<cr>
 nnoremap <nowait><space>gs <cmd>GFiles?<cr>
-nnoremap <nowait><space>gh <cmd>Commits<cr>
-nnoremap <nowait><space>gH <cmd>BCommits<cr>
+nnoremap <nowait><space>gc <cmd>Commits<cr>
+nnoremap <nowait><space>gh <cmd>BCommits<cr>
 nnoremap <nowait><space>f <cmd>BLines<cr>
 nnoremap <nowait><space>o <cmd>History<cr>
 nnoremap <nowait><space>w <cmd>Buffers<cr>
@@ -265,13 +265,17 @@ call plug#end()
 " ***************************************************************************** 
 " {{{
 set termguicolors
-set background=dark
-colorscheme nightfox
-" Nightfox customization
-hi! DiffAdd guibg=#526176
-hi! DiffDelete guibg=#526176
-hi! DiffChange guibg=#526176
-
+if exists('g:neovide')
+  so ~/.gvimrc
+  cd ~
+else
+  set background=dark
+  colorscheme nightfox
+  " Nightfox customization for difftool
+  hi! DiffAdd guibg=#526176
+  hi! DiffDelete guibg=#526176
+  hi! DiffChange guibg=#526176
+endif
 
 " use UTF as encoding by default
 set encoding=UTF-8
@@ -327,12 +331,15 @@ set shiftwidth=2
 " Sets the number of columns for a TAB.
 set softtabstop=2   
 
+" Set default textwidth 
+set textwidth=100
+
 " do not comment new line
-set formatoptions-=cro
+autocmd BufNewFile,BufRead * setlocal formatoptions-=ro
 
 augroup my_luastyle
   autocmd!
-  autocmd BufRead *.lua setlocal tabstop=4 | setlocal shiftwidth=4 | setlocal softtabstop=4
+  autocmd BufRead *.lua setlocal tabstop=4 | setlocal shiftwidth=4 | setlocal softtabstop=4 |
 augroup END
 
 " use russian keymapping in the normal mode
@@ -350,6 +357,11 @@ augroup my_spellcheckdefault
   autocmd!
   autocmd BufRead COMMIT_EDITMSG,*.md setlocal spell | setlocal spelllang=ru,en
 augroup END
+
+" lua lexima rules to put `end` on the new line after cursor
+call lexima#add_rule({'char': '<CR>', 'at': 'function()\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
+call lexima#add_rule({'char': '<CR>', 'at': 'then\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
+call lexima#add_rule({'char': '<CR>', 'at': 'do\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
 
 " }}} 
  
@@ -430,10 +442,6 @@ tnoremap <leader><leader> <c-\><c-n>
 
 " Distraction free mode
 command! DistractionFree Goyo 110x100 | set nu | set rnu
-
-" lua lexima rules to put `end` on the new line after cursor
-call lexima#add_rule({'char': '<CR>', 'at': 'function()\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
-call lexima#add_rule({'char': '<CR>', 'at': 'then\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
 
 " Run grip server to render current buffer
 " see https://github.com/joeyespo/grip

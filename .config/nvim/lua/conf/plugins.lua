@@ -41,18 +41,16 @@ require('packer').startup(function(use)
         'nvim-telescope/telescope.nvim',
         requires = { { 'nvim-lua/popup.nvim' }, { 'nvim-lua/plenary.nvim' } },
     })
-    -- feline
-    -- use 'famiu/feline.nvim'
+    -- statusline
     use({
-        'famiu/feline.nvim',
-        branch = 'develop',
+        'dokwork/feline-cosmos',
+        requires = {
+            'kyazdani42/nvim-web-devicons',
+            'famiu/feline.nvim',
+            -- 'tpope/vim-fugitive',
+        },
         config = function()
-            local nightfox = require('conf.feline-cosmos.themes').nightfox
-            require('feline').setup({
-                theme = nightfox,
-                vi_mode_colors = nightfox.vi_mode_colors,
-                components = require('conf.feline-cosmos').preset(),
-            })
+            require('feline-cosmos.statusline').setup()
         end,
     })
     -- barbar

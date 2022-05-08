@@ -72,7 +72,8 @@ nmap("<space>gg", "<cmd>lua require('telescope.builtin').live_grep()<CR>")
 nmap("<leader>m", "<cmd>Telescope metals commands<CR>")
 -- lists LSP document symbols in the current buffer
 nmap("<space>ss", "<cmd>lua require('telescope.builtin').lsp_document_symbols()<CR>")
-nmap("<space>sm", "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='method'})<CR>")
+nmap("<space>sm", "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols={'method', 'function'}})<CR>")
+nmap("<space>sf", "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='field'})<CR>")
 nmap("<space>sc", "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='class'})<CR>")
 -- lists LSP diagnostics for the current workspace if supported, otherwise searches in all open buffers
 nmap("<space>d", "<cmd>lua require('telescope.builtin').diagnostics()<CR>")
