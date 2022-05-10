@@ -12,6 +12,11 @@ alias v=nvim
 # dot config --local status.showUntrackedFiles no
 alias dot='git --git-dir=$HOME/.git_dot/ --work-tree=$HOME'
 
+# file with aliases
+if [[ -f "$HOME/.aliases" ]]; then
+  . $HOME/.aliases
+fi
+
 # allow v to edit the command line (standard behaviour)
 #autoload -Uz edit-command-line
 #zle -N edit-command-line
@@ -138,6 +143,10 @@ if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/
 # The next line enables shell command completion for gcloud.
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
+export KUBE_EDITOR="nvim"
+
+[[ /usr/local/bin/kubectl ]] && source <(kubectl completion zsh)
+
 export PATH="$HOME/.pyenv/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
 export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
 # eval "$(pyenv init -)"
@@ -151,7 +160,6 @@ export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -f -g ""'
 
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
-export GDISK=$HOME'/My Drive'
 export PROJECTS=$HOME'/Projects'
 export VIM_PATH=$HOME'/.vim'
 export NVIM_PATH=$HOME'/.config/nvim'
@@ -159,10 +167,14 @@ export NVIM_PLUG=$HOME'/.local/share/nvim/site/pack/packer/start'
 
 B_HOME='h:'$HOME';'
 B_PROJECTS='p:'$PROJECTS';'
-B_GDISK='G:'$GDISK';'
 B_VIM='v:'$VIM_PATH'/plugged;'
 B_NVIM='V:'$NVIM_PATH';'
 B_NVIMP='P:'$NVIM_PLUG';'
+
+if [[ -f "$HOME/Projects/dash/" ]]
+  B_DASH='d:'$PROJECTS'/dash;'
+  B_DASH_WIKI='w:'$PROJECTS'/dash.wiki;'
+fi
 
 export NNN_BMS=$B_HOME$B_PROJECTS$B_DASH$B_DASH_WIKI$B_VIM$B_NVIM$B_GDISK$B_SETTINGS$B_NVIMP
 
