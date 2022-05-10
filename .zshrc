@@ -171,7 +171,7 @@ B_VIM='v:'$VIM_PATH'/plugged;'
 B_NVIM='V:'$NVIM_PATH';'
 B_NVIMP='P:'$NVIM_PLUG';'
 
-if [[ -f "$HOME/Projects/dash/" ]]
+if [[ -f "$HOME/Projects/dash/" ]]; then
   B_DASH='d:'$PROJECTS'/dash;'
   B_DASH_WIKI='w:'$PROJECTS'/dash.wiki;'
 fi
