@@ -50,6 +50,11 @@ Plug 'tpope/vim-commentary'
 Plug 'tpope/vim-surround'
 " }}}
 
+" -- Lexima -----------------------------------------------------------------{{{
+Plug 'cohama/lexima.vim'
+" see custom setting below
+" }}}
+
 " -- tmux -------------------------------------------------------------------{{{
 Plug 'christoomey/vim-tmux-navigator'
 " }}}
@@ -79,8 +84,8 @@ nnoremap <nowait><space>a <cmd>Files<cr>
 nnoremap <nowait><space>gg <cmd>Ag<cr>
 nnoremap <nowait><space>gf <cmd>GFiles<cr>
 nnoremap <nowait><space>gs <cmd>GFiles?<cr>
-nnoremap <nowait><space>gh <cmd>Commits<cr>
-nnoremap <nowait><space>gH <cmd>BCommits<cr>
+nnoremap <nowait><space>gc <cmd>Commits<cr>
+nnoremap <nowait><space>gh <cmd>BCommits<cr>
 nnoremap <nowait><space>f <cmd>BLines<cr>
 nnoremap <nowait><space>o <cmd>History<cr>
 nnoremap <nowait><space>w <cmd>Buffers<cr>
@@ -159,13 +164,13 @@ let g:table_mode_corner='|'
 " : MarkdownPreviewToggle
 " set to 1, the vim will auto close current preview window when change
 " from markdown buffer to another buffer
-let g:mkdp_auto_close = 0
-let g:mkdp_browserfunc = 'g:Open_browser'
-Plug 'iamcco/markdown-preview.nvim', { 'do': 'cd app & yarn install'  }
+" let g:mkdp_auto_close = 0
+" let g:mkdp_browserfunc = 'g:Open_browser'
+" Plug 'iamcco/markdown-preview.nvim', { 'do': 'cd app & yarn install'  }
 " uncomment to change browser
-function! g:Open_browser(url)
-    silent exe 'silent !open -na "Google Chrome" ' . a:url
-endfunction
+" function! g:Open_browser(url)
+"     silent exe 'silent !open -na "Google Chrome" ' . a:url
+" endfunction
 
 " }}}
 
@@ -260,13 +265,17 @@ call plug#end()
 " ***************************************************************************** 
 " {{{
 set termguicolors
-set background=dark
-colorscheme nightfox
-" Nightfox customization
-hi! DiffAdd guibg=#526176
-hi! DiffDelete guibg=#526176
-hi! DiffChange guibg=#526176
-
+if exists('g:neovide')
+  so ~/.gvimrc
+  cd ~
+else
+  set background=dark
+  colorscheme nightfox
+  " Nightfox customization for difftool
+  hi! DiffAdd guibg=#526176
+  hi! DiffDelete guibg=#526176
+  hi! DiffChange guibg=#526176
+endif
 
 " use UTF as encoding by default
 set encoding=UTF-8
@@ -322,6 +331,17 @@ set shiftwidth=2
 " Sets the number of columns for a TAB.
 set softtabstop=2   
 
+" Set default textwidth 
+set textwidth=100
+
+" do not comment new line
+autocmd BufNewFile,BufRead * setlocal formatoptions-=ro
+
+augroup my_luastyle
+  autocmd!
+  autocmd BufRead *.lua setlocal tabstop=4 | setlocal shiftwidth=4 | setlocal softtabstop=4 |
+augroup END
+
 " use russian keymapping in the normal mode
 let ru_up='ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖХЪБЮЭ'
 let en_up='ABCDEFGHIJKLMNOPQRSTUVWXYZ:{}<>\"'
@@ -333,10 +353,15 @@ set iminsert=0
 set imsearch=0
 
 " turn on spellcheck in some files by default
-augroup spellcheckdefault 
+augroup my_spellcheckdefault 
   autocmd!
   autocmd BufRead COMMIT_EDITMSG,*.md setlocal spell | setlocal spelllang=ru,en
 augroup END
+
+" lua lexima rules to put `end` on the new line after cursor
+call lexima#add_rule({'char': '<CR>', 'at': 'function()\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
+call lexima#add_rule({'char': '<CR>', 'at': 'then\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
+call lexima#add_rule({'char': '<CR>', 'at': 'do\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
 
 " }}} 
  
@@ -366,6 +391,8 @@ nnoremap <silent> qQ :bd<CR>
 nnoremap <silent> QQ :bd!<CR>
 " close quickfix window
 nnoremap <silent> qc :cclose<CR>
+" close the help window
+nnoremap <silent> qh :helpclose<cr>
 
 " hotkeys to swap between buffers
 nnoremap <silent> gb <C-^>
@@ -377,12 +404,8 @@ nnoremap <silent> ]b :bnext<CR>
 nnoremap <silent> [t :tabprevious<CR> 
 nnoremap <silent> ]t :tabnext<CR>
 
-" use ' to choose register
-nnoremap ' "
-vnoremap ' "
-
-" use " to go to marked position
-nnoremap " `
+" use ' to go to marked position
+nnoremap ' `
 
 " use ` to go to marked line
 nnoremap ` '
@@ -420,8 +443,20 @@ tnoremap <leader><leader> <c-\><c-n>
 " Distraction free mode
 command! DistractionFree Goyo 110x100 | set nu | set rnu
 
-" Open help in the right vert split window
-command! -nargs=1 H vertical bo h <args>
+" Run grip server to render current buffer
+" see https://github.com/joeyespo/grip
+command! MarkdownPreview call g:MarkdownPreview()
+function! g:MarkdownPreview()
+  if &filetype == 'markdown'
+    if has('nvim')
+      call execute('below 10split term://grip ' .. expand('%') .. ' 8080')
+    else
+      call execute('bo term grip ' .. expand('%') .. ' 8080')
+    endif
+  else
+    echo 'Only for markdown. Not for ' .. &filetype
+  endif
+endfunction
 
 function! g:ToggleConceallevel()
   if &conceallevel 

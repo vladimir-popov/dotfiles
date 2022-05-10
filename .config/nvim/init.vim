@@ -1,4 +1,3 @@
-" Ume default vim's paths
 set runtimepath+=~/.vim runtimepath+=~/.vim/after
 let &packpath = &runtimepath
 source ~/.vimrc
@@ -16,14 +15,8 @@ set shortmess-=F
 " speedup used for the CursorHold autocommand event:
 set updatetime=300
 
-lua require'conf.plugins'
-lua require'conf.cmp'.setup()
-lua require'conf.telescope'
-lua require'conf.filetree'.setup()
-lua require'conf.setup_lsp'
-lua require'conf.sumneko'
-lua require'conf.metals'
-lua require'conf.treesitter'.setup()
+" turn on 'global' statusline
+set laststatus=3
 
 let g:neoformat_verbose = 0
 let g:neoformat_lua_stylua = {
@@ -32,3 +25,12 @@ let g:neoformat_lua_stylua = {
       \ 'stdin': 1,
       \ }
 let g:neoformat_enabled_lua = ['stylua']
+
+lua require'conf.plugins'
+lua require'conf.cmp'.setup()
+lua require'conf.telescope'
+lua require'conf.filetree'.setup()
+lua require'conf.setup_lsp'
+lua require'conf.sumneko'
+lua require'conf.metals'
+lua require'conf.treesitter'

@@ -12,8 +12,6 @@ require('packer').startup(function(use)
     -- prettyfier a code
     use('sbdchd/neoformat')
     -- autocompletion
-    use('hrsh7th/nvim-compe')
-    use('onsails/lspkind-nvim')
     -- Install nvim-cmp, and buffer source as a dependency
     use({
         'hrsh7th/nvim-cmp',
@@ -21,6 +19,7 @@ require('packer').startup(function(use)
             'hrsh7th/cmp-buffer',
             'hrsh7th/cmp-path',
             'hrsh7th/cmp-nvim-lsp',
+            'hrsh7th/cmp-nvim-lsp-signature-help',
             'onsails/lspkind-nvim',
         },
     })
@@ -42,18 +41,16 @@ require('packer').startup(function(use)
         'nvim-telescope/telescope.nvim',
         requires = { { 'nvim-lua/popup.nvim' }, { 'nvim-lua/plenary.nvim' } },
     })
-    -- feline
-    -- use 'famiu/feline.nvim'
+    -- statusline
     use({
-        'famiu/feline.nvim',
-        branch = 'develop',
+        'dokwork/feline-cosmos',
+        requires = {
+            'kyazdani42/nvim-web-devicons',
+            'famiu/feline.nvim',
+            -- 'tpope/vim-fugitive',
+        },
         config = function()
-            local nightfox = require('conf.feline-cosmos.themes').nightfox
-            require('feline').setup({
-                theme = nightfox,
-                vi_mode_colors = nightfox.vi_mode_colors,
-                components = require('conf.feline-cosmos').preset(),
-            })
+            require('feline-cosmos.statusline').setup()
         end,
     })
     -- barbar

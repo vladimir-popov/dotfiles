@@ -73,7 +73,7 @@ vim.cmd([[augroup end]])
 local M = {}
 
 M.toggle_doctor = function()
-    doctor = require('metals/doctor')
+    local doctor = require('metals/doctor')
     if doctor.is_open() then
         doctor.close()
     else
