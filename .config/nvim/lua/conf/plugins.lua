@@ -50,7 +50,7 @@ require('packer').startup(function(use)
             -- 'tpope/vim-fugitive',
         },
         config = function()
-            require('feline-cosmos.statusline').setup()
+            require('feline-cosmos.cosmosline').setup()
         end,
     })
     -- barbar

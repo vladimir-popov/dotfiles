@@ -25,7 +25,7 @@ require('telescope').setup {
       -- sort_lastused = true,
       theme = "dropdown",
       previewer = false,
-      path_display={'tail'},
+      path_display={'smart'},
       layout_strategy='center',
       sorting_strategy='ascending'
     },
