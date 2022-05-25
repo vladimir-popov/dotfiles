@@ -43,14 +43,14 @@ require('packer').startup(function(use)
     })
     -- statusline
     use({
-        'dokwork/feline-cosmos',
+        'dokwork/compline.nvim',
         requires = {
             'kyazdani42/nvim-web-devicons',
             'famiu/feline.nvim',
             -- 'tpope/vim-fugitive',
         },
         config = function()
-            require('feline-cosmos.cosmosline').setup()
+            require('compline.cosmosline').setup()
         end,
     })
     -- barbar
