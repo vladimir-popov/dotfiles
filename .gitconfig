@@ -19,3 +19,5 @@
   cmd = nvim -d "$LOCAL" "$REMOTE"
 [mergetool "vimdiff"]
   cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
+[core]
+	editor = vim

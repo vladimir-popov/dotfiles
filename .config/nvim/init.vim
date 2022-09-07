@@ -18,6 +18,10 @@ set updatetime=300
 " turn on 'global' statusline
 set laststatus=3
 
+" setup catppuccin [dusk, latte, frappe, macchiato, mocha]
+let g:catppuccin_flavour = "macchiato"
+colorscheme catppuccin
+
 let g:neoformat_verbose = 0
 let g:neoformat_lua_stylua = {
       \ 'exe': 'stylua',
@@ -27,9 +31,9 @@ let g:neoformat_lua_stylua = {
 let g:neoformat_enabled_lua = ['stylua']
 
 lua require'conf.plugins'
-lua require'conf.cmp'.setup()
+lua require'conf.cmp'
 lua require'conf.telescope'
-lua require'conf.filetree'.setup()
+lua require'conf.filetree'
 lua require'conf.setup_lsp'
 lua require'conf.sumneko'
 lua require'conf.metals'

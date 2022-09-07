@@ -9,6 +9,15 @@ require('packer').startup(function(use)
     use('Th3Whit3Wolf/one-nvim')
     -- icons with extended symbols
     use('kyazdani42/nvim-web-devicons')
+    -- Colorize (:ColorizerAttachToBuffer)
+    use('norcalli/nvim-colorizer.lua')
+    -- Color picker (:PickColor)
+    use({
+        'ziontee113/color-picker.nvim',
+        config = function()
+            require('color-picker')
+        end,
+    })
     -- prettyfier a code
     use('sbdchd/neoformat')
     -- autocompletion
@@ -41,16 +50,28 @@ require('packer').startup(function(use)
         'nvim-telescope/telescope.nvim',
         requires = { { 'nvim-lua/popup.nvim' }, { 'nvim-lua/plenary.nvim' } },
     })
+    -- lazygit
+    use({
+        'kdheepak/lazygit.nvim',
+        config = function()
+            vim.api.nvim_set_keymap(
+                'n',
+                '<leader>gs',
+                '<cmd>LazyGit<cr>',
+                { noremap = true, silent = true }
+            )
+        end,
+    })
     -- statusline
     use({
-        'dokwork/compline.nvim',
+        'dokwork/feline-theme',
         requires = {
             'kyazdani42/nvim-web-devicons',
             'famiu/feline.nvim',
-            -- 'tpope/vim-fugitive',
+            'dokwork/lua-schema.nvim',
         },
         config = function()
-            require('compline.cosmosline').setup()
+            require('feline-theme').setup_statusline(require('cosmosline'))
         end,
     })
     -- barbar
@@ -66,6 +87,20 @@ require('packer').startup(function(use)
     --         nmap('<space>5', '<cmd>BufferGoto 5<cr>')
     --     end,
     -- })
+    -- catppuccin theme
+    use({
+        'catppuccin/nvim',
+        as = 'catppuccin',
+        config = function()
+            require('catppuccin').setup({
+                custom_highlights = {
+                    LspReferenceRead = { bg = '#373d4d' },
+                    LspReferenceText = { bg = '#373d4d' },
+                    LspReferenceWrite = { bg = '#373d4d' },
+                },
+            })
+        end,
+    })
     -- treesitter
     use({
         'nvim-treesitter/nvim-treesitter',
@@ -83,6 +118,4 @@ require('packer').startup(function(use)
     use('scalameta/nvim-metals')
     -- PlantUML
     use('aklt/plantuml-syntax')
-    -- Colorize (:ColorizerAttachToBuffer)
-    use('norcalli/nvim-colorizer.lua')
 end)

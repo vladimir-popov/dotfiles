@@ -1,6 +1,7 @@
 zmodload zsh/zprof
 
 alias v=nvim
+alias lg=lazygit
 
 # bindkey -l    --- to list all variants
 # bindkey -M    --- to read key binds in specified scheme
@@ -137,6 +138,7 @@ bindkey '^v' edit-command-line
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
 
+export USE_GKE_GCLOUD_AUTH_PLUGIN=True
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 
@@ -153,6 +155,9 @@ export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
 # eval "$(pyenv virtualenv-init -)"
 
 export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -f -g ""'
+
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+export DOCKER_HOST="unix://${HOME}/.colima/docker.sock"
 
 # ==============================================================================
 #                               nnn configuration

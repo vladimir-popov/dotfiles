@@ -52,7 +52,7 @@ Plug 'tpope/vim-surround'
 
 " -- Lexima -----------------------------------------------------------------{{{
 Plug 'cohama/lexima.vim'
-" see custom setting below
+" rules must be added outside of plugins section, so, check Settings section
 " }}}
 
 " -- tmux -------------------------------------------------------------------{{{
@@ -362,13 +362,21 @@ augroup END
 call lexima#add_rule({'char': '<CR>', 'at': 'function()\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
 call lexima#add_rule({'char': '<CR>', 'at': 'then\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
 call lexima#add_rule({'char': '<CR>', 'at': 'do\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
-
+" See: https://github.com/cohama/lexima.vim/issues/129#issuecomment-1028725217
+call lexima#add_rule({'char': '(', 'at': '\%#\S\|\S\%#'})
+call lexima#add_rule({'char': '[', 'at': '\%#\S\|\S\%#'})
+call lexima#add_rule({'char': '{', 'at': '\%#\S\|\S\%#'})
+call lexima#add_rule({'char': '"', 'at': '\%#\S\|\S\%#'})
+call lexima#add_rule({'char': "'", 'at': '\%#\S\|\S\%#'})
+call lexima#add_rule({'char': '`', 'at': '\%#\S\|\S\%#'})
 " }}} 
  
 " *****************************************************************************
 " *                               Key mappin                                  *  
 " ***************************************************************************** 
 " {{{
+" use jj to comeback to the normal mode
+inoremap jj <esc>
 " toggle the wrapping a text
 nnoremap <F2> :set wrap!<bar>set linebreak!<CR>
 " toggle searci highlighting
@@ -447,11 +455,12 @@ command! DistractionFree Goyo 110x100 | set nu | set rnu
 " see https://github.com/joeyespo/grip
 command! MarkdownPreview call g:MarkdownPreview()
 function! g:MarkdownPreview()
+  let args = '--user=vladimir-popov' .. expand('%') .. ' 8080'
   if &filetype == 'markdown'
     if has('nvim')
-      call execute('below 10split term://grip ' .. expand('%') .. ' 8080')
+      call execute('below 10split term://grip ' .. args)
     else
-      call execute('bo term grip ' .. expand('%') .. ' 8080')
+      call execute('bo term grip ' .. args)
     endif
   else
     echo 'Only for markdown. Not for ' .. &filetype
