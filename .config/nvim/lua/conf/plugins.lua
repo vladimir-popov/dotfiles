@@ -71,7 +71,11 @@ require('packer').startup(function(use)
             'dokwork/lua-schema.nvim',
         },
         config = function()
-            require('feline-theme').setup_statusline(require('cosmosline'))
+            if vim.g.neovide then
+                require('feline-theme').setup_statusline(require('feline-theme.example'))
+            else
+                require('feline-theme').setup_statusline(require('cosmosline'))
+            end
         end,
     })
     -- barbar
