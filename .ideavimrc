@@ -1,0 +1,93 @@
+set commentary
+set easymotion
+set surround
+set multiple-cursors
+set relativenumber
+set number
+
+" :actionlist - to show all actions
+
+" Fold blocks
+nnoremap zo :action ExpandRegion<CR>
+nnoremap zc :action CollapseRegion<CR>
+
+" Refactoring
+nnoremap <space>rn :action RenameElement<CR>
+nnoremap <space>rf :action RenameFile<CR>
+nnoremap <leader>o :action OptimizeImports<CR>
+nnoremap <space>ri :action Inline<CR>
+nnoremap <space>rr :action Refactorings.QuickListPopupAction<CR>
+nnoremap <space>im :action ImplementMethods<CR>
+nnoremap <space>om :action OverrideMethods<CR>
+vmap <leader>cc :action StringManipulation.ToCamelCase<CR>
+vmap <leader>cp :action StringManipulation.ToPascalCaseOrCamelCase<CR>
+vmap <leader>cs :action StringManipulation.ToSnakeCaseOrCamelCase<CR>
+vmap <leader>cS :action StringManipulation.ToScreamingSnakeCase<CR>
+
+nnoremap <space>qf :action ShowIntentionActions<CR>
+
+nnoremap <leader>f :action ReformatCode<CR>
+
+" hotkeys to swap between tabs and files
+nnoremap ]b :action NextTab<CR>
+nnoremap [b :action PreviousTab<CR>
+nnoremap ]t :action NextEditorTab<CR>
+nnoremap [t :action PreviousEditorTab<CR>
+
+nnoremap ]e :action GotoNextError<cr>
+nnoremap [e :action GotoPreviousError<cr>
+nnoremap ]h :action VcsShowNextChangeMarker<cr>
+nnoremap [h :action VcsShowPrevChangeMarker<cr>
+
+" Navigation
+nnoremap <c-o> :action Back<cr>
+nnoremap <c-i> :action Forward<cr>
+nnoremap gb :action Back<CR>
+nnoremap gf :action Forward<CR>
+nnoremap gd :action GotoDeclaration<CR>
+nnoremap gr :action FindUsages<CR>
+nnoremap gi :action GotoImplementation<CR>
+nnoremap <leader>sp :action ParameterInfo<CR>
+nnoremap <leader>si :action Scala.ShowImplicitArguments<CR>
+nnoremap <leader>sd :action QuickImplementations<CR>
+" nnoremap <space><space>w <Plug>(easymotion-w)<cr>
+" nnoremap <space><space>b <Plug>(easymotion-b)<cr>
+nmap <space><space>w <leader><leader>w
+nmap <space><space>b <leader><leader>b
+
+" Types
+nnoremap K :action QuickJavaDoc<CR>
+vmap K :action QuickJavaDoc<CR>
+
+" Search
+nnoremap <space>w :action RecentFiles<CR>
+nnoremap <space>f :action Find<CR>
+nnoremap <space>a :action GotoFile<CR>
+nnoremap <space>gg :action FindInPath<CR>
+nnoremap <space>m :action ShowBookmarks<CR>
+nnoremap * :action FindWordAtCaret<CR>
+vnoremap * :action FindWordAtCaret<CR>
+
+" Git
+nnoremap <leader>hu :action Vcs.RollbackChangedLines<cr>
+nnoremap <leader>gk :action Vcs.Push<CR>
+nnoremap <leader>gj :action Vcs.UpdateProject<CR>
+nnoremap <leader>gs :action CheckinProject<CR>
+nnoremap <leader>ga :action Git.Add<CR>
+nnoremap <leader>gd :action Compare.LastVersion<CR>
+nnoremap <leader>gr :action ChangesView.Revert<CR>
+
+" Other
+inoremap jj <esc>
+inoremap <C-p> <esc>pi
+inoremap <c-i> <esc>I
+nnoremap <c-a> <esc>A
+nnoremap <c-i> <esc>I
+nnoremap <leader>p li<space><esc>p
+nnoremap qq :action CloseContent<CR>
+nnoremap qw :action CloseAllEditors<CR>
+
+" Split the window and navigation
+nnoremap <c-w>s :action SplitHorizontally<CR>
+nnoremap <c-w>v :action SplitVertically<CR>
+nnoremap <c-w>w :action NextSplitter<CR>
