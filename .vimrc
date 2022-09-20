@@ -428,6 +428,8 @@ nnoremap k gk
 
 " copy to the clipboard
 vnoremap <C-c> "+y
+" past to the clipboard
+nnoremap <C-c> "+p
 
 " Y behave like the other capital letters
 nnoremap Y y$

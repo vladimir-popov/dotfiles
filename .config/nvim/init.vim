@@ -38,3 +38,7 @@ lua require'conf.setup_lsp'
 lua require'conf.sumneko'
 lua require'conf.metals'
 lua require'conf.treesitter'
+
+if exists("g:neovide")
+  source ~/.gvimrc
+endif

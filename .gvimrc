@@ -14,6 +14,7 @@ set linebreak
 
 
 if exists("g:neovide")
+  let g:neovide_input_macos_alt_is_meta=v:false
   let g:neovide_cursor_vfx_mode = "ripple"
   " let g:neovide_cursor_vfx_mode = "railgun"
   let g:neovide_cursor_vfx_particle_lifetime=1.2
