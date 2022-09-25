@@ -60,7 +60,7 @@ nnoremap K :action QuickJavaDoc<CR>
 vmap K :action QuickJavaDoc<CR>
 
 " Search
-nnoremap <space>w :action RecentFiles<CR>
+nnoremap <space>e :action RecentFiles<CR>
 nnoremap <space>f :action Find<CR>
 nnoremap <space>a :action GotoFile<CR>
 nnoremap <space>gg :action FindInPath<CR>
@@ -87,7 +87,7 @@ nnoremap <leader>p li<space><esc>p
 nnoremap qq :action CloseContent<CR>
 nnoremap qw :action CloseAllEditors<CR>
 
-" Split the window and navigation
+" Manage windows
 nnoremap <c-w>s :action SplitHorizontally<CR>
 nnoremap <c-w>v :action SplitVertically<CR>
 nnoremap <c-w>w :action NextSplitter<CR>

@@ -1,4 +1,5 @@
-set guifont=FiraCode_Nerd_Font:h14
+" set guifont=FiraCode_Nerd_Font:h14
+set guifont=Hack_Nerd_Font:h13
 
 " set spell spelllang=ru,en
 autocmd FileType markdown,txt setlocal spell spelllang=ru,en
@@ -8,9 +9,11 @@ set foldmethod=marker
 
 set background=light 
 colorscheme PaperColor
+" colorscheme dawnfox
 
 set wrap
 set linebreak
+set linespace=5
 
 
 if exists("g:neovide")

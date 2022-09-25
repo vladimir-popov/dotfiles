@@ -28,8 +28,8 @@ require('nvim-treesitter.configs').setup({
                 ['ib'] = '@block.inner',
                 ['af'] = '@function.outer',
                 ['if'] = '@function.inner',
-                ['ac'] = '@class.outer',
-                ['ic'] = '@class.inner',
+                ['ac'] = '@comment.outer',
+                ['ic'] = '@comment.inner',
             },
         },
         swap = {

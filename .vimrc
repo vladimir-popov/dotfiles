@@ -50,45 +50,8 @@ Plug 'tpope/vim-commentary'
 Plug 'tpope/vim-surround'
 " }}}
 
-" -- Lexima -----------------------------------------------------------------{{{
-Plug 'cohama/lexima.vim'
-" rules must be added outside of plugins section, so, check Settings section
-" }}}
-
 " -- tmux -------------------------------------------------------------------{{{
 Plug 'christoomey/vim-tmux-navigator'
-" }}}
-
-" -- fzf --------------------------------------------------------------------{{{
-let g:fzf_layout = { 'window': { 'width': 0.6, 'height': 0.9, 'relative': v:true } }
-let g:fzf_preview_window = ['down:70%', 'ctrl-/']
-let g:fzf_colors = {
-      \ 'fg':      ['fg', 'Normal'],
-      \ 'bg':      ['bg', 'Normal'],
-      \ 'hl':      ['fg', 'Comment'],
-      \ 'fg+':     ['fg', 'CursorLine', 'CursorColumn', 'Normal'],
-      \ 'bg+':     ['bg', 'CursorLine', 'CursorColumn'],
-      \ 'hl+':     ['fg', 'Identifier', 'Statement'],
-      \ 'info':    ['fg', 'PreProc'],
-      \ 'gutter':  ['bg', 'Normal'],
-      \ 'border':  ['fg', 'FloatBorder'],
-      \ 'prompt':  ['fg', 'Identifier'],
-      \ 'pointer': ['fg', 'Identifier'],
-      \ 'marker':  ['fg', 'Identifier'],
-      \ 'spinner': ['fg', 'Label'],
-      \ 'header':  ['fg', 'Comment'] }
-
-Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
-Plug 'junegunn/fzf.vim'
-nnoremap <nowait><space>a <cmd>Files<cr>
-nnoremap <nowait><space>gg <cmd>Ag<cr>
-nnoremap <nowait><space>gf <cmd>GFiles<cr>
-nnoremap <nowait><space>gs <cmd>GFiles?<cr>
-nnoremap <nowait><space>gc <cmd>Commits<cr>
-nnoremap <nowait><space>gh <cmd>BCommits<cr>
-nnoremap <nowait><space>f <cmd>BLines<cr>
-nnoremap <nowait><space>o <cmd>History<cr>
-nnoremap <nowait><space>w <cmd>Buffers<cr>
 " }}}
 
 " -- Git support ------------------------------------------------------------{{{ 
@@ -125,27 +88,6 @@ xnoremap <silent> ah :GitGutterTextObjectOuterVisual<cr>
 " undo it with 
 " <Leader>hu
 " ---------------------------------------------------------------------------}}}
-
-" -- EasyMotion -------------------------------------------------------------{{{
-Plug 'easymotion/vim-easymotion'
-" let g:EasyMotion_do_mapping = 0 " Disable default mappings
-map <space><space> <Plug>(easymotion-prefix)
-
-hi EasyMotionTarget2First ctermbg=none ctermfg=red
-hi EasyMotionTarget2Second ctermbg=none ctermfg=red
-
-" nmap s <Plug>(easymotion-overwin-w)
-" " Jump to anywhere you want with minimal keystrokes, with just one key binding.
-" " `s{char}{label}`
-" nmap f <Plug>(easymotion-overwin-f)
-" " or
-" " `s{char}{char}{label}`
-" " Need one more keystroke, but on average, it may be more comfortable.
-" nmap f <Plug>(easymotion-overwin-f2)
-" " Turn on/off case-insensitive feature (0/1)
-" let g:EasyMotion_smartcase = 1
-
-" ---------------------------------------------------------------------------}}}"  
  
 " -- TableMode --------------------------------------------------------------{{{
 " To start using the plugin use :TableModeToggle
@@ -221,6 +163,59 @@ Plug 'vladimir-popov/vim-navigator'
 " ***************************************************************************** 
 " {{{
 if !has('nvim')
+
+" -- EasyMotion -------------------------------------------------------------{{{
+Plug 'easymotion/vim-easymotion'
+" let g:EasyMotion_do_mapping = 0 " Disable default mappings
+map <space><space> <Plug>(easymotion-prefix)
+
+hi EasyMotionTarget2First ctermbg=none ctermfg=red
+hi EasyMotionTarget2Second ctermbg=none ctermfg=red
+
+" nmap s <Plug>(easymotion-overwin-w)
+" " Jump to anywhere you want with minimal keystrokes, with just one key binding.
+" " `s{char}{label}`
+" nmap f <Plug>(easymotion-overwin-f)
+" " or
+" " `s{char}{char}{label}`
+" " Need one more keystroke, but on average, it may be more comfortable.
+" nmap f <Plug>(easymotion-overwin-f2)
+" " Turn on/off case-insensitive feature (0/1)
+" let g:EasyMotion_smartcase = 1
+
+" ---------------------------------------------------------------------------}}}"  
+
+" -- fzf --------------------------------------------------------------------{{{
+let g:fzf_layout = { 'window': { 'width': 0.6, 'height': 0.9, 'relative': v:true } }
+let g:fzf_preview_window = ['down:70%', 'ctrl-/']
+let g:fzf_colors = {
+      \ 'fg':      ['fg', 'Normal'],
+      \ 'bg':      ['bg', 'Normal'],
+      \ 'hl':      ['fg', 'Comment'],
+      \ 'fg+':     ['fg', 'CursorLine', 'CursorColumn', 'Normal'],
+      \ 'bg+':     ['bg', 'CursorLine', 'CursorColumn'],
+      \ 'hl+':     ['fg', 'Identifier', 'Statement'],
+      \ 'info':    ['fg', 'PreProc'],
+      \ 'gutter':  ['bg', 'Normal'],
+      \ 'border':  ['fg', 'FloatBorder'],
+      \ 'prompt':  ['fg', 'Identifier'],
+      \ 'pointer': ['fg', 'Identifier'],
+      \ 'marker':  ['fg', 'Identifier'],
+      \ 'spinner': ['fg', 'Label'],
+      \ 'header':  ['fg', 'Comment'] }
+
+Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
+Plug 'junegunn/fzf.vim'
+nnoremap <nowait><space>a <cmd>Files<cr>
+nnoremap <nowait><space>gg <cmd>Ag<cr>
+nnoremap <nowait><space>gf <cmd>GFiles<cr>
+nnoremap <nowait><space>gs <cmd>GFiles?<cr>
+nnoremap <nowait><space>gc <cmd>Commits<cr>
+nnoremap <nowait><space>gh <cmd>BCommits<cr>
+nnoremap <nowait><space>f <cmd>BLines<cr>
+nnoremap <nowait><space>o <cmd>History<cr>
+nnoremap <nowait><space>e <cmd>Buffers<cr>
+" }}}
 
 " -- Devicons: adds icons for files -----------------------------------------{{{
 Plug 'ryanoasis/vim-devicons' 
@@ -352,23 +347,6 @@ set keymap=russian-jcukenwin
 set iminsert=0
 set imsearch=0
 
-" turn on spellcheck in some files by default
-augroup my_spellcheckdefault 
-  autocmd!
-  autocmd BufRead COMMIT_EDITMSG,*.md setlocal spell | setlocal spelllang=ru,en
-augroup END
-
-" lua lexima rules to put `end` on the new line after cursor
-call lexima#add_rule({'char': '<CR>', 'at': 'function()\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
-call lexima#add_rule({'char': '<CR>', 'at': 'then\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
-call lexima#add_rule({'char': '<CR>', 'at': 'do\%#', 'input_after': '<CR>end', 'filetype': 'lua'}) 
-" See: https://github.com/cohama/lexima.vim/issues/129#issuecomment-1028725217
-call lexima#add_rule({'char': '(', 'at': '\%#\S\|\S\%#'})
-call lexima#add_rule({'char': '[', 'at': '\%#\S\|\S\%#'})
-call lexima#add_rule({'char': '{', 'at': '\%#\S\|\S\%#'})
-call lexima#add_rule({'char': '"', 'at': '\%#\S\|\S\%#'})
-call lexima#add_rule({'char': "'", 'at': '\%#\S\|\S\%#'})
-call lexima#add_rule({'char': '`', 'at': '\%#\S\|\S\%#'})
 " }}} 
  
 " *****************************************************************************

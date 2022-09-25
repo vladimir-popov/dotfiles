@@ -19,6 +19,7 @@ end
 nvim_lsp.sumneko_lua.setup({
     cmd = { sumneko_binary, '-E', sumneko_root_path .. '/main.lua' },
     on_attach = on_attach,
+    root_dir = function() return vim.fn.getcwd() end,
     -- see description here https://github.com/sumneko/vscode-lua/blob/master/setting/schema.json
     settings = {
         Lua = {
@@ -31,6 +32,7 @@ nvim_lsp.sumneko_lua.setup({
             diagnostics = {
                 -- Get the language server to recognize the `vim` global
                 globals = { 'vim' },
+                disable = { 'redefined-local' }
             },
             workspace = {
                 -- Make the server aware of Neovim runtime files

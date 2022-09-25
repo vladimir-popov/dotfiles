@@ -12,6 +12,7 @@ alias lg=lazygit
 # run on new machine:
 # dot config --local status.showUntrackedFiles no
 alias dot='git --git-dir=$HOME/.git_dot/ --work-tree=$HOME'
+alias ld="lazygit -w $HOME -g $HOME/.git_dot/"
 
 # file with aliases
 if [[ -f "$HOME/.aliases" ]]; then
@@ -189,7 +190,7 @@ export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 export NNN_FIFO='/tmp/nnn.fifo'
 
 # useful plugins:
-export NNN_PLUG='f:fzopen;n:nuke;d:diffs;i:batview;v:imgview'
+export NNN_PLUG='f:fzopen;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui'
 
 # context colors [default: '4444' (blue)]
 export NNN_COLORS='2354'

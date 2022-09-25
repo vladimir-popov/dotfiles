@@ -6,9 +6,6 @@ local nvim_lsp = require('lspconfig')
 
 -- Required for proper symbol highlighting
 M.highlight_setup = function()
-    vim.cmd([[hi! link LspReferenceText CursorColumn]])
-    vim.cmd([[hi! link LspReferenceRead CursorColumn]])
-    vim.cmd([[hi! link LspReferenceWrite CursorColumn]])
     vim.cmd([[autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()]])
     vim.cmd([[autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()]])
     vim.cmd([[autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()]])
@@ -80,21 +77,7 @@ function M.keys_mapping(bufnr)
     nmap('<leader>tr', '<cmd>lua require"metals.tvp".reveal_in_tree()<CR>')
     -- toggle the tree view
     nmap('<leader>tt', '<cmd>lua require"metals.tvp".toggle_tree_view()<CR>')
-
-    -- DAP
-    nmap('<leader>dc', '<cmd>lua require"dap".continue()<CR>')
-    nmap('<leader>dl', '<cmd>lua require"dap".run_last()<CR>')
-    nmap('<leader>dr', '<cmd>lua require"dap".repl.toggle()<CR>')
-    nmap('<leader>ds', '<cmd>lua require"dap.ui.variables").scopes()<CR>')
-    nmap('<leader>dt', '<cmd>lua require"dap".toggle_breakpoint()<CR>')
-    nmap('<leader>do', '<cmd>lua require"dap".step_over()<CR>')
-    nmap('<leader>di', '<cmd>lua require"dap".step_into()<CR>')
-    nmap('<leader>du', '<cmd>lua require"dap".step_out()<CR>')
-    nmap('<leader>dst', '<cmd>lua require"dap".stop()<CR>')
 end
-
--- DAP -----------------------------------------------------
-vim.fn.sign_define('DapBreakpoint', { text = '', texthl = '', linehl = '', numhl = '' })
 
 -- VimScript -----------------------------------------------
 nvim_lsp.vimls.setup({

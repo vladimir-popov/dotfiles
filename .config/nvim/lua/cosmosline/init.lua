@@ -1,4 +1,20 @@
-return {
+rvimrc                           | 93 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ .vimrc                               |  2 +-
+ 4 files changed, 100 insertions(+), 5 deletions(-)
+ create mode 100644 .ideavimrc
+~ ❱ v                                                                                                                                                                                             6:44 PM
+
+~ ❱                                                                                                                                                                                               8:31 PM
+    ~ ❱ n                                                                                                                                                                                             8:31 PM
+    ~ ❱ dot pull                                                                              ~ �  ~ ❱ dot pull                                                                                     9:16 PM
+    error: cannot pull with rebase: You have unstaged changes.
+error: please commit or stash them.
+~ ❱ vim zsh                                                                                                                                                                                       9:17 PM
+    ~ ❱ vim .zshrc                                                                                                                                                                                    9:17 PM
+    ~ ❱ n                                                                                                                                                                                             9:18 PM
+    ~ ❱ source .zshrc                                                                                                                                                                                 9:20 PM
+    .zshrc:150: command not found: kubectl
+    ~ ❱                                               eturn {
     active = {
         left = {
             a = { '▊', 'file_status_icon', 'working_directory' },

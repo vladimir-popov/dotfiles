@@ -21,3 +21,6 @@
   cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
 [core]
 	editor = vim
+[pager]
+	branch = false
+	log = false

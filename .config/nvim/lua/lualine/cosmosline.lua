@@ -1,0 +1,25 @@
+return {
+    options = {
+        always_divide_middle = true,
+        globalstatus = true,
+        component_separators = { left = '%#lualine_a_normal#|', right = '%#lualine_a_normal#|' },
+        section_separators = { left = ' ', right = ' ' },
+        theme = 'cosmosline',
+    },
+    sections = {
+        lualine_a = { { '%{"▊"}', separator = '', padding = 0 }, { 'cwd', padding = 0 } },
+        lualine_b = { { 'relative_filename', padding = 0 } },
+        lualine_c = { '%=This is a text message' },
+        lualine_x = {'git_branch'},
+        lualine_y = {
+            'diagnostics',
+            { 'lsp', icons_only = true, icons = { spellcheck = { '暈', color = 'purple' } } },
+            'location',
+        },
+        lualine_z = { 'progress' },
+    },
+    inactive_sections = {
+        lualine_a = { 'mode' },
+        lualine_b = { 'filename' },
+    },
+}
