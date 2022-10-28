@@ -12,7 +12,10 @@ function M:update_status()
         name = vim.fn.expand('%:~')
     end
     if name == full_name then
-        name = '/.../' .. vim.fn.expand('%:t')
+        name = vim.fn.expand('%:t')
+        if #name > 0 then
+            name = '/.../' .. name
+        end
     end
     return name
 end

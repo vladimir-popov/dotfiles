@@ -123,8 +123,20 @@ require('packer').startup(function(use)
         'L3MON4D3/LuaSnip',
         tag = 'v1.*',
         config = function()
-            require('luasnip').setup({
+            local ls = require('luasnip')
+            ls.setup({
                 enable_autosnippets = true,
+                store_selection_keys = '<Tab>',
+                -- ext_opts = {
+                --     [require('luasnip.util.types').insertNode] = {
+                --         active = {
+                --             hl_group = 'Search',
+                --         },
+                --         passive = {
+                --             hl_group = 'IncSearch',
+                --         },
+                --     },
+                -- },
             })
             local path = '~/.config/nvim/lua/snippets'
             require('luasnip.loaders.from_lua').lazy_load({ paths = path })
@@ -132,6 +144,13 @@ require('packer').startup(function(use)
                 require('luasnip.loaders.from_lua').load({ paths = path })
                 print('Snippets have been updated.')
             end)
+            vim.keymap.set('n', '<leader>ul', function()
+                require('luasnip').unlink_current()
+            end)
+            vim.cmd[[imap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
+            vim.cmd[[smap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
+            vim.cmd[[imap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
+            vim.cmd[[smap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
         end,
     })
     -- autocompletion
