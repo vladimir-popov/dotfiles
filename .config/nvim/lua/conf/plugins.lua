@@ -149,8 +149,10 @@ require('packer').startup(function(use)
             end)
             vim.cmd[[imap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
             vim.cmd[[smap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
+            vim.cmd[[nmap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
             vim.cmd[[imap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
             vim.cmd[[smap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
+            vim.cmd[[nmap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
         end,
     })
     -- autocompletion
