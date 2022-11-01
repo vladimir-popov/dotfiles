@@ -1,3 +1,25 @@
+---ASCII notation used in this script:
+--- `^` - means start of the line
+--- `|` - means the current position of the cursore
+--- :| means input of an open brace
+--- |: means input of a close brace
+--- * means any symbol
+--- <initial state> => <expected result>
+
+---Explanation of the expected behavior for quotes:
+--- ^|   => ^"|"
+--- ^"|" => ^""|
+--- ^""| => ^"""|
+--- ^|*  => ^"|*
+--- ^(|) => ^("|")
+
+---Explanation of the expected behavior for parentheses:
+-- ^:|   => ^(|)
+-- ^(|:) => ^()|
+-- ^:|)  => ^(|)
+-- ^:|*  => ^(|*
+-- TODO: ^:|<block of code> => ^(<block of code>)|
+
 ---@alias Condition fun(line_to_cursor: string, matched_trigger: string, captures: string[]): boolean
 ---@alias ConditionFactory fun(...): Condition
 ---@alias Composition fun(factories: ConditionFactory[]): ConditionFactory
@@ -75,6 +97,14 @@ local function next_is_blank_or_bkt()
     end
 end
 
+---@type ConditionFactory
+local function next_is_alphanum()
+    return function(line_to_cursor)
+        local next_symbol = next_(line_to_cursor)
+        return next_symbol == '' or string.find(next_symbol, '%w') == 1
+    end
+end
+
 local function ignore_double_input(pair_close)
     return s({ trig = pair_close, wordTrig = false, priority = 900 }, { t('') }, {
         condition = function(line_to_cursor)
@@ -94,41 +124,21 @@ local function pair(pair_open, pair_close, cond)
     })
 end
 
----ASCII notation used in this script:
---- `^` - means start of the line
---- `|` - means the current position of the cursore
---- :| means input of an open brace
---- |: means input of a close brace
---- . means any symbol
---- <initial state> => <expected result>
-
----ASCII explanation of the expected behavior:
---- ^|   => ^"|"
---- ^"|" => ^""|
---- ^""| => ^"""|
---- ^|.  => ^"|.
---- TODO: ^(|) => ^("|")
 local function quotes(quote)
     return {
         ignore_double_input(quote),
         pair(
             quote,
             quote,
-            all_of(is_odd_count_in_line, not_(previous_the_same), next_is_blank_or_bkt)
+            all_of(is_odd_count_in_line, not_(previous_the_same), not_(next_is_alphanum))
         ),
     }
 end
 
----ASCII explanation of the expected behavior:
--- ^:|   => ^(|)
--- ^(|:) => ^()|
--- ^:|)  => ^(|)
--- ^:|.  => ^(|.
--- TODO: ^:|<block of code> => ^(<block of code>)|
 local function parentheses(open, close)
     return {
         ignore_double_input(close),
-        pair(open, close, not_(is_couple_in_line)),
+        pair(open, close, all_of(not_(is_couple_in_line), not_(next_is_alphanum))),
     }
 end
 

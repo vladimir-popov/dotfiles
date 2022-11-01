@@ -147,9 +147,9 @@ require('packer').startup(function(use)
             vim.keymap.set('n', '<leader>ul', function()
                 require('luasnip').unlink_current()
             end)
-            vim.cmd[[imap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
-            vim.cmd[[smap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
-            vim.cmd[[nmap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
+            vim.cmd[[imap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
+            vim.cmd[[smap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
+            vim.cmd[[nmap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
             vim.cmd[[imap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
             vim.cmd[[smap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
             vim.cmd[[nmap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
