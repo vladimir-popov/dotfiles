@@ -1,3 +1,5 @@
+-- WARN: NOT COMPLETED YET!
+
 ---ASCII notation used in this script:
 --- `^` - means start of the line
 --- `|` - means the current position of the cursore
@@ -80,6 +82,7 @@ local function previous_the_same(c)
     end
 end
 
+---@type fun(line_to_cursor: string): char
 local function next_(line_to_cursor)
     local line = vim.api.nvim_get_current_line()
     if line == line_to_cursor then
@@ -114,6 +117,8 @@ local function ignore_double_input(pair_close)
     })
 end
 
+--- Creates the snippet to handle input of the {pair_open} and add {pair_close},
+---if condition created by the {cond} is sutisfied.
 local function pair(pair_open, pair_close, cond)
     return s({ trig = pair_open, wordTrig = false, priority = 1000 }, {
         t({ pair_open }),
@@ -124,6 +129,7 @@ local function pair(pair_open, pair_close, cond)
     })
 end
 
+--- Creates snippets  to handle input of the {quote}.
 local function quotes(quote)
     return {
         ignore_double_input(quote),
@@ -135,6 +141,7 @@ local function quotes(quote)
     }
 end
 
+--- Creates snippets to handle input of the {open} parenthese.
 local function parentheses(open, close)
     return {
         ignore_double_input(close),
@@ -142,6 +149,8 @@ local function parentheses(open, close)
     }
 end
 
+---@param ... any[][] list of lists.
+---@return any[] flatten list.
 local function flatten(...)
     local result = {}
     for _, ts in ipairs({ ... }) do
@@ -162,4 +171,4 @@ local snippets = flatten(
     parentheses('<', '>')
 )
 
-return _, snippets
+return

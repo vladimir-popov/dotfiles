@@ -1,9 +1,8 @@
 local ex = require('lualine.ex')
-local g = require('lualine.ex.git').default_provider()
 
 ---@class GitBranch: ExComponent
 ---@field options GitBranchOptions
-local GitBranch = require('lualine.component'):extend()
+local GitBranch = require('lualine.ex.component'):extend()
 
 
 ---@class GitBranchColors
@@ -21,7 +20,7 @@ GitBranch.default_options = {
     is_enabled = g.is_git_workspace
 }
 
-function GitBranch:init(options)
+function GitBranch:setup(options)
     options = ex.deep_merge(options, GitBranch.default_options)
     GitBranch.super.init(self, options)
 end
