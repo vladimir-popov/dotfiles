@@ -118,6 +118,15 @@ require('packer').startup(function(use)
     })
     -- prettyfier a code
     use('sbdchd/neoformat')
+    -- autopairs
+    use({
+        'windwp/nvim-autopairs',
+        config = function()
+            require('nvim-autopairs').setup({
+                check_ts = true,
+            })
+        end,
+    })
     -- Snippets
     use({
         'L3MON4D3/LuaSnip',
@@ -147,12 +156,24 @@ require('packer').startup(function(use)
             vim.keymap.set('n', '<leader>ul', function()
                 require('luasnip').unlink_current()
             end)
-            vim.cmd[[imap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
-            vim.cmd[[smap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
-            vim.cmd[[nmap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
-            vim.cmd[[imap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
-            vim.cmd[[smap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
-            vim.cmd[[nmap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
+            vim.cmd(
+                [[imap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
+            )
+            vim.cmd(
+                [[smap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
+            )
+            vim.cmd(
+                [[nmap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
+            )
+            vim.cmd(
+                [[imap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
+            )
+            vim.cmd(
+                [[smap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
+            )
+            vim.cmd(
+                [[nmap <silent><expr> <C-[> luasnip#jumpable(-1) ? '<Plug>luasnip-jump-prev' : '<C-[>']]
+            )
         end,
     })
     -- autocompletion

@@ -9,8 +9,8 @@ local has_words_before = function()
 end
 
 local default_sources = {
-    { name = 'nvim_lsp' },
     { name = 'luasnip' },
+    { name = 'nvim_lsp' },
     { name = 'nvim_lsp_signature_help' },
     { name = 'buffer' },
     { name = 'path' },
@@ -68,5 +68,29 @@ cmp.setup({
 
 -- Set configuration for specific filetype.
 cmp.setup.filetype('lua', {
-    sources = cmp.config.sources(vim.tbl_extend('keep', default_sources, { { name = 'nvim_lua' } })),
+    sources = cmp.config.sources(
+        vim.tbl_extend('keep', default_sources, { { name = 'nvim_lua' } })
+    ),
 })
+
+-- Use buffer source for `/` and `?`
+cmp.setup.cmdline({ '/', '?' }, {
+    mapping = cmp.mapping.preset.cmdline(),
+    sources = {
+        { name = 'buffer' },
+    },
+})
+
+-- Use cmdline & path source for ':'
+cmp.setup.cmdline(':', {
+    mapping = cmp.mapping.preset.cmdline(),
+    sources = cmp.config.sources({
+        { name = 'path' },
+    }, {
+        { name = 'cmdline' },
+    }),
+})
+
+-- Mapping <CR> for autopairs
+local cmp_autopairs = require('nvim-autopairs.completion.cmp')
+cmp.event:on('confirm_done', cmp_autopairs.on_confirm_done())
