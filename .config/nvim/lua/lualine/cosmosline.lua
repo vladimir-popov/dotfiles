@@ -13,7 +13,7 @@ return {
         lualine_x = {'ex.git.branch'},
         lualine_y = {
             'diagnostics',
-            { 'lsp', icons_only = true, icons = { spellcheck = { '暈', color = 'purple' } } },
+            { 'ex.lsp', icons_only = true, icons = { spellcheck = { '暈', color = 'purple' } } },
             'location',
         },
         lualine_z = { 'progress' },

@@ -1,4 +1,4 @@
----@class CwdComponent: LuaComponent
+---@class CwdComponent: LualineComponent
 ---
 ---Options:
 --- * `depth: number` a count of the last directories in the working path. Default is 2.

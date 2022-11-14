@@ -5,6 +5,14 @@ vim.cmd([[packadd packer.nvim]])
 require('packer').startup(function(use)
     -- packer can manage itself
     use({ 'wbthomason/packer.nvim', opt = true })
+    -- plenary
+    use({
+        'nvim-lua/plenary.nvim',
+        config = function()
+            -- use Shift + F5 to run spec from the current lua file
+            vim.api.nvim_set_keymap('n', '<F17>', '<Plug>PlenaryTestFile<cr>', {})
+        end,
+    })
     -- colorschemes
     use('Th3Whit3Wolf/one-nvim')
     use({
@@ -188,6 +196,17 @@ require('packer').startup(function(use)
             'saadparwaiz1/cmp_luasnip',
         },
     })
+    -- show diagnostic messages  near the place with issue
+    use({
+        'folke/trouble.nvim',
+        config = function()
+            require('trouble').setup({
+                -- your configuration comes here
+                -- or leave it empty to use the default settings
+                -- refer to the configuration section below
+            })
+        end,
+    })
     -- better quickfix
     use('kevinhwang91/nvim-bqf')
     -- file tree
@@ -204,7 +223,6 @@ require('packer').startup(function(use)
     -- telescope
     use({
         'nvim-telescope/telescope.nvim',
-        requires = { 'nvim-lua/plenary.nvim' },
     })
     -- lazygit
     use({
@@ -213,6 +231,12 @@ require('packer').startup(function(use)
             vim.api.nvim_set_keymap(
                 'n',
                 '<leader>gs',
+                '<cmd>LazyGit<cr>',
+                { noremap = true, silent = true }
+            )
+            vim.api.nvim_set_keymap(
+                'n',
+                '<leader>lg',
                 '<cmd>LazyGit<cr>',
                 { noremap = true, silent = true }
             )

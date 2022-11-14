@@ -20,10 +20,10 @@ local Ex = require('lualine.component'):extend()
 function Ex:init(options)
     options = ex.deep_merge(options, self.default_options)
     Ex.super.init(self, options)
-    self:setup()
+    self:setup(options)
 end
 
-function Ex:setup() end
+function Ex:setup(options) end
 
 ---creates hl group from color option
 function Ex:create_option_highlights()

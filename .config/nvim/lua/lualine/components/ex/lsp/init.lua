@@ -1,6 +1,6 @@
 local h = require('lualine.highlight')
 local ex = require('lualine.ex')
-local SingleLsp = require('lualine.components.lsp.single_lsp')
+local SingleLsp = require('lualine.components.ex.lsp.single_lsp')
 
 -- try to get icons from the 'nvim-web-devicons' module
 local function dev_icons()
