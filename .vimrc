@@ -406,7 +406,7 @@ nnoremap k gk
 
 " copy to the clipboard
 vnoremap <C-c> "+y
-" past to the clipboard
+" past from the clipboard
 nnoremap <C-p> "+p
 
 " Y behave like the other capital letters
@@ -415,6 +415,9 @@ nnoremap Y y$
 " use lead + d to delete without copy (copy to the _ register)
 nnoremap <leader>d "_d
 xnoremap <leader>d "_d
+
+" do not yank selected text
+vnoremap p "_dp
 
 " Use `<leader>cd` to set current dir to the dir with current buffer
 nnoremap <leader>cd :cd %:p:h<CR>:pwd<CR>

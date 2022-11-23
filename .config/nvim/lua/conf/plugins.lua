@@ -165,7 +165,10 @@ require('packer').startup(function(use)
                 require('luasnip').unlink_current()
             end)
             vim.cmd(
-                [[imap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
+                [[imap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
+            )
+            vim.cmd(
+                [[smap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
             )
             vim.cmd(
                 [[smap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
@@ -236,7 +239,7 @@ require('packer').startup(function(use)
             )
             vim.api.nvim_set_keymap(
                 'n',
-                '<leader>lg',
+                'lg',
                 '<cmd>LazyGit<cr>',
                 { noremap = true, silent = true }
             )

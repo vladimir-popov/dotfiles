@@ -29,10 +29,10 @@ cmp.setup({
         ['<C-e>'] = cmp.mapping.abort(),
         ['<CR>'] = cmp.mapping.confirm(),
         ['<Tab>'] = cmp.mapping(function(fallback)
-            if cmp.visible() then
-                cmp.select_next_item()
-            elseif luasnip.expandable() then
+            if luasnip.expandable() then
                 luasnip.expand()
+            elseif cmp.visible() then
+                cmp.select_next_item()
             elseif has_words_before() then
                 cmp.complete()
             else

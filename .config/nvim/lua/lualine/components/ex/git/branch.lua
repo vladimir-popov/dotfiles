@@ -21,8 +21,8 @@ GitBranch.default_options = {
 }
 
 function GitBranch:setup(options)
-    options = ex.deep_merge(options, GitBranch.default_options)
-    GitBranch.super.init(self, options)
+    assert(vim.b.gitsigns_status_dict, 'You should have Gitsigns installed.')
+
 end
 
 function GitBranch:is_enabled()

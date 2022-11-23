@@ -11,6 +11,21 @@ local local_variable = s(
     fmta('local <> = <>', { i(1, 'name'), i(2, 'value') })
 )
 
+local method = s(
+    { trig = 'method', descr = 'Creates a new method for class.' },
+    fmta(
+        [[function <>:<>(<>)
+    <>
+end]],
+        {
+            i(1, 'ClassName'),
+            i(2, 'method_name'),
+            i(3, 'arguments'),
+            i(0),
+        }
+    )
+)
+
 local describe_section = s(
     'describe',
     fmta(
@@ -31,6 +46,6 @@ end)]],
     )
 )
 
-local snippets = { local_variable, describe_section, it_section }
+local snippets = { local_variable, method, describe_section, it_section }
 
 return snippets
