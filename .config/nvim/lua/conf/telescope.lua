@@ -54,6 +54,10 @@ require('telescope').setup({
         lsp_workspace_diagnostics = {
             severity = 'error',
         },
+
+        colorscheme = {
+            enable_preview = true,
+        },
     },
 })
 
