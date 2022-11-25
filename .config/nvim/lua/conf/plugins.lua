@@ -171,6 +171,12 @@ require('packer').startup(function(use)
                 [[smap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
             )
             vim.cmd(
+                [[nmap <silent><expr> <C-]> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<C-]>']]
+            )
+            vim.cmd(
+                [[imap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
+            )
+            vim.cmd(
                 [[smap <silent><expr> <CR> luasnip#jumpable(1) ? '<Plug>luasnip-jump-next' : '<CR>']]
             )
             vim.cmd(
