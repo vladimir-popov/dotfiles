@@ -2,10 +2,15 @@ local fs = vim.fs
 local fn = vim.fn
 local uv = vim.loop
 
+---Looking for the directory with {git_directory} outside the {working_directory}.
+---@param working_directory string The path to the directory, from which search of
+---   the {git_directory} should begun.
+---@param git_directory string The name of the git directory. Usually it's ".git".
+---@return string # The path to the root of the git workspace, or nil.
 local function find_git_root(working_directory, git_directory)
     local function is_git_dir(path)
         local dir = path .. '/' .. git_directory
-        return fn.isdirectory(dir)
+        return fn.isdirectory(dir) == 1
     end
 
     local git_root = is_git_dir(working_directory) and working_directory or nil
