@@ -71,23 +71,11 @@ require('packer').startup(function(use)
     })
     -- statusline
     use({
-        'dokwork/feline-theme',
-        requires = {
-            'kyazdani42/nvim-web-devicons',
-            'famiu/feline.nvim',
-            'dokwork/lua-schema.nvim',
-        },
-        -- config = function()
-        --     if vim.g.neovide then
-        --         require('feline-theme').setup_statusline(require('feline-theme.example'))
-        --     else
-        --         require('feline-theme').setup_statusline(require('cosmosline'))
-        --     end
-        -- end,
-    })
-    use({
         'nvim-lualine/lualine.nvim',
-        requires = { 'kyazdani42/nvim-web-devicons', opt = true },
+        requires = {
+            { 'kyazdani42/nvim-web-devicons', opt = true },
+            { 'dokwork/lualine-ex' }
+        },
         config = function()
             require('lualine').setup(require('lualine.cosmosline'))
         end,
@@ -245,7 +233,7 @@ require('packer').startup(function(use)
             )
             vim.api.nvim_set_keymap(
                 'n',
-                'lg',
+                '<leader>lg',
                 '<cmd>LazyGit<cr>',
                 { noremap = true, silent = true }
             )
