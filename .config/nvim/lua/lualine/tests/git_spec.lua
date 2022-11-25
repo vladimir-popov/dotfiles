@@ -1,8 +1,14 @@
 local uv = vim.loop
 local Git = require('lualine.ex.git')
 
+local function debug(msg)
+    if vim.env.DEBUG then
+        print('> ' .. msg)
+    end
+end
+
 local function remove(path)
-    print('> Removing ' .. path)
+    debug('Removing ' .. path)
     os.execute('rm -rf ' .. path)
 end
 
@@ -12,7 +18,7 @@ local function mktmpdir()
     local result, err_msg = uv.fs_mkdtemp(cwd)
     assert(result, err_msg)
     cwd = result
-    print('> Working directory for tests is ' .. cwd)
+    debug('Working directory for tests is ' .. cwd)
     return cwd
 end
 
@@ -40,10 +46,10 @@ describe('when cwd is the git root', function()
         assert.True(git:is_workspace())
     end)
 
-    -- it('get_branch should return the name of the current git branch', function()
-    --     local git = Git:new(cwd)
-    --     assert.are.equal('master', git:get_branch())
-    -- end)
+    it('get_branch should return the name of the current git branch', function()
+        local git = Git:new(cwd)
+        assert.are.equal('main', git:get_branch())
+    end)
 end)
 
 describe('when cwd is outside of the git root', function()
@@ -57,7 +63,6 @@ describe('when cwd is outside of the git root', function()
         remove(cwd)
     end)
 
-
     it('git_root should return nil', function()
         local git = Git:new(cwd)
         assert.are.equal(nil, git:git_root())
@@ -68,8 +73,8 @@ describe('when cwd is outside of the git root', function()
         assert.is_false(git:is_workspace())
     end)
 
---     it('get_branch should return nil', function()
---         local git = Git:new(cwd)
---         assert.are.equal(nil, git:get_branch())
---     end)
+    it('get_branch should return nil', function()
+        local git = Git:new(cwd)
+        assert.are.equal(nil, git:get_branch())
+    end)
 end)

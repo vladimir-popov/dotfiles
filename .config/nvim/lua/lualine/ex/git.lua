@@ -2,6 +2,16 @@ local fs = vim.fs
 local fn = vim.fn
 local uv = vim.loop
 
+local function read(file_path)
+    local f = io.open(file_path, 'r')
+    if not f then
+        return nil
+    end
+    local content = f:read('*a')
+    f:close()
+    return content
+end
+
 ---Looking for the directory with {git_directory} outside the {working_directory}.
 ---@param working_directory string The path to the directory, from which search of
 ---   the {git_directory} should begun.
@@ -26,21 +36,16 @@ local function find_git_root(working_directory, git_directory)
 end
 
 local function read_git_branch(git_HEAD_path)
-    local line = io.lines(git_HEAD_path)()
-    local branch = string.match(line, 'ref: /refs/heads/(.+)')
-        or string.match(line, 'ref: /refs/tags/(.+)')
-        or string.match(line, 'ref: /refs/remotes/(.+)')
-    return branch or line:sub(1, #line - 7)
+    local head = read(git_HEAD_path)
+    local branch = string.match(head, 'ref: refs/heads/(%w+)')
+        or string.match(head, 'ref: refs/tags/(%w+)')
+        or string.match(head, 'ref: refs/remotes/(%w+)')
+    return branch or head:sub(1, #head - 7)
 end
 
 local function read_git_staged(git_index_path)
-    local f = io.open(git_index_path, 'r')
-    if not f then
-        return nil
-    end
-    local index = f:read('*a')
-    f:close()
-    return string.find(index, 'Staged') ~= nil
+    local index = read(git_index_path)
+    return index and string.find(index, 'Staged') ~= nil
 end
 
 ---@class GitProvider: Object
@@ -82,13 +87,14 @@ function GitProvider:get_branch()
         return nil
     end
 
+    local HEAD = self:git_root('HEAD')
     -- read current branch
-    self.__git_branch = read_git_branch(self.git_root('HEAD'))
+    self.__git_branch = read_git_branch(HEAD)
 
     -- run poll of HEAD's changes
     self.__poll_head = uv.new_fs_event()
-    self.__poll_head:fs_event_start(self.git_root('HEAD'), {}, function()
-        self.__git_branch = read_git_branch(self.git_root('HEAD'))
+    uv.fs_event_start(self.__poll_head, HEAD, {}, function()
+        self.__git_branch = read_git_branch(HEAD)
     end)
 
     return self.__git_branch
@@ -109,14 +115,16 @@ function GitProvider:is_workspace_changed()
         return nil
     end
 
+    local index = self.git_root('index')
+
     -- read is_staged
-    self.__staged = read_git_staged(self.git_root('index'))
+    self.__staged = read_git_staged(index)
 
     -- run poll of the index's changes
     if self.__staged then
         self.__poll_index = uv.new_fs_event()
-        self.__poll_index:fs_event_start(self.git_root('index'), {}, function()
-            self.__staged = read_git_staged(self.git_root('index'))
+        uv.fs_event_start(self.__poll_index, index, {}, function()
+            self.__staged = read_git_staged(index)
         end)
     end
 
