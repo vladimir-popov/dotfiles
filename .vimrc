@@ -275,6 +275,10 @@ endif
 " use UTF as encoding by default
 set encoding=UTF-8
 
+" turn on spellcheck
+set spell spelllang=ru,en
+set sps=best,5
+
 " use mouse in the terminal
 set mouse=a
 
@@ -350,7 +354,7 @@ set imsearch=0
 " }}} 
  
 " *****************************************************************************
-" *                               Key mappin                                  *  
+" *                               Key mapping                                 *  
 " ***************************************************************************** 
 " {{{
 " use jj to comeback to the normal mode
@@ -415,9 +419,6 @@ nnoremap Y y$
 " use lead + d to delete without copy (copy to the _ register)
 nnoremap <leader>d "_d
 xnoremap <leader>d "_d
-
-" do not yank selected text
-vnoremap p "_dp
 
 " Use `<leader>cd` to set current dir to the dir with current buffer
 nnoremap <leader>cd :cd %:p:h<CR>:pwd<CR>

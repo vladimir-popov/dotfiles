@@ -74,7 +74,7 @@ require('packer').startup(function(use)
         'nvim-lualine/lualine.nvim',
         requires = {
             { 'kyazdani42/nvim-web-devicons', opt = true },
-            { 'vladimir-popov/lualine-ex' }
+            { 'vladimir-popov/lualine-ex' },
         },
         config = function()
             require('lualine').setup(require('lualine.cosmosline'))
@@ -208,6 +208,15 @@ require('packer').startup(function(use)
     use('kevinhwang91/nvim-bqf')
     -- file tree
     use('kyazdani42/nvim-tree.lua')
+    use({
+        'nvim-neo-tree/neo-tree.nvim',
+        branch = 'v2.x',
+        requires = {
+            'nvim-lua/plenary.nvim',
+            'nvim-tree/nvim-web-devicons',
+            'MunifTanjim/nui.nvim',
+        },
+    })
     -- nnn
     use({
         'mcchrish/nnn.vim',

@@ -33,7 +33,7 @@ let g:neoformat_enabled_lua = ['stylua']
 lua require'conf.plugins'
 lua require'conf.cmp'
 lua require'conf.telescope'
-lua require'conf.filetree'
+lua require'conf.neo-tree'
 lua require'conf.setup_lsp'
 lua require'conf.setup_dap'
 lua require'conf.sumneko'
