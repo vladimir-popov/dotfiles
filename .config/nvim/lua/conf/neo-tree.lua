@@ -16,6 +16,14 @@ require('neo-tree').setup({
         winbar = true,
         statusline = false,
     },
+    default_component_configs = {
+        indent = {
+            with_expanders = true,
+            expander_collapsed = '',
+            expander_expanded = '',
+            expander_highlight = 'NeoTreeExpander',
+        },
+    },
     filesystem = {
         filtered_items = {
             hide_dotfiles = false,
