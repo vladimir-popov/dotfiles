@@ -41,6 +41,40 @@ require('packer').startup(function(use)
     })
     -- show indents
     use({ 'lukas-reineke/indent-blankline.nvim' })
+    -- lazygit
+    use({
+        'kdheepak/lazygit.nvim',
+        config = function()
+            vim.api.nvim_set_keymap(
+                'n',
+                '<leader>gs',
+                '<cmd>LazyGit<cr>',
+                { noremap = true, silent = true }
+            )
+            vim.api.nvim_set_keymap(
+                'n',
+                '<leader>lg',
+                '<cmd>LazyGit<cr>',
+                { noremap = true, silent = true }
+            )
+        end,
+    })
+    use({
+        'sindrets/diffview.nvim',
+        requires = 'nvim-lua/plenary.nvim',
+        config = function()
+            require('diffview').setup({
+                view = {
+                    merge_tool = {
+                        layout = 'diff2_horizontal',
+                    },
+                },
+                file_panel = {
+                    listing_style = 'tree', -- One of 'list' or 'tree'
+                },
+            })
+        end,
+    })
     -- gitsigns
     use({
         'lewis6991/gitsigns.nvim',
@@ -75,6 +109,7 @@ require('packer').startup(function(use)
         requires = {
             { 'kyazdani42/nvim-web-devicons', opt = true },
             { 'vladimir-popov/lualine-ex' },
+            { 'arkav/lualine-lsp-progress' },
         },
         config = function()
             require('lualine').setup(require('lualine.cosmosline'))
@@ -229,24 +264,6 @@ require('packer').startup(function(use)
     -- telescope
     use({
         'nvim-telescope/telescope.nvim',
-    })
-    -- lazygit
-    use({
-        'kdheepak/lazygit.nvim',
-        config = function()
-            vim.api.nvim_set_keymap(
-                'n',
-                '<leader>gs',
-                '<cmd>LazyGit<cr>',
-                { noremap = true, silent = true }
-            )
-            vim.api.nvim_set_keymap(
-                'n',
-                '<leader>lg',
-                '<cmd>LazyGit<cr>',
-                { noremap = true, silent = true }
-            )
-        end,
     })
     -- treesitter
     use({

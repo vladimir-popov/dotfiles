@@ -29,6 +29,7 @@ nnoremap <space>qf :action ShowIntentionActions<CR>
 nnoremap <leader>f :action ReformatCode<CR>
 
 " hotkeys to swap between tabs and files
+nnoremap <leader>' :action ActivateProjectToolWindow<CR>
 nnoremap ]b :action NextTab<CR>
 nnoremap [b :action PreviousTab<CR>
 nnoremap ]t :action NextEditorTab<CR>

@@ -9,7 +9,7 @@ return {
     sections = {
         lualine_a = { { '%{"▊"}', separator = '', padding = 0 }, { 'ex.cwd', padding = 0 } },
         lualine_b = { { 'ex.relative_filename', padding = 0 } },
-        lualine_c = { '%=This is a text message' },
+        lualine_c = { 'lsp_progress' },
 
         lualine_x = {'ex.git.branch'},
         lualine_y = {
