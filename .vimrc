@@ -53,41 +53,6 @@ Plug 'tpope/vim-surround'
 " -- tmux -------------------------------------------------------------------{{{
 Plug 'christoomey/vim-tmux-navigator'
 " }}}
-
-" -- Git support ------------------------------------------------------------{{{ 
-Plug 'tpope/vim-fugitive'
-set updatetime=700
-" git status
-nnoremap <leader>gc :Git checkout<space>
-" nnoremap <leader>gs :tabnew<bar>Git<CR><C-w>w:bd<CR>
-nnoremap <leader>gs :Git<CR>
-" git push
-nnoremap <leader>gk :Git push
-" git pull
-nnoremap <leader>gj :Git pull
-" git diff to resolve conflicts
-nnoremap <leader>gr :Gvdiffsplit!<cr>
-" `g`et changes `f`rom the current brunch (HEAD or LOCAL) - left buffer
-nnoremap gfh :execute 'diffget ' .. (&diff ? 'LO' : '//2')<cr>
-" `g`et changes `f`rom the merge branch (REMOTE) - right buffer
-nnoremap gfl :execute 'diffget ' .. (&diff ? 'RE' : '//3')<cr>
-
-" add marks about git status on the left line
-Plug 'airblade/vim-gitgutter'
-nnoremap <silent> ]h :GitGutterNextHunk<cr>
-nnoremap <silent> [h :GitGutterPrevHunk<cr>
-onoremap <silent> ih :GitGutterTextObjectInnerPending<cr>
-onoremap <silent> ah :GitGutterTextObjectOuterPending<cr>
-xnoremap <silent> ih :GitGutterTextObjectInnerVisual<cr>
-xnoremap <silent> ah :GitGutterTextObjectOuterVisual<cr>
-
-" preview the hunk
-" <Leader>hp
-" stage the hunk with 
-" <Leader>hs
-" undo it with 
-" <Leader>hu
-" ---------------------------------------------------------------------------}}}
  
 " -- TableMode --------------------------------------------------------------{{{
 " To start using the plugin use :TableModeToggle
@@ -249,6 +214,41 @@ Plug 'preservim/nerdtree'
 Plug 'Xuyuanp/nerdtree-git-plugin'
 " }}}
 
+" -- Git support ------------------------------------------------------------{{{ 
+Plug 'tpope/vim-fugitive'
+set updatetime=700
+" git status
+nnoremap <leader>gc :Git checkout<space>
+" nnoremap <leader>gs :tabnew<bar>Git<CR><C-w>w:bd<CR>
+nnoremap <leader>gs :Git<CR>
+" git push
+nnoremap <leader>gk :Git push
+" git pull
+nnoremap <leader>gj :Git pull
+" git diff to resolve conflicts
+nnoremap <leader>gr :Gvdiffsplit!<cr>
+" `g`et changes `f`rom the current brunch (HEAD or LOCAL) - left buffer
+nnoremap gfh :execute 'diffget ' .. (&diff ? 'LO' : '//2')<cr>
+" `g`et changes `f`rom the merge branch (REMOTE) - right buffer
+nnoremap gfl :execute 'diffget ' .. (&diff ? 'RE' : '//3')<cr>
+
+" add marks about git status on the left line
+Plug 'airblade/vim-gitgutter'
+nnoremap <silent> ]h :GitGutterNextHunk<cr>
+nnoremap <silent> [h :GitGutterPrevHunk<cr>
+onoremap <silent> ih :GitGutterTextObjectInnerPending<cr>
+onoremap <silent> ah :GitGutterTextObjectOuterPending<cr>
+xnoremap <silent> ih :GitGutterTextObjectInnerVisual<cr>
+xnoremap <silent> ah :GitGutterTextObjectOuterVisual<cr>
+
+" preview the hunk
+" <Leader>hp
+" stage the hunk with 
+" <Leader>hs
+" undo it with 
+" <Leader>hu
+" ---------------------------------------------------------------------------}}}
+
 endif
 " }}}
 
@@ -260,6 +260,7 @@ call plug#end()
 " ***************************************************************************** 
 " {{{
 set termguicolors
+
 if exists('g:neovide')
   so ~/.gvimrc
   cd ~

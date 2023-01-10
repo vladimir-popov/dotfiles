@@ -66,7 +66,7 @@ require('packer').startup(function(use)
             require('diffview').setup({
                 view = {
                     merge_tool = {
-                        layout = 'diff2_horizontal',
+                        layout = 'diff3_horizontal',
                     },
                 },
                 file_panel = {
@@ -89,10 +89,9 @@ require('packer').startup(function(use)
                     end
                     -- Actions
                     map({ 'n', 'v' }, '<leader>hs', ':Gitsigns stage_hunk<CR>')
-                    map({ 'n', 'v' }, '<leader>hr', ':Gitsigns reset_hunk<CR>')
+                    map({ 'n', 'v' }, '<leader>hu', ':Gitsigns reset_hunk<CR>')
                     map('n', '[h', gs.prev_hunk)
                     map('n', ']h', gs.next_hunk)
-                    map('n', '<leader>hu', gs.undo_stage_hunk)
                     map('n', '<leader>hp', gs.preview_hunk)
                     map('n', '<leader>hb', function()
                         gs.blame_line({ full = true })
@@ -281,6 +280,40 @@ require('packer').startup(function(use)
     use('jbyuki/one-small-step-for-vimkind')
     -- scala lsp
     use('scalameta/nvim-metals')
+    -- null-ls
+    -- use({
+    --     'jose-elias-alvarez/null-ls.nvim',
+    --     requires = {
+    --         'nvim-lua/plenary.nvim',
+    --     },
+    --     config = function()
+    --         local null_ls = require('null-ls')
+    --         local ltrs_args = {
+    --             '--hostname',
+    --             'http://localhost',
+    --             '-p',
+    --             '8081',
+    --             'check',
+    --             '-m',
+    --             '-r',
+    --             '--text',
+    --             '$TEXT',
+    --         }
+    --         null_ls.setup({
+    --             debug = false,
+    --             sources = {
+    --                 -- LanguageTool-Rust (LTRS) is both an executable and a Rust library
+    --                 -- that aims to provide correct and safe bindings for the LanguageTool API.
+    --                 null_ls.builtins.code_actions.ltrs.with({
+    --                     args = ltrs_args,
+    --                 }),
+    --                 null_ls.builtins.diagnostics.ltrs.with({
+    --                     args = ltrs_args,
+    --                 }),
+    --             },
+    --         })
+    --     end,
+    -- })
     -- PlantUML
     use('aklt/plantuml-syntax')
 end)

@@ -11,10 +11,11 @@ return {
         lualine_b = { { 'ex.relative_filename', padding = 0 } },
         lualine_c = { 'lsp_progress' },
 
-        lualine_x = {'ex.git.branch'},
+        lualine_x = { 'ex.git.branch' },
         lualine_y = {
             'diagnostics',
-            { 'ex.lsp', icons_only = true, icons = { spellcheck = { '暈', color = 'purple' } } },
+            -- { 'ex.lsp.single', icons_only = true },
+            { 'ex.lsp.all', icons_only = true },
             'ex.spellcheck',
             'location',
         },

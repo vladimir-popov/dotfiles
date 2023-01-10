@@ -42,7 +42,7 @@ export ZSH="$HOME/.oh-my-zsh"
 # ZSH_THEME="nanotech"
 # ZSH_THEME="common"
 # avit, eastwood 
-ZSH_THEME="dokwork"
+ZSH_THEME="short"
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -148,9 +148,11 @@ if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-clou
 
 export KUBE_EDITOR="nvim"
 
-[[ /usr/local/bin/kubectl ]] && source <(kubectl completion zsh)
+if [ -x "$(command -v kubectl)" ]; then
+   source <(kubectl completion zsh)
+fi
 
-export PATH="$HOME/.pyenv/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
+export PATH="$HOME/.pyenv/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$PATH"
 export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
 # eval "$(pyenv init -)"
 # eval "$(pyenv virtualenv-init -)"

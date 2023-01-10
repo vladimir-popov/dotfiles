@@ -21,13 +21,18 @@ end]],
     )
 )
 
-local pretty_print = s(
-    { trig = 'pp', descr = 'Create invocation of the vim.pretty_print' },
-    fmta([[vim.pretty_print(<>)]], { i(0, 'object') })
+local funn = s(
+    { trig = 'fun ', dscr = 'Creates a new anonymous function.' },
+    fmta(
+        [[function(<>)
+    <>
+end]],
+        { i(1), i(0) }
+    )
 )
 
 local module_function = s(
-    { trig = 'fn.', descr = 'Creates a new method for module.' },
+    { trig = 'fun.', descr = 'Creates a new method for module.' },
     fmta(
         [[function <>.<>(<>)
     <>
@@ -42,7 +47,7 @@ end]],
 )
 
 local method = s(
-    { trig = 'fn:', descr = 'Creates a new method for class.' },
+    { trig = 'fun:', descr = 'Creates a new method for class.' },
     fmta(
         [[function <>:<>(<>)
     <>
@@ -56,25 +61,25 @@ end]],
     )
 )
 
+local pretty_print = s(
+    { trig = 'pp', descr = 'Create invocation of the vim.pretty_print' },
+    fmta([[vim.pretty_print(<>)]], { i(0, 'object') })
+)
+
 local aclass = s('-cl', t('---@class '))
 local afield = s('-fi', t('---@field '))
 local areturn = s('-re', t('---@return '))
 local aparameter = s('-pa', t('---@param '))
+local aprivate = s('-pri', t('---@private'))
+local aprotected = s('-pro', t('---@protected'))
 
 local log = s(
     'log',
-    fmta(
-        [[local log = require('plenary.log').new({
-    plugin = '<>',
-    use_file = false,
-    use_console = 'sync',
-})]],
-        { i(1, 'LogName') }
-    )
+    fmta([[local log = require('plenary.log').new({ plugin = '<>' })]], { i(1, 'Plugin name') })
 )
 
 local describe_section = s(
-    'ds',
+    'des',
     fmta(
         [[describe('<>', function()
     <>
@@ -95,6 +100,7 @@ end)]],
 
 local snippets = { log, describe_section, it_section }
 local autosnippets = {
+    funn,
     local_variable,
     local_function,
     module_function,
@@ -104,6 +110,8 @@ local autosnippets = {
     afield,
     areturn,
     aparameter,
+    aprivate,
+    aprotected,
 }
 
 return snippets, autosnippets
