@@ -373,6 +373,7 @@ nnoremap <F7> :call g:ToggleSpellcheck()<CR>
 " run LanguageTool 
 nnoremap <F8> :LanguageToolCheck<CR> 
 
+" close the current buffer
 nnoremap <silent> qq :bp<bar>bd#<CR>
 " close the current window
 nnoremap <silent> qw :close<cr>
@@ -386,13 +387,20 @@ nnoremap <silent> qc :cclose<CR>
 nnoremap <silent> qh :helpclose<cr>
 
 " hotkeys to swap between buffers
+" Go back
 nnoremap <silent> gb <C-^>
+" Go to previous buffer 
 nnoremap <silent> [b :bprevious<CR> 
+" Go to next buffer 
 nnoremap <silent> ]b :bnext<CR>
+
 " open new tab
 " nnoremap <C-n> :tabnew<CR>
+
 " hotkeys to swap between tabs
+" Go to  previous tab 
 nnoremap <silent> [t :tabprevious<CR> 
+" Go to next tab 
 nnoremap <silent> ]t :tabnext<CR>
 
 " use ' to go to marked position
@@ -405,8 +413,9 @@ nnoremap ` '
 xnoremap < <gv
 xnoremap > >gv
 
-" move cursor up and down naturally by display
+" move cursor down naturally by display
 nnoremap j gj
+" move cursor up naturally by display
 nnoremap k gk
 
 " copy to the clipboard

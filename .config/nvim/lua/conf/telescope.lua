@@ -63,13 +63,15 @@ require('telescope').setup({
 
 -- show all builin pickers
 nmap('<space>;', "<cmd>lua require'telescope.builtin'.builtin()<cr>")
--- find files
+-- find files (without hidden and filtered)
 local ignore_patterns = "file_ignore_patterns = { 'target/' }"
 nmap(
     '<space>a',
     "<cmd>lua require('telescope.builtin').find_files({" .. ignore_patterns .. '})<CR>'
 )
+-- find all files
 nmap('<space>A', "<cmd>lua require('telescope.builtin').find_files({ hidden = true})<CR>")
+-- find files in HOME
 nmap(
     '<space>~',
     "<cmd>lua require('telescope.builtin').find_files({ hidden = true, search_dirs = { '"
@@ -94,14 +96,17 @@ nmap('<space>gg', "<cmd>lua require('telescope.builtin').live_grep()<CR>")
 nmap('<leader>m', '<cmd>Telescope metals commands<CR>')
 -- lists LSP document symbols in the current buffer
 nmap('<space>ss', "<cmd>lua require('telescope.builtin').lsp_document_symbols()<CR>")
+-- find method
 nmap(
     '<space>sm',
     "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols={'method', 'function'}})<CR>"
 )
+-- find field
 nmap(
     '<space>sf',
     "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='field'})<CR>"
 )
+-- find class
 nmap(
     '<space>sc',
     "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='class'})<CR>"

@@ -60,6 +60,7 @@ function M.keys_mapping(bufnr)
         '[e',
         '<cmd>lua vim.diagnostic.goto_prev({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>'
     )
+    -- go to error before cursor and show in float window
     nmap(
         '[E',
         '<cmd>lua vim.diagnostic.goto_prev({ severity={min=vim.diagnostic.severity.INFO} })<CR>'
@@ -69,6 +70,7 @@ function M.keys_mapping(bufnr)
         ']e',
         '<cmd>lua vim.diagnostic.goto_next({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>'
     )
+    -- go to error after cursor and show in float window
     nmap(
         ']E',
         '<cmd>lua vim.diagnostic.goto_next({ severity={min=vim.diagnostic.severity.INFO} })<CR>'
@@ -106,7 +108,11 @@ local configs = require('lspconfig.configs')
 if not configs.spellcheck then
     configs.spellcheck = {
         default_config = {
-            cmd = { 'java', '-jar', vim.env.HOME .. '/Projects/spellcheck-lsp/target/scala-3.1.0/spellcheck-lsp' },
+            cmd = {
+                'java',
+                '-jar',
+                vim.env.HOME .. '/Projects/spellcheck-lsp/target/scala-3.1.0/spellcheck-lsp',
+            },
             filetypes = { 'text' },
             root_dir = nvim_lsp.util.root_pattern(vim.env.HOME .. '/Projects/spellcheck-lsp'),
             settings = {},

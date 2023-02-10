@@ -42,7 +42,7 @@ export ZSH="$HOME/.oh-my-zsh"
 # ZSH_THEME="nanotech"
 # ZSH_THEME="common"
 # avit, eastwood 
-ZSH_THEME="short"
+ZSH_THEME="dokwork"
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
