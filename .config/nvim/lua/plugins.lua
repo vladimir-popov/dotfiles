@@ -78,5 +78,5 @@ return {
         },
     },
     -- koka lang
-    { 'Nymphium/vim-koka', lazy = false }
+    { 'Nymphium/vim-koka', lazy = false },
 }

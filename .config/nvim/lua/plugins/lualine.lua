@@ -66,6 +66,12 @@ local cosmos_theme = {
         z = { bg = colors.bg, fg = colors.inactive },
     },
 }
+
+local function toggle_spell()
+    println('! ' .. vim.o.spell)
+    vim.o.spell = not vim.o.spell
+end
+
 return {
     'nvim-lualine/lualine.nvim',
     lazy = false,
@@ -79,7 +85,10 @@ return {
         options = {
             always_divide_middle = true,
             globalstatus = true,
-            component_separators = { left = '%#lualine_a_normal#|', right = '%#lualine_a_normal#|' },
+            component_separators = {
+                left = '%#lualine_a_normal#|',
+                right = '%#lualine_a_normal#|',
+            },
             section_separators = { left = ' ', right = ' ' },
             theme = cosmos_theme,
         },
@@ -91,15 +100,20 @@ return {
             lualine_x = { 'ex.git.branch' },
             lualine_y = {
                 'diagnostics',
-                { 'ex.lsp.all', icons_only = true },
+                { 'ex.lsp.all', icons_only = true, on_click = toggle_spell },
                 'ex.spellcheck',
-                'location',
+                { 'location', on_click = toggle_spell },
             },
             lualine_z = { 'progress' },
         },
         inactive_sections = {
             lualine_a = { 'mode' },
             lualine_b = { 'filename' },
+        },
+        tabline = {
+            lualine_b = {
+                { 'buffers', buffers_color = { active = 'lualine_a_normal' } },
+            },
         },
     },
 }

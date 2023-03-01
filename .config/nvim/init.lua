@@ -59,13 +59,13 @@ vim.opt.expandtab = true
 -- Still it is a \t. It is just that
 -- vim will interpret it to be having
 -- a width of 2.
-vim.opt.tabstop = 4
+vim.opt.tabstop = 2
 
--- Indents will have a width of 4.
-vim.opt.shiftwidth = 4
+-- Indents will have a width of 2.
+vim.opt.shiftwidth = 2
 
 -- Sets the number of columns for a TAB.
-vim.opt.softtabstop = 4
+vim.opt.softtabstop = 2
 
 -- Set default textwidth
 vim.opt.textwidth = 100
