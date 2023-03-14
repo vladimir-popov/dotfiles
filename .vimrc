@@ -123,12 +123,6 @@ Plug 'dokwork/vim-hp'
 Plug 'vladimir-popov/vim-navigator'
 " ---------------------------------------------------------------------------}}}
 
-" ***************************************************************************** 
-"                         Plugins for Vim only
-" ***************************************************************************** 
-" {{{
-if !has('nvim')
-
 " -- EasyMotion -------------------------------------------------------------{{{
 Plug 'easymotion/vim-easymotion'
 " let g:EasyMotion_do_mapping = 0 " Disable default mappings
@@ -249,9 +243,6 @@ xnoremap <silent> ah :GitGutterTextObjectOuterVisual<cr>
 " <Leader>hu
 " ---------------------------------------------------------------------------}}}
 
-endif
-" }}}
-
 call plug#end()
 " }}}
  
@@ -337,11 +328,6 @@ set textwidth=100
 " do not comment new line
 autocmd BufNewFile,BufRead * setlocal formatoptions-=ro
 
-augroup my_luastyle
-  autocmd!
-  autocmd BufRead *.lua setlocal tabstop=4 | setlocal shiftwidth=4 | setlocal softtabstop=4 |
-augroup END
-
 " use russian keymapping in the normal mode
 let ru_up='ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖХЪБЮЭ'
 let en_up='ABCDEFGHIJKLMNOPQRSTUVWXYZ:{}<>\"'
@@ -404,10 +390,10 @@ nnoremap <silent> [t :tabprevious<CR>
 nnoremap <silent> ]t :tabnext<CR>
 
 " use ' to go to marked position
-nnoremap ' `
+noremap ' `
 
 " use ` to go to marked line
-nnoremap ` '
+noremap ` '
 
 " indent block without loosing selection
 xnoremap < <gv

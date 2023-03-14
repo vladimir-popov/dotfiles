@@ -14,6 +14,11 @@ return {
         })
         local wk = require('which-key')
         wk.register({
+            ["'"] = { '`', "Use ' to go to a marked position" },
+            ['`'] = { "'", 'Use ` to go to a marked line' },
+        }, { mode = '' })
+
+        wk.register({
             ['jj'] = { '<esc>', 'use jj to comeback to the normal mode' },
         }, { mode = 'i' })
 
@@ -24,9 +29,6 @@ return {
             ['QQ'] = { ':bd!<CR>', 'Force close the current buffer and window' },
             ['qc'] = { ':cclose<CR>', 'Close quickfix window' },
             ['qh'] = { ':helpclose<cr>', 'Close the help window' },
-
-            ["'"] = { '`', "Use ' to go to a marked position" },
-            ['`'] = { "'", 'Use ` to go to a marked line' },
 
             ['gb'] = { '<C-^>', 'Go back' },
 
