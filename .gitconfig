@@ -16,9 +16,9 @@
 [diff]
   tool = vimdiff
 [difftool "vimdiff"]
-  cmd = nvim -d "$LOCAL" "$REMOTE"
+  cmd = vim -d "$LOCAL" "$REMOTE"
 [mergetool "vimdiff"]
-  cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
+  cmd = vim -d "$LOCAL" "$MERGED" "$REMOTE"
 [core]
 	editor = vim
 [pager]
