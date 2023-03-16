@@ -192,7 +192,7 @@ export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 export NNN_FIFO='/tmp/nnn.fifo'
 
 # useful plugins:
-export NNN_PLUG='f:fzopen;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui'
+export NNN_PLUG='f:fzopen;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui;c:-!echo $(pwd -P)"/$nnn"'
 
 # context colors [default: '4444' (blue)]
 export NNN_COLORS='2354'
