@@ -1,4 +1,9 @@
 return {
+    -- replace selected
+    {
+        'vladimir-popov/vim-replace',
+        lazy = false
+    },
     -- autosave
     {
         'Pocco81/auto-save.nvim',

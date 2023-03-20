@@ -39,5 +39,6 @@
   "telescope.nvim": { "branch": "master", "commit": "a3f17d3baf70df58b9d3544ea30abe52a7a832c2" },
   "trouble.nvim": { "branch": "main", "commit": "67337644e38144b444d026b0df2dc5fa0038930f" },
   "vim-koka": { "branch": "master", "commit": "a7a61e7eae12e5a60463a32e0b8fbd92f9c41fb7" },
-  "which-key.nvim": { "branch": "main", "commit": "fb027738340502b556c3f43051f113bcaa7e8e63" }
+  "vim-replace": { "branch": "master", "commit": "42e4d82f0dcb6df463a85b6d788e511b6703a2eb" },
+  "which-key.nvim": { "branch": "main", "commit": "ab566e02eedfa4ec4d33d60115833b1b644d8e98" }
 }

@@ -14,6 +14,9 @@ vim.opt.cursorline = true
 -- turn on line numbers
 vim.opt.number = true
 
+-- the minimal width of the left column
+vim.opt.foldcolumn = '2'
+
 -- turn relative line numbers on only for active window
 -- and not in diff mode
 local togglenumber = vim.api.nvim_create_augroup('togglenumber', { clear = true })
