@@ -73,7 +73,7 @@ let g:table_mode_corner='|'
 " from markdown buffer to another buffer
 " let g:mkdp_auto_close = 0
 " let g:mkdp_browserfunc = 'g:Open_browser'
-" Plug 'iamcco/markdown-preview.nvim', { 'do': 'cd app & yarn install'  }
+Plug 'iamcco/markdown-preview.nvim', { 'do': 'cd app & yarn install'  }
 " uncomment to change browser
 " function! g:Open_browser(url)
 "     silent exe 'silent !open -na "Google Chrome" ' . a:url
@@ -433,9 +433,9 @@ command! DistractionFree Goyo 110x100 | set nu | set rnu
 
 " Run grip server to render current buffer
 " see https://github.com/joeyespo/grip
-command! MarkdownPreview call g:MarkdownPreview()
-function! g:MarkdownPreview()
-  let args = '--user=vladimir-popov' .. expand('%') .. ' 8080'
+command! MarkdownGrip call g:MarkdownGrip()
+function! g:MarkdownGrip()
+  let args = '-b ' .. expand('%') .. ' 8080'
   if &filetype == 'markdown'
     if has('nvim')
       call execute('below 10split term://grip ' .. args)

@@ -13,10 +13,10 @@ return {
             },
         })
         local wk = require('which-key')
-        --	wk.register({
-        --		["'"] = { "`", "Use ' to go to a marked position" },
-        --		["`"] = { "'", "Use ` to go to a marked line" },
-        --	}, { mode = "" })
+        -- wk.register({
+        -- 	["'"] = { "`", "Use ' to go to a marked position" },
+        -- 	["`"] = { "'", "Use ` to go to a marked line" },
+        -- }, { mode = "" })
 
         wk.register({
             ['jj'] = { '<esc>', 'use jj to comeback to the normal mode' },

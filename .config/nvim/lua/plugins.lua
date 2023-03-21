@@ -79,6 +79,11 @@ return {
                 listing_style = 'tree', -- One of 'list' or 'tree'
             },
         },
+        cmd = {
+            'DiffviewOpen',
+            'DiffviewToggleFiles',
+            'DiffviewFileHistory'
+        }
     },
     -- koka lang
     { 'Nymphium/vim-koka', lazy = false },
