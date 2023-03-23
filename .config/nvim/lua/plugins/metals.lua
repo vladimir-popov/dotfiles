@@ -1,5 +1,9 @@
 return {
     'scalameta/nvim-metals',
+    dependencies = {
+        { 'tami5/lspsaga.nvim' },
+        { 'ray-x/lsp_signature.nvim' },
+    },
     ft = { 'scala', 'sbt' },
     keys = {
         {

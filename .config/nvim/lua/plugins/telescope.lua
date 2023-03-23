@@ -3,13 +3,19 @@ local ignore_patterns = "file_ignore_patterns = { 'target/' }"
 return {
     'nvim-telescope/telescope.nvim',
     opts = {
+        defaults = {
+            layout_config = {
+                layout_strategy = 'horizontal',
+                horizontal = { width = 0.5 },
+            },
+        },
         pickers = {
             -- <space>a
             find_files = {
                 sort_lastused = true,
                 theme = 'dropdown',
                 previewer = false,
-                -- layout_strategy='horizontal'
+                layout_config = { width = 0.9 },
             },
             -- <space>w
             buffers = {
@@ -30,10 +36,6 @@ return {
             -- <space>h
             help_tags = {
                 previewer = false,
-                theme = 'dropdown',
-            },
-            -- <space>r
-            registers = {
                 theme = 'dropdown',
             },
             -- <space>s
@@ -97,11 +99,6 @@ return {
             '<space>H',
             "<cmd>lua require('telescope.builtin').highlights()<cr>",
             desc = 'show highlights',
-        },
-        {
-            '<space>r',
-            "<cmd>lua require('telescope.builtin').registers()<cr>",
-            desc = 'show registers and insert selected content',
         },
         {
             '<space>gg',

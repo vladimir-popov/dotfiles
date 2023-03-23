@@ -59,7 +59,7 @@ vim.opt.foldmethod = 'syntax'
 vim.opt.expandtab = true
 
 -- Set the width of a TAB.
-vim.opt.tabstop = 4
+vim.opt.tabstop = 2
 
 -- Indents will have a width of:
 vim.opt.shiftwidth = 2

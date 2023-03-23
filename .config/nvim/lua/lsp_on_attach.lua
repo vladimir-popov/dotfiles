@@ -48,6 +48,10 @@ local keys_mapping = function(client, bufnr)
             '<cmd>lua vim.lsp.buf.hover()<CR>',
             'show description of the symbol under cursor',
         },
+        ['<space>r'] = {
+            '<cmd>Lspsaga lsp_finder<CR>',
+            'A finder to show the definition, reference and implementation',
+        },
         ['<c-p>'] = {
             '<cmd>lua vim.lsp.buf.signature_help()<CR>',
             'show signature of current method',

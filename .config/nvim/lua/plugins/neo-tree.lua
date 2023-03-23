@@ -2,8 +2,11 @@ return {
     'nvim-neo-tree/neo-tree.nvim',
     branch = 'v2.x',
     keys = {
-        { "<leader>'", ':Neotree toggle reveal<cr>', desc = 'NeoTree' },
-        { '<leader>"', ':Neotree toggle reveal_force_cwd<cr>', desc = 'NeoTree' },
+        { "<leader>'", ':Neotree toggle reveal<cr>', desc = 'Show the current file in the NeoTree' },
+        { '<leader>"', ':Neotree toggle reveal_force_cwd<cr>', desc = 'Show the current file in the NeoTree, and change cwd' },
+        { "<leader>1", ':Neotree toggle focus<cr>', desc = 'Show the current file in the Files' },
+        { "<leader>2", ':Neotree toggle focus buffers<cr>', desc = 'Show the current file in the Buffers' },
+        { "<leader>3", ':Neotree toggle focus git_status<cr>', desc = 'Show the current file in the Git' },
     },
     dependencies = {
         'nvim-lua/plenary.nvim',
