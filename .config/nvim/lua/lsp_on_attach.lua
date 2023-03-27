@@ -122,5 +122,5 @@ return function(client, bufnr)
     highlight_setup(client, bufnr)
     intend_setup(client, bufnr)
     keys_mapping(client, bufnr)
-    require('lsp_signature').on_attach()
+    require('lsp_signature').on_attach({ bind = true }, bufnr)
 end
