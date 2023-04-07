@@ -20,7 +20,7 @@ return {
     -- Comments
     {
         'numToStr/Comment.nvim',
-        ft = { 'lua', 'vim', 'scala' },
+        ft = { 'lua', 'vim', 'scala', 'c' },
         config = true,
     },
     -- show indents

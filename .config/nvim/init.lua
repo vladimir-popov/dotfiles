@@ -67,6 +67,16 @@ vim.opt.shiftwidth = 2
 -- Sets the number of columns for a TAB:
 vim.opt.softtabstop = 2
 
+vim.api.nvim_create_autocmd({ 'BufEnter' }, {
+    pattern = 'make',
+    callback = function()
+        vim.bo.expandtab = false
+        vim.bo.tabstop = 4
+        vim.bo.shiftwidth = 4
+        vim.bo.softtabstop = 4
+    end,
+})
+
 -- Set default textwidth
 vim.opt.textwidth = 100
 

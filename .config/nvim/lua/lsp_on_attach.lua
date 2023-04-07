@@ -3,7 +3,7 @@ vim.diagnostic.config({ virtual_text = false })
 
 -- Required for proper symbol highlighting
 local highlight_setup = function(client)
-    if client.name == 'yamlls' and client.name == 'jsonls' then
+    if client.name == 'yamlls' or client.name == 'jsonls' then
         return
     end
     vim.cmd([[autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()]])

@@ -3,12 +3,6 @@ local ignore_patterns = "file_ignore_patterns = { 'target/' }"
 return {
     'nvim-telescope/telescope.nvim',
     opts = {
-        defaults = {
-            layout_config = {
-                layout_strategy = 'horizontal',
-                horizontal = { width = 0.5 },
-            },
-        },
         pickers = {
             -- <space>a
             find_files = {

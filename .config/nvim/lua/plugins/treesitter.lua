@@ -11,7 +11,7 @@ return {
         local aug_id = vim.api.nvim_create_augroup('lua_treesitter_fold', { clear = true })
         vim.api.nvim_create_autocmd('FileType', {
             group = aug_id,
-            pattern = 'lua',
+            pattern = file_types,
             callback = function()
                 vim.o.foldmethod = 'expr'
                 vim.o.foldexpr = 'nvim_treesitter#foldexpr()'
