@@ -14,25 +14,13 @@ return {
         local nvim_lsp = require('lspconfig')
 
         -- LUA -----------------------------------------------------
-        -- set the path to the sumneko installation;
-        local sumneko_root_path = vim.env.HOME .. '/Projects/lua-language-server'
-        local sumneko_binary = sumneko_root_path .. '/bin/lua-language-server'
-
-        local runtime_path = vim.split(package.path, ';')
-        table.insert(runtime_path, 'lua/?.lua')
-        table.insert(runtime_path, 'lua/?/init.lua')
         nvim_lsp.lua_ls.setup({
-            cmd = { sumneko_binary, '-E', sumneko_root_path .. '/main.lua' },
             on_attach = on_attach,
-            root_dir = function()
-                return vim.fn.getcwd()
-            end,
             -- see description here https://github.com/sumneko/vscode-lua/blob/master/setting/schema.json
             settings = {
                 Lua = {
                     runtime = {
                         version = 'LuaJIT',
-                        path = runtime_path,
                     },
                     diagnostics = {
                         -- Get the language server to recognize the `vim` global

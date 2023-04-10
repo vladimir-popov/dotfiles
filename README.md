@@ -5,47 +5,37 @@
 
 Some dotfiles need additional tools and preparations. Before applying dotfiles some additional tools must be installed:
 
-### Git
-
+Install the brew itself:
 ```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Install all other apps, go br....
+```sh
+# Alacritty
+brew install --cask alacritty
+
+# Tmux
+brew install tmux
+# To reattach process (e.g., tmux) to background, the follow should be installed:
+brew install reattach-to-user-namespace
+
+# Git
 brew install git
+brew install lazygit
+
+# Nerd fonts
+brew tap homebrew/cask-fonts
+brew install --cask font-fira-code-nerd-font
+
+# Neovim
+brew install neovim
 ```
 
 ### Oh My Zsh
 
 ```sh
 sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-```
-
-### Nerd fonts
-
-```sh
-brew tap homebrew/cask-fonts
-brew install --cask font-fira-code-nerd-font
-```
-
-### Plugins manager for Vim
-
-```sh
-curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
-    https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-```
-
-### Tmux
-
-```sh
-brew install tmux
-```
-
-To reattach process (e.g., tmux) to background, the follow should be installed:
-```sh
-brew install reattach-to-user-namespace
-```
-
-### Alacritty
-
-```sh
-brew install --cask alacritty
 ```
 
 ## Apply dotfiles 
@@ -74,3 +64,53 @@ dot config --local status.showUntrackedFiles no
 ```
 
 _Thanks Atlassian for the advice https://www.atlassian.com/git/tutorials/dotfiles_
+
+## Vital apps
+
+```sh
+# Tool to reverse the direction of scrolling
+brew install --cask scroll-reverser
+
+# Clipboard manager
+brew install --cask clipy
+
+# Passwords manager
+brew install --cask keepassx
+
+# Docker
+brew install docker
+brew install colima
+
+# Windows manager
+brew install --cask spectacle
+
+# Telegram
+brew install telegram
+
+# Spotify
+brew install spotify
+```
+
+## Dev apps
+
+### Lua
+
+```sh
+brew install lua-language-server
+brew install stylua
+```
+
+
+### Scala
+
+```sh
+brew install coursier/formulas/coursier
+cs java --jvm 17 --setup
+cs setup
+```
+
+### C
+
+```sh
+brew install gcc
+```
