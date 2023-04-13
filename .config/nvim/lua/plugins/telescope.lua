@@ -11,7 +11,7 @@ return {
                 previewer = false,
                 layout_config = { width = 0.9 },
             },
-            -- <space>w
+            -- <space>e
             buffers = {
                 -- sort_lastused = true,
                 theme = 'dropdown',
@@ -26,6 +26,7 @@ return {
                 -- previewer = false,
                 path_display = { 'smart' },
                 theme = 'dropdown',
+                layout_config = { width = 0.9 },
             },
             -- <space>h
             help_tags = {

@@ -67,18 +67,19 @@ vim.opt.shiftwidth = 2
 -- Sets the number of columns for a TAB:
 vim.opt.softtabstop = 2
 
-vim.api.nvim_create_autocmd({ 'BufEnter' }, {
-    pattern = 'make',
-    callback = function()
-        vim.bo.expandtab = false
-        vim.bo.tabstop = 4
-        vim.bo.shiftwidth = 4
-        vim.bo.softtabstop = 4
-    end,
-})
-
 -- Set default textwidth
 vim.opt.textwidth = 100
+
+-- Do not comment a new line
+--  t       Auto-wrap text using textwidth
+--  c       Auto-wrap comments using textwidth, 
+--          inserting the current comment
+--          leader automatically.
+--  r       Automatically insert the current comment leader after hitting
+--          <Enter> in Insert mode.
+--  o       Automatically insert the current comment leader after hitting 
+--          'o' or 'O' in Normal mode.
+vim.opt.formatoptions:remove({'c', 'r', 'o'})
 
 -- a comma separated list of options for Insert mode completion
 -- menuone  - use a popup menu to show the possible completions,
