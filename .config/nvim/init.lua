@@ -42,6 +42,10 @@ vim.api.nvim_create_autocmd({ 'BufLeave', 'FocusLost', 'InsertEnter', 'WinLeave'
 -- turn on 'global' statusline
 vim.opt.laststatus = 3
 
+-- always show sign column 
+-- (for git hunks and lsp errors)
+vim.o.signcolumn = "yes"
+
 -- do not wrap lines
 vim.opt.wrap = false
 

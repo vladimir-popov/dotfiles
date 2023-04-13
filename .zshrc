@@ -140,12 +140,6 @@ bindkey '^v' edit-command-line
 
 
 export USE_GKE_GCLOUD_AUTH_PLUGIN=True
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
-
 export KUBE_EDITOR="nvim"
 
 if [ -x "$(command -v kubectl)" ]; then
@@ -232,6 +226,10 @@ n ()
     fi
 }
 
-alias luamake="$HOME/Projects/lua-language-server/3rd/luamake/luamake"
-
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/vladimir/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vladimir/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/vladimir/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vladimir/google-cloud-sdk/completion.zsh.inc'; fi

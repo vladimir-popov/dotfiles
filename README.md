@@ -32,6 +32,14 @@ brew install --cask font-fira-code-nerd-font
 brew install neovim
 ```
 
+### Add public key to github
+
+```sh
+ssh-keygen -t ed25519 -C "vladimir@dokwork.ru"
+tr -d '\n' < ~/.ssh/id_ed25519.pub | pbcopy
+```
+and put the public key from the clipboard here: https://github.com/settings/keys
+
 ### Oh My Zsh
 
 ```sh
