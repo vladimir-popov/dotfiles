@@ -11,21 +11,12 @@ local highlight_setup = function(client)
     vim.cmd([[autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()]])
 end
 
-local intend_setup = function(client)
-    if client.name == 'lua_ls' then
-        -- Indents will have a width of:
-        vim.opt.shiftwidth = 4
-        -- Sets the number of columns for a TAB:
-        vim.opt.softtabstop = 4
-    end
-end
-
 local keys_mapping = function(client, bufnr)
     local wk = require('which-key')
     wk.register({
         ['<leader>f'] = {
             client.name ~= 'lua_ls' and '<cmd>lua vim.lsp.buf.format({ async = true })<CR>'
-                or ':!stylua --config-path ~/.stylua.default %<cr>',
+                or ':silent !stylua --config-path ~/.stylua.default %<cr>',
             'format current buffer',
         },
         ['gd'] = {
@@ -120,7 +111,6 @@ end
 
 return function(client, bufnr)
     highlight_setup(client, bufnr)
-    intend_setup(client, bufnr)
     keys_mapping(client, bufnr)
     require('lsp_signature').on_attach({ bind = true }, bufnr)
 end

@@ -57,6 +57,7 @@ vim.opt.smartcase = true
 vim.opt.foldenable = false
 
 -- use syntax for folding by default
+vim.opt.syntax='on'
 vim.opt.foldmethod = 'syntax'
 
 -- Expand TABs to spaces.

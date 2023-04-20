@@ -2,7 +2,7 @@ return {
     -- replace selected
     {
         'vladimir-popov/vim-replace',
-        lazy = false
+        lazy = false,
     },
     -- autosave
     {
@@ -82,8 +82,8 @@ return {
         cmd = {
             'DiffviewOpen',
             'DiffviewToggleFiles',
-            'DiffviewFileHistory'
-        }
+            'DiffviewFileHistory',
+        },
     },
     -- koka lang
     { 'Nymphium/vim-koka', lazy = false },
