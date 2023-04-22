@@ -19,8 +19,10 @@ return {
                 type = 'lldb',
                 request = 'launch',
                 program = function()
+                    local str =  vim.fn.system('make compile')
+                    str = str .. '\n' .. vim.fn.system('ls build/')
                     return vim.fn.input(
-                        'Path to executable: ',
+                        str .. '\n Path to executable: ',
                         vim.fn.getcwd() .. '/build/',
                         'file'
                     )
@@ -48,14 +50,19 @@ return {
             desc = 'Terminate debug session',
         },
         {
-            '<F7>',
+            '<space>di',
             ':lua require"dap".step_into()<cr>',
             desc = 'Step into',
         },
         {
-            '<F8>',
+            '<space>do',
             ':lua require"dap".step_over()<cr>',
             desc = 'Step over',
+        },
+        {
+            '<space>dd',
+            ':lua require"dap".continue()<cr>',
+            desc = 'Launching debug sessions and resuming execution',
         },
         {
             '<space>db',

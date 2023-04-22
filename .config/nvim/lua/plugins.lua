@@ -21,12 +21,27 @@ return {
     {
         'numToStr/Comment.nvim',
         ft = { 'lua', 'vim', 'scala', 'c' },
-        config = true,
+        opts = {
+            toggler = {
+                ---Line-comment toggle keymap
+                line = 'gcc',
+                ---Block-comment toggle keymap
+                block = 'gcb',
+            },
+            ---LHS of operator-pending mappings in NORMAL and VISUAL mode
+            opleader = {
+                ---Line-comment keymap
+                line = 'gcc',
+                ---Block-comment keymap
+                block = 'gcb',
+            },
+        },
     },
     -- show indents
     {
         'lukas-reineke/indent-blankline.nvim',
         event = 'VeryLazy',
+        opts = {},
     },
     -- Hop is similar to EasyMotion
     {
