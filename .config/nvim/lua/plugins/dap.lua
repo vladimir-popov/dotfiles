@@ -1,3 +1,33 @@
+local function program()
+    local option = 0
+    if vim.g.previous_debug then
+        local options = '&new\n&previous [' .. vim.g.previous_debug .. ']'
+        option = vim.fn.confirm('Which binary run to debug?', options, 2)
+    end
+    if option < 2 then
+        vim.g.previous_debug =
+            vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/build/', 'file')
+    end
+    if vim.fn.filereadable(vim.g.previous_debug) == 0 then
+        if
+            vim.fn.confirm(
+                'File [' .. vim.g.previous_debug .. "] not found, or can't be read. Run `make`?",
+                '&no\n&yes',
+                2
+            ) == 2
+        then
+            local out = vim.fn.system('make')
+            if vim.v.shell_error == 0 then
+                print('Build has been successfully done.')
+            else
+                print('Build has been failed. Exit code: ' .. vim.v.shell_error .. '\n' .. out)
+            end
+            return program()
+        end
+    end
+    return vim.g.previous_debug
+end
+
 return {
     'mfussenegger/nvim-dap',
     ft = { 'c' },
@@ -18,15 +48,7 @@ return {
                 name = 'Launch debug for C',
                 type = 'lldb',
                 request = 'launch',
-                program = function()
-                    local str =  vim.fn.system('make compile')
-                    str = str .. '\n' .. vim.fn.system('ls build/')
-                    return vim.fn.input(
-                        str .. '\n Path to executable: ',
-                        vim.fn.getcwd() .. '/build/',
-                        'file'
-                    )
-                end,
+                program = program,
                 cwd = '${workspaceFolder}',
                 stopOnEntry = false,
                 args = {},

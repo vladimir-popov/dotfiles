@@ -1,8 +1,8 @@
 local include_std =
-    s({ trig = '^%#inc', regTrig = true }, fmt([[#include <{}>]], { i(1, 'lib_name') }))
+    s({ trig = '^incc', regTrig = true }, fmt([[#include <{}>]], { i(0, 'lib_name') }))
 
 local include_custom =
-    s({ trig = '^%#ins', regTrig = true }, fmta([[#include "<>"]], { i(1, 'lib_name') }))
+    s({ trig = '^incs', regTrig = true }, fmta([[#include "<>"]], { i(0, 'lib_name') }))
 
 local one_line_comment = s('/* ', fmta([[/* <> */]], { i(0) }))
 local multyline_comment = s(
