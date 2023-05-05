@@ -6,7 +6,7 @@ return {
         { 'tami5/lspsaga.nvim' },
         { 'ray-x/lsp_signature.nvim' },
     },
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp' },
     keys = {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },
@@ -62,6 +62,7 @@ return {
             on_attach = on_attach,
             filetypes = { 'yaml' },
         })
+
         -- C -------------------------------------------------------
         nvim_lsp.clangd.setup({
             on_attach = on_attach,

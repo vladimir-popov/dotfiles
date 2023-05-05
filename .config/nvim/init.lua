@@ -42,9 +42,9 @@ vim.api.nvim_create_autocmd({ 'BufLeave', 'FocusLost', 'InsertEnter', 'WinLeave'
 -- turn on 'global' statusline
 vim.opt.laststatus = 3
 
--- always show sign column 
+-- always show sign column
 -- (for git hunks and lsp errors)
-vim.o.signcolumn = "yes"
+vim.o.signcolumn = 'yes'
 
 -- do not wrap lines
 vim.opt.wrap = false
@@ -53,12 +53,12 @@ vim.opt.wrap = false
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
 
+-- use syntax for folding by default
+vim.opt.syntax = 'on'
+vim.opt.foldmethod = 'syntax'
+
 -- open all folds on the start
 vim.opt.foldenable = false
-
--- use syntax for folding by default
-vim.opt.syntax='on'
-vim.opt.foldmethod = 'syntax'
 
 -- Expand TABs to spaces.
 vim.opt.expandtab = true
@@ -77,14 +77,14 @@ vim.opt.textwidth = 100
 
 -- Do not comment a new line
 --  t       Auto-wrap text using textwidth
---  c       Auto-wrap comments using textwidth, 
+--  c       Auto-wrap comments using textwidth,
 --          inserting the current comment
 --          leader automatically.
 --  r       Automatically insert the current comment leader after hitting
 --          <Enter> in Insert mode.
---  o       Automatically insert the current comment leader after hitting 
+--  o       Automatically insert the current comment leader after hitting
 --          'o' or 'O' in Normal mode.
-vim.opt.formatoptions:remove({'c', 'r', 'o'})
+vim.opt.formatoptions:remove({ 'c', 'r', 'o' })
 
 -- a comma separated list of options for Insert mode completion
 -- menuone  - use a popup menu to show the possible completions,
@@ -145,3 +145,4 @@ require('lazy').setup('plugins', {
 })
 
 vim.cmd('colorscheme catppuccin')
+vim.opt.background = 'dark'

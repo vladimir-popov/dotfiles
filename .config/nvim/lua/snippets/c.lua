@@ -28,7 +28,7 @@ local func = s(
                 return snip.captures[1]
             end),
             i(1, 'function_name'),
-            i(2, 'args'),
+            i(2),
             i(0),
         }
     )

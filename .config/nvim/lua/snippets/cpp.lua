@@ -1,0 +1,1 @@
+/Users/vladimir/.config/nvim/lua/snippets/c.lua

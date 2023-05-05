@@ -7,8 +7,18 @@ return {
             on_attach = function(bufnr)
                 local wk = require('which-key')
                 wk.register({
-                    ['<leader>hs'] = { 'Gitsigns stage_hunk<CR>', 'Stage the hunk' },
-                    ['<leader>hu'] = { 'Gitsigns reset_hunk<CR>', 'Reset the hunk' },
+                    ['<leader>hs'] = {
+                        function()
+                            gs.stage_hunk({ vim.fn.line('.'), vim.fn.line('v') })
+                        end,
+                        'Stage the hunk',
+                    },
+                    ['<leader>hu'] = {
+                        function()
+                            gs.reset_hunk({ vim.fn.line('.'), vim.fn.line('v') })
+                        end,
+                        'Reset the hunk',
+                    },
                     ['[h'] = { gs.prev_hunk, 'Go to the previous hunk' },
                     [']h'] = { gs.next_hunk, 'Go to the next hunk' },
                     ['<leader>hp'] = { gs.preview_hunk, 'Preview the hunk' },

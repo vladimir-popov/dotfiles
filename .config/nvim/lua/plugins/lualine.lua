@@ -68,7 +68,6 @@ local cosmos_theme = {
 }
 
 local function toggle_spell()
-    println('! ' .. vim.o.spell)
     vim.o.spell = not vim.o.spell
 end
 
@@ -107,8 +106,8 @@ return {
                 'diagnostics',
                 { 'ex.lsp.all', icons_only = true, on_click = toggle_spell },
                 'fileformat',
+                'encoding',
                 { 'filetype', icons_enabled = false },
-                { 'location', on_click = toggle_spell },
             },
             lualine_z = {
                 'progress',
@@ -118,12 +117,18 @@ return {
             lualine_a = { 'mode' },
             lualine_b = { 'filename' },
         },
-        tabline = {
-            lualine_b = {
-                { 'buffers', buffers_color = { active = 'lualine_a_normal' } },
+        winbar = {
+            lualine_a = {
+                'filename',
             },
             lualine_y = {
-                'ex.spellcheck',
+                { 'ex.spellcheck', on_click = toggle_spell },
+                'location',
+            },
+        },
+        inactive_winbar = {
+            lualine_c = {
+                'filename',
             },
         },
     },

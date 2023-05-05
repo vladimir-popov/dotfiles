@@ -42,6 +42,13 @@ return {
             type = 'executable',
             command = '/opt/homebrew/opt/llvm/bin/lldb-vscode',
             name = 'lldb',
+            env = {
+                LLDB_LAUNCH_FLAG_LAUNCH_IN_TTY = 'YES',
+            },
+            attach = {
+                pidProperty = 'pid',
+                pidSelect = 'ask',
+            },
         }
         dap.configurations.c = {
             {
@@ -50,10 +57,19 @@ return {
                 request = 'launch',
                 program = program,
                 cwd = '${workspaceFolder}',
-                stopOnEntry = false,
+                args = {},
+                stopOnEntry = true,
+                runInTerminal = false,
+            },
+            {
+                name = 'Attach to process',
+                type = 'lldb',
+                request = 'attach',
+                pid = require('dap.utils').pick_process,
                 args = {},
             },
         }
+        dap.configurations.cpp = dap.configurations.c
     end,
     keys = {
         {
@@ -72,6 +88,16 @@ return {
             desc = 'Terminate debug session',
         },
         {
+            '<space>dd',
+            ':lua require"dap".continue()<cr>',
+            desc = 'Launching debug sessions and resuming execution',
+        },
+        {
+            '<space>dt',
+            ':lua require"dap".terminate()<cr>',
+            desc = 'Terminate debug session',
+        },
+        {
             '<space>di',
             ':lua require"dap".step_into()<cr>',
             desc = 'Step into',
@@ -80,11 +106,6 @@ return {
             '<space>do',
             ':lua require"dap".step_over()<cr>',
             desc = 'Step over',
-        },
-        {
-            '<space>dd',
-            ':lua require"dap".continue()<cr>',
-            desc = 'Launching debug sessions and resuming execution',
         },
         {
             '<space>db',
