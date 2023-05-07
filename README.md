@@ -19,6 +19,8 @@ brew install --cask alacritty
 brew install tmux
 # To reattach process (e.g., tmux) to background, the follow should be installed:
 brew install reattach-to-user-namespace
+# Install plugin manager and then install plugins: <C-b>I
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 # Git
 brew install git
