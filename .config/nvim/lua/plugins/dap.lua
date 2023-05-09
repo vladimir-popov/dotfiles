@@ -30,7 +30,7 @@ end
 
 return {
     'mfussenegger/nvim-dap',
-    ft = { 'c' },
+    ft = { 'c', 'cpp' },
     config = function()
         local dap = require('dap')
         -- Change BP icon
@@ -73,19 +73,29 @@ return {
     end,
     keys = {
         {
-            '<F21>', -- Shift+F9
+            '<F9>',
             ':lua require"dap".continue()<cr>',
             desc = 'Launching debug sessions and resuming execution',
-        },
-        {
-            '<F9>',
-            ':lua require"dap".run_last()<cr>',
-            desc = 'Re-runs the last debug adapter / configuration that ran using',
         },
         {
             '<F33>', -- Ctrl+F9
             ':lua require"dap".terminate()<cr>',
             desc = 'Terminate debug session',
+        },
+        {
+            '<F6>',
+            ':lua require"dap".step_out()<cr>',
+            desc = 'Step out',
+        },
+        {
+            '<F7>',
+            ':lua require"dap".step_into()<cr>',
+            desc = 'Step into',
+        },
+        {
+            '<F8>',
+            ':lua require"dap".step_over()<cr>',
+            desc = 'Step over',
         },
         {
             '<space>dd',
@@ -96,6 +106,11 @@ return {
             '<space>dt',
             ':lua require"dap".terminate()<cr>',
             desc = 'Terminate debug session',
+        },
+        {
+            '<space>du',
+            ':lua require"dap".step_out()<cr>',
+            desc = 'Step out',
         },
         {
             '<space>di',

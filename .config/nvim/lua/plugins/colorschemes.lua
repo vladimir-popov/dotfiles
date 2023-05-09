@@ -6,8 +6,12 @@ return {
         name = 'catppuccin',
         event = 'VeryLazy',
         config = function()
-            vim.g.catppuccin_flavour = 'macchiato'
+            vim.g.catppuccin_flavour = 'mocha'
             require('catppuccin').setup({
+                background = {
+                    light = 'latte',
+                    dark = 'mocha',
+                },
                 custom_highlights = {
                     LspReferenceRead = { bg = '#374b7e' },
                     LspReferenceText = { bg = '#374b7e' },

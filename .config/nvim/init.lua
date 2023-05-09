@@ -146,3 +146,4 @@ require('lazy').setup('plugins', {
 
 vim.cmd('colorscheme catppuccin')
 vim.opt.background = 'dark'
+vim.cmd[[hi Folded ctermfg=102 guifg=#878787 guibg=NONE ctermbg=NONE]]

@@ -8,15 +8,11 @@ return {
                 local wk = require('which-key')
                 wk.register({
                     ['<leader>hs'] = {
-                        function()
-                            gs.stage_hunk({ vim.fn.line('.'), vim.fn.line('v') })
-                        end,
+                        gs.stage_hunk,
                         'Stage the hunk',
                     },
                     ['<leader>hu'] = {
-                        function()
-                            gs.reset_hunk({ vim.fn.line('.'), vim.fn.line('v') })
-                        end,
+                        gs.reset_hunk,
                         'Reset the hunk',
                     },
                     ['[h'] = { gs.prev_hunk, 'Go to the previous hunk' },
@@ -34,6 +30,20 @@ return {
                     },
                     ['<leader>hd'] = { gs.diffthis, 'Show changes' },
                 }, { buffer = bufnr })
+                wk.register({
+                    ['<leader>hs'] = {
+                        function()
+                            gs.stage_hunk({ vim.fn.line('.'), vim.fn.line('v') })
+                        end,
+                        'Stage the hunk',
+                    },
+                    ['<leader>hu'] = {
+                        function()
+                            gs.reset_hunk({ vim.fn.line('.'), vim.fn.line('v') })
+                        end,
+                        'Reset the hunk',
+                    },
+                }, { mode = 'v', buffer = bufnr })
             end,
             signs = {
                 add = { text = '+' },
