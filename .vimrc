@@ -29,10 +29,6 @@ let g:PaperColor_Theme_Options = {
 Plug 'NLKNguyen/papercolor-theme'
 " }}}
 
-" -- Nightfox theme ---------------------------------------------------------{{{
-Plug 'EdenEast/nightfox.nvim'
-" }}}
-
 " -- Auto-save --------------------------------------------------------------{{{
 let g:auto_save = 1  " enable AutoSave on Vim startup
 Plug '907th/vim-auto-save'
