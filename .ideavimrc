@@ -79,7 +79,6 @@ nnoremap <leader>gd :action Compare.LastVersion<CR>
 nnoremap <leader>gr :action ChangesView.Revert<CR>
 
 " Other
-inoremap jj <esc>
 inoremap <C-p> <esc>pi
 inoremap <c-i> <esc>I
 nnoremap <c-a> <esc>A

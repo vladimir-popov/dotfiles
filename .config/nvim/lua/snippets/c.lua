@@ -15,6 +15,30 @@ local multyline_comment = s(
     )
 )
 
+local for_loop = s(
+    'forc',
+    fmt(
+        [[for (int {} = {}; {} < {}; {}++)
+  {{
+    {}
+  }}
+]],
+        { i(1, 'i'), i(2, '0'), i(3, 'i'), i(4), i(5, 'i'), i(0) }
+    )
+)
+
+local for_loop_i = s(
+    'fori',
+    fmta(
+        [[for (int i = 0; i << <>; i++)
+  {
+    <>
+  }
+]],
+        { i(1), i(0) }
+    )
+)
+
 local func = s(
     { trig = '^([%w_]+)fun', regTrig = true },
     fmta(
@@ -41,6 +65,8 @@ local autosnippets = {
     one_line_comment,
     multyline_comment,
     func,
+    for_loop,
+    for_loop_i,
 }
 
 return snippets, autosnippets

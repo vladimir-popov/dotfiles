@@ -58,7 +58,7 @@ return {
                 program = program,
                 cwd = '${workspaceFolder}',
                 args = {},
-                stopOnEntry = true,
+                stopOnEntry = false,
                 runInTerminal = false,
             },
             {

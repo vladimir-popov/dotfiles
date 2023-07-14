@@ -8,6 +8,7 @@ return {
         config = function()
             vim.g.catppuccin_flavour = 'mocha'
             require('catppuccin').setup({
+                no_underline = true,
                 background = {
                     light = 'latte',
                     dark = 'mocha',

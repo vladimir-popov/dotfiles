@@ -18,13 +18,13 @@ return {
                     ['[h'] = { gs.prev_hunk, 'Go to the previous hunk' },
                     [']h'] = { gs.next_hunk, 'Go to the next hunk' },
                     ['<leader>hp'] = { gs.preview_hunk, 'Preview the hunk' },
-                    ['<leader>hb'] = {
+                    ['<leader>hB'] = {
                         function()
                             gs.blame_line({ full = true })
                         end,
                         'Show git blame',
                     },
-                    ['<leader>tb'] = {
+                    ['<leader>hb'] = {
                         gs.toggle_current_line_blame,
                         'Show git blame for the current line',
                     },

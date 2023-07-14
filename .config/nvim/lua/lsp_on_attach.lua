@@ -39,10 +39,6 @@ local keys_mapping = function(client, bufnr)
             '<cmd>lua vim.lsp.buf.hover()<CR>',
             'show description of the symbol under cursor',
         },
-        ['<space>r'] = {
-            '<cmd>Lspsaga lsp_finder<CR>',
-            'A finder to show the definition, reference and implementation',
-        },
         ['<c-p>'] = {
             '<cmd>lua vim.lsp.buf.signature_help()<CR>',
             'show signature of current method',
@@ -53,6 +49,7 @@ local keys_mapping = function(client, bufnr)
         },
         ['<space>rn'] = {
             '<cmd>lua vim.lsp.buf.rename()<CR>',
+            -- '<cmd>Lspsaga rename<cr>',
             'rename the symbol under cursor',
         },
         ['<space>qf'] = {
@@ -110,7 +107,7 @@ local keys_mapping = function(client, bufnr)
 end
 
 return function(client, bufnr)
-    highlight_setup(client, bufnr)
+    highlight_setup(client)
     keys_mapping(client, bufnr)
     require('lsp_signature').on_attach({ bind = true }, bufnr)
 end

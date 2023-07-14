@@ -65,8 +65,8 @@ return {
             end
             return {
                 provider_selector = function(bufnr, filetype, buftype)
-                    return {'treesitter', 'indent'}
-                end
+                    return { 'treesitter', 'indent' }
+                end,
             }
         end,
     },
@@ -126,6 +126,14 @@ return {
             'DiffviewToggleFiles',
             'DiffviewFileHistory',
         },
+    },
+    -- Markdown Preview
+    {
+        'iamcco/markdown-preview.nvim',
+        build = function()
+            vim.fn['mkdp#util#install']()
+        end,
+        cmd = { 'MarkdownPreview' },
     },
     -- koka lang
     { 'Nymphium/vim-koka', lazy = false },

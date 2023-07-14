@@ -96,9 +96,20 @@ return {
             desc = 'show highlights',
         },
         {
-            '<space>gg',
+            '<space>gG',
             "<cmd>lua require('telescope.builtin').live_grep()<CR>",
             desc = 'live grep',
+        },
+        {
+            '<space>gg',
+            "<cmd>lua require('telescope.builtin').grep_string()<CR>",
+            desc = 'use grep to looking for cword',
+        },
+        {
+            '<space>gg',
+            "<cmd>lua require('telescope.builtin').grep_string()<CR>",
+            mode='v',
+            desc = 'use grep to looking for selection',
         },
         {
             '<leader>m',

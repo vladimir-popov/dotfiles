@@ -16,11 +16,11 @@
 [diff]
   tool = vimdiff
 [difftool "vimdiff"]
-  cmd = vim -d "$LOCAL" "$REMOTE"
+  cmd = nvim -d "$LOCAL" "$REMOTE"
 [mergetool "vimdiff"]
-  cmd = vim -d "$LOCAL" "$MERGED" "$REMOTE"
+  cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
 [core]
-	editor = vim
+	editor = nvim
 [pager]
 	branch = false
 	log = false
