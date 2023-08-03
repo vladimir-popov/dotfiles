@@ -4,6 +4,11 @@ return {
         'vladimir-popov/vim-replace',
         lazy = false,
     },
+    -- better quick list
+    {
+        'kevinhwang91/nvim-bqf',
+        ft = 'qf',
+    },
     -- autosave
     {
         'Pocco81/auto-save.nvim',

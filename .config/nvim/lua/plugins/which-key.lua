@@ -27,6 +27,7 @@ return {
             ['qw'] = { ':close<CR>', 'Close the current window' },
             ['qQ'] = { ':bd<CR>', 'Close the current buffer and window' },
             ['QQ'] = { ':bd!<CR>', 'Force close the current buffer and window' },
+            ['qo'] = { ':copen<CR>', 'Open quickfix window' },
             ['qc'] = { ':cclose<CR>', 'Close quickfix window' },
             ['qh'] = { ':helpclose<cr>', 'Close the help window' },
 

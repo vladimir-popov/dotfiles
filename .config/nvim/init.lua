@@ -47,6 +47,12 @@ set undolevels=1000
 set undoreload=10000
 ]])
 
+-- use rg as grep
+vim.cmd [[
+set grepprg=rg\ --vimgrep\ --no-heading\ --smart-case
+set grepformat+=%f:%l:%c:%m
+]]
+
 -- turn on 'global' statusline
 vim.opt.laststatus = 3
 
