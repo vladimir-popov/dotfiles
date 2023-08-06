@@ -6,7 +6,7 @@ return {
         { 'tami5/lspsaga.nvim' },
         { 'ray-x/lsp_signature.nvim' },
     },
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'java' },
     keys = {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },
@@ -66,6 +66,17 @@ return {
         -- C -------------------------------------------------------
         nvim_lsp.clangd.setup({
             on_attach = on_attach,
+        })
+
+        -- Java ----------------------------------------------------
+        nvim_lsp.jdtls.setup({
+            on_attach = on_attach,
+            -- cmd = { 'jdtls', "-configuration", "~/.local/opt/jdtls-launcher/jdtls/config_mac" },
+            cmd = { 'jdtls' },
+            root_dir = function(fname)
+                return nvim_lsp.util.root_pattern('pom.xml', 'gradle.build', '.git')(fname)
+                    or vim.fn.getcwd()
+            end,
         })
     end,
 }

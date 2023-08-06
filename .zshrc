@@ -146,7 +146,7 @@ if [ -x "$(command -v kubectl)" ]; then
    source <(kubectl completion zsh)
 fi
 
-export PATH="$HOME/.pyenv/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$PATH"
 export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
 # eval "$(pyenv init -)"
 # eval "$(pyenv virtualenv-init -)"
@@ -229,7 +229,7 @@ n ()
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
 # The next line updates PATH for the Google Cloud SDK.
-if [ -f '/Users/vladimir/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vladimir/google-cloud-sdk/path.zsh.inc'; fi
+if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 
 # The next line enables shell command completion for gcloud.
-if [ -f '/Users/vladimir/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vladimir/google-cloud-sdk/completion.zsh.inc'; fi
+if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
