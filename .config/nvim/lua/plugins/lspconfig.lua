@@ -67,16 +67,5 @@ return {
         nvim_lsp.clangd.setup({
             on_attach = on_attach,
         })
-
-        -- Java ----------------------------------------------------
-        nvim_lsp.jdtls.setup({
-            on_attach = on_attach,
-            -- cmd = { 'jdtls', "-configuration", "~/.local/opt/jdtls-launcher/jdtls/config_mac" },
-            cmd = { 'jdtls' },
-            root_dir = function(fname)
-                return nvim_lsp.util.root_pattern('pom.xml', 'gradle.build', '.git')(fname)
-                    or vim.fn.getcwd()
-            end,
-        })
     end,
 }
