@@ -4,7 +4,7 @@ return {
         { 'tami5/lspsaga.nvim' },
         { 'ray-x/lsp_signature.nvim' },
     },
-    ft = { 'scala', 'sbt' },
+    ft = { 'scala', 'sbt', 'java' },
     keys = {
         {
             '<leader>]',
@@ -25,16 +25,16 @@ return {
         metals_config.settings = {
             showImplicitArguments = true,
             showInferredType = false,
+            ['javaFormat.eclipseConfigPath'] = 'formatters/eclipse-formatter.xml',
+            ['javaFormat.eclipseProfile'] = 'Eclipse',
         }
 
-        metals_config.handlers['textDocument/publishDiagnostics'] = vim.lsp.with(
-            vim.lsp.diagnostic.on_publish_diagnostics,
-            {
+        metals_config.handlers['textDocument/publishDiagnostics'] =
+            vim.lsp.with(vim.lsp.diagnostic.on_publish_diagnostics, {
                 virtual_text = {
                     prefix = '',
                 },
-            }
-        )
+            })
 
         metals_config.handlers['metals/executeClientCommand'] = function(a0, result)
             if
@@ -75,7 +75,7 @@ return {
         local aug_id = vim.api.nvim_create_augroup('scalametals', { clear = true })
         vim.api.nvim_create_autocmd('FileType', {
             group = aug_id,
-            pattern = { 'scala', 'sbt' },
+            pattern = { 'scala', 'sbt', 'java' },
             callback = function()
                 require('metals').initialize_or_attach(metals_config)
             end,

@@ -15,7 +15,7 @@ local keys_mapping = function(client, bufnr)
     local wk = require('which-key')
     wk.register({
         ['<leader>f'] = {
-            client.name ~= 'lua_ls' and '<cmd>lua vim.lsp.buf.format({ async = true })<CR>'
+            client.name ~= 'lua_ls' and '<cmd>lua vim.lsp.buf.format()<CR>'
                 or ':silent !stylua --config-path ~/.stylua.default %<cr>',
             'format current buffer',
         },

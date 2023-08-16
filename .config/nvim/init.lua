@@ -48,10 +48,10 @@ set undoreload=10000
 ]])
 
 -- use rg as grep
-vim.cmd [[
+vim.cmd([[
 set grepprg=rg\ --vimgrep\ --no-heading\ --smart-case
 set grepformat+=%f:%l:%c:%m
-]]
+]])
 
 -- turn on 'global' statusline
 vim.opt.laststatus = 3
@@ -73,21 +73,6 @@ vim.opt.foldmethod = 'syntax'
 
 -- open all folds on the start
 vim.opt.foldenable = false
-
--- Expand TABs to spaces.
-vim.opt.expandtab = true
-
--- Set the width of a TAB.
-vim.opt.tabstop = 2
-
--- Indents will have a width of:
-vim.opt.shiftwidth = 2
-
--- Sets the number of columns for a TAB:
-vim.opt.softtabstop = 2
-
--- Set default textwidth
-vim.opt.textwidth = 100
 
 vim.api.nvim_create_autocmd({ 'BufNewFile', 'BufRead' }, {
     pattern = { '*' },

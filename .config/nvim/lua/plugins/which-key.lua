@@ -19,10 +19,6 @@ return {
         -- }, { mode = "" })
 
         wk.register({
-            ['jj'] = { '<esc>', 'use jj to comeback to the normal mode' },
-        }, { mode = 'i' })
-
-        wk.register({
             ['qq'] = { ':bp<bar>bd#<CR>', 'Close the current buffer' },
             ['qw'] = { ':close<CR>', 'Close the current window' },
             ['qQ'] = { ':bd<CR>', 'Close the current buffer and window' },

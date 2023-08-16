@@ -5,6 +5,7 @@ return {
         { 'ray-x/lsp_signature.nvim' },
     },
     ft = { 'java' },
+    enabled = false,
     config = function()
         local jdtlsau = vim.api.nvim_create_augroup('jdtlsau', { clear = true })
         vim.api.nvim_create_autocmd({ 'FileType' }, {
