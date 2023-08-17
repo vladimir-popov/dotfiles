@@ -6,7 +6,7 @@ return {
         { 'tami5/lspsaga.nvim' },
         { 'ray-x/lsp_signature.nvim' },
     },
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'java' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp' },
     keys = {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },

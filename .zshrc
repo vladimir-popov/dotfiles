@@ -2,6 +2,7 @@ zmodload zsh/zprof
 
 alias v=nvim
 alias lg=lazygit
+alias scli=scala-cli
 
 # bindkey -l    --- to list all variants
 # bindkey -M    --- to read key binds in specified scheme
