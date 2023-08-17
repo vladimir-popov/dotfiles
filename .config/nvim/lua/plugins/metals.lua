@@ -25,8 +25,8 @@ return {
         metals_config.settings = {
             showImplicitArguments = true,
             showInferredType = false,
-            ['javaFormat.eclipseConfigPath'] = 'formatters/eclipse-formatter.xml',
-            ['javaFormat.eclipseProfile'] = 'Eclipse',
+            ['javaFormat.eclipseConfigPath'] = vim.fn.stdpath("config") .. '/formatters/eclipse-formatter.xml',
+            ['javaFormat.eclipseProfile'] = 'GoogleStyle',
         }
 
         metals_config.handlers['textDocument/publishDiagnostics'] =
