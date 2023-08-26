@@ -160,26 +160,25 @@ export DOCKER_HOST="unix://${HOME}/.colima/docker.sock"
 # ==============================================================================
 #                               nnn configuration
 # ==============================================================================
+export PROJECTS=$HOME'/Projects'
+export CONFIGS_PATH=$HOME'/.config'
+export LOCAL_PATH=$HOME'/.local'
+export NVIM_PATH=$CONFIGS_PATH'/nvim'
+export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
+
 
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
-export PROJECTS=$HOME'/Projects'
-export VIM_PATH=$HOME'/.vim'
-export NVIM_PATH=$HOME'/.config/nvim'
-export NVIM_PLUG=$HOME'/.local/share/nvim/site/pack/packer/start'
-
-B_HOME='h:'$HOME';'
 B_PROJECTS='p:'$PROJECTS';'
-B_VIM='v:'$VIM_PATH'/plugged;'
-B_NVIM='V:'$NVIM_PATH';'
-B_NVIMP='P:'$NVIM_PLUG';'
+B_NVIM='v:'$NVIM_PATH';'
+B_NVIMP='V:'$NVIM_PLUG';'
 
 if [[ -f "$HOME/Projects/dash/" ]]; then
   B_DASH='d:'$PROJECTS'/dash;'
   B_DASH_WIKI='w:'$PROJECTS'/dash.wiki;'
 fi
 
-export NNN_BMS=$B_HOME$B_PROJECTS$B_DASH$B_DASH_WIKI$B_VIM$B_NVIM$B_GDISK$B_SETTINGS$B_NVIMP
+export NNN_BMS=$B_PROJECTS$B_DASH$B_DASH_WIKI$B_NVIM$B_NVIMP
 
 export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 
