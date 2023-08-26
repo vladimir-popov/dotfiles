@@ -15,7 +15,10 @@ vim.opt.cursorline = true
 vim.opt.number = true
 
 -- the minimal width of the left column
-vim.opt.foldcolumn = '2'
+vim.o.foldcolumn = '2'
+vim.o.foldlevel = 99 -- Using ufo provider need a large value, feel free to decrease the value
+vim.o.foldlevelstart = 99
+vim.o.foldenable = true
 
 -- turn relative line numbers on only for active window
 -- and not in diff mode
@@ -69,10 +72,10 @@ vim.opt.smartcase = true
 
 -- use syntax for folding by default
 vim.opt.syntax = 'on'
-vim.opt.foldmethod = 'syntax'
+-- vim.opt.foldmethod = 'syntax'
 
 -- open all folds on the start
-vim.opt.foldenable = false
+-- vim.opt.foldenable = false
 
 vim.api.nvim_create_autocmd({ 'BufNewFile', 'BufRead' }, {
     pattern = { '*' },
