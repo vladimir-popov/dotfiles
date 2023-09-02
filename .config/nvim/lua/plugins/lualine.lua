@@ -88,7 +88,7 @@ return {
 				left = "%#lualine_a_normal#|",
 				right = "%#lualine_a_normal#|",
 			},
-			section_separators = { left = " ", right = " " },
+			section_separators = { left = "", right = "" },
 			theme = cosmos_theme,
 		},
 		sections = {
@@ -122,7 +122,7 @@ return {
 				"filename",
 			},
 			lualine_y = {
-				{ "ex.spellcheck", on_click = toggle_spell },
+				{ "ex.spellcheck", icon = "󰓆", on_click = toggle_spell },
 				"location",
 			},
 		},
