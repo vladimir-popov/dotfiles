@@ -25,7 +25,7 @@ return {
 	-- Comments
 	{
 		"numToStr/Comment.nvim",
-		ft = { "lua", "vim", "scala", "c" },
+		ft = { "lua", "vim", "scala", "c", "java" },
 		opts = {
 			toggler = {
 				---Line-comment toggle keymap
