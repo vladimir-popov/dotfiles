@@ -88,7 +88,7 @@ return {
 				left = "%#lualine_a_normal#|",
 				right = "%#lualine_a_normal#|",
 			},
-			section_separators = { left = "", right = "" },
+			section_separators = { left = " ", right = " " },
 			theme = cosmos_theme,
 		},
 		sections = {
