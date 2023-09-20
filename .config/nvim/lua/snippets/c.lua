@@ -25,16 +25,20 @@ local for_loop = s(
 	)
 )
 
-local for_loop_i = s(
-	"fori",
-	fmta(
-		[[for (int i = 0; i << <>; i++)
-  {
-    <>
-  }
-]],
-		{ i(1), i(0) }
-	)
+local for_loop_x = s(
+    { trig = 'for(%a)', regTrig = true },
+    fmt(
+        [[for (int {var} = 0; {var} < {}; {var}++)]],
+        {
+            var = f(function(_, snip)
+                return snip.captures[1]
+            end),
+            i(0),
+        },
+        {
+            repeat_duplicates = true,
+        }
+    )
 )
 
 local func = s(
@@ -56,7 +60,9 @@ local func = s(
 	)
 )
 
-local snippets = {}
+local snippets = {
+	for_loop_x,
+}
 local autosnippets = {
 	include_std,
 	include_custom,
@@ -64,7 +70,6 @@ local autosnippets = {
 	multyline_comment,
 	func,
 	for_loop,
-	for_loop_i,
 }
 
 return snippets, autosnippets

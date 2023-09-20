@@ -18,6 +18,22 @@ local main_class = s(
     )
 )
 
+local for_loop_x = s(
+    { trig = 'for(%a)', regTrig = true },
+    fmt(
+        [[for (int {var} = 0; {var} < {}; {var}++)]],
+        {
+            var = f(function(_, snip)
+                return snip.captures[1]
+            end),
+            i(0),
+        },
+        {
+            repeat_duplicates = true,
+        }
+    )
+)
+
 local main_function = s(
     'main',
     fmta(
@@ -32,7 +48,9 @@ local println = s('println', fmta('System.out.println(<>)', { i(0) }))
 
 local algs4 = s('import algs', t('import edu.princeton.cs.algs4.'))
 
-local snippets = {}
+local snippets = {
+    for_loop_x,
+}
 local autosnippets = {
     main_class,
     main_function,

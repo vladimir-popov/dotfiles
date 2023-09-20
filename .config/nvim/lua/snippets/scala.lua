@@ -10,8 +10,10 @@ local forc = s(
 
 local cats = s('cats', t('import cats.implicits._'))
 
+local asScala = s('asscala', t('import scala.jdk.CollectionConverters._'))
+
 local scalatest_freespec = s(
-    'scalatest',
+    'scalatestfreespec',
     fmta(
         [[import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.should.Matchers
@@ -32,6 +34,7 @@ class <>Test extends AnyFreeSpec with Matchers {
 
 local snippets = {
     cats,
+    asScala,
     scalatest_freespec,
 }
 local autosnippets = {
