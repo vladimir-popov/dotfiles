@@ -4,14 +4,12 @@ return {
 	"nvim-telescope/telescope.nvim",
 	opts = {
 		pickers = {
-			-- <space>a
 			find_files = {
 				sort_lastused = true,
 				theme = "dropdown",
 				previewer = false,
 				layout_config = { width = 0.9 },
 			},
-			-- <space>e
 			buffers = {
 				-- sort_lastused = true,
 				theme = "dropdown",
@@ -20,7 +18,6 @@ return {
 				path_display = { "smart" },
 				layout_strategy = "center",
 			},
-			-- <space>o
 			oldfiles = {
 				sort_lastused = true,
 				-- previewer = false,
@@ -28,16 +25,13 @@ return {
 				theme = "dropdown",
 				layout_config = { width = 0.9 },
 			},
-			-- <space>h
 			help_tags = {
 				previewer = false,
 				theme = "dropdown",
 			},
-			-- <space>s
 			lsp_document_symbols = {
 				theme = "dropdown",
 			},
-			-- <space>d
 			lsp_workspace_diagnostics = {
 				severity = "error",
 			},
@@ -96,21 +90,26 @@ return {
 			desc = "show highlights",
 		},
 		{
-			"<space>gG",
+			"<space>gg",
 			"<cmd>lua require('telescope.builtin').live_grep()<CR>",
 			desc = "live grep",
 		},
 		{
-			"<space>gg",
-			"<cmd>lua require('telescope.builtin').grep_string()<CR>",
-			desc = "use grep to looking for cword",
+			"<space>n",
+			"<cmd>lua require('telescope.builtin').lsp_dynamic_workspace_symbols()<CR>",
+			desc = "find class",
 		},
-		{
-			"<space>gg",
-			"<cmd>lua require('telescope.builtin').grep_string()<CR>",
-			mode = "v",
-			desc = "use grep to looking for selection",
-		},
+		-- {
+		-- 	"<space>gg",
+		-- 	"<cmd>lua require('telescope.builtin').grep_string()<CR>",
+		-- 	desc = "use grep to looking for cword",
+		-- },
+		-- {
+		-- 	"<space>gg",
+		-- 	"<cmd>lua require('telescope.builtin').grep_string()<CR>",
+		-- 	mode = "v",
+		-- 	desc = "use grep to looking for selection",
+		-- },
 		{
 			"<leader>m",
 			"<cmd>Telescope metals commands<CR>",
