@@ -117,19 +117,19 @@ return {
 			lualine_a = { "mode" },
 			lualine_b = { "filename" },
 		},
-		winbar = {
-			lualine_a = {
-				"filename",
-			},
-			lualine_y = {
-				{ "ex.spellcheck", icon = "󰓆", on_click = toggle_spell },
-				"location",
-			},
-		},
-		inactive_winbar = {
-			lualine_c = {
-				"filename",
-			},
-		},
+		-- winbar = {
+		-- 	lualine_a = {
+		-- 		"filename",
+		-- 	},
+		-- 	lualine_y = {
+		-- 		{ "ex.spellcheck", icon = "󰓆", on_click = toggle_spell },
+		-- 		"location",
+		-- 	},
+		-- },
+		-- inactive_winbar = {
+		-- 	lualine_c = {
+		-- 		"filename",
+		-- 	},
+		-- },
 	},
 }

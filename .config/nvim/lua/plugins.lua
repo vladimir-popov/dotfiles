@@ -1,5 +1,4 @@
 return {
-    { 'shortcuts/no-neck-pain.nvim', cmd = 'NoNeckPain' },
     -- replace selected
     {
         'vladimir-popov/vim-replace',
