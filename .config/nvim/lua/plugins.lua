@@ -144,6 +144,11 @@ return {
             vim.fn['mkdp#util#install']()
         end,
         cmd = { 'MarkdownPreview' },
+        config = function ()
+            vim.cmd([[
+            let g:mkdp_auto_close = 0
+        ]])
+        end
     },
     -- koka lang
     { 'Nymphium/vim-koka', lazy = false },

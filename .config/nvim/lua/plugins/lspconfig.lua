@@ -12,7 +12,7 @@ return {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },
     config = function()
-        require('neodev').setup({})
+        -- require('neodev').setup({})
         local nvim_lsp = require('lspconfig')
 
         -- LUA -----------------------------------------------------

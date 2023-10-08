@@ -19,6 +19,7 @@
   "lsp_signature.nvim": { "branch": "master", "commit": "bdf3dc7bb03edd25c2173e0e31c2fb122052ed23" },
   "lspkind-nvim": { "branch": "master", "commit": "57610d5ab560c073c465d6faf0c19f200cb67e6e" },
   "lspsaga.nvim": { "branch": "main", "commit": "5faeec9f2508d2d49a66c0ac0d191096b4e3fa81" },
+  "lualine-ex": { "branch": "main", "commit": "2fd73019d2ca40248dff22b0b559b9b71be7b0fb" },
   "lualine-lsp-progress": { "branch": "master", "commit": "56842d097245a08d77912edf5f2a69ba29f275d7" },
   "lualine.nvim": { "branch": "master", "commit": "45e27ca739c7be6c49e5496d14fcf45a303c3a63" },
   "markdown-preview.nvim": { "branch": "master", "commit": "02cc3874738bc0f86e4b91f09b8a0ac88aef8e96" },
