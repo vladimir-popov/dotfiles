@@ -14,6 +14,7 @@ return {
         'Pocco81/auto-save.nvim',
         lazy = false,
         config = true,
+        enabled = true
     },
     -- surround
     {
@@ -96,7 +97,7 @@ return {
         'mcchrish/nnn.vim',
         keys = {
             { '<c-n>', '<cmd>NnnPicker<cr>' },
-            { '<c-b>', '<cmd>NnnPicker %:p:h<cr>' },
+            { '<c-N>', '<cmd>NnnPicker %:p:h<cr>' },
         },
         config = function()
             vim.g['nnn#session'] = 'local'
@@ -111,6 +112,7 @@ return {
     {
         'folke/trouble.nvim',
         config = true,
+        enabled = false
     },
     -- Colorize
     {

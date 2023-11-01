@@ -67,8 +67,12 @@ local cosmos_theme = {
     },
 }
 
-local function toggle_spell()
-    vim.o.spell = not vim.o.spell
+local function icon_only(opts)
+    return vim.tbl_extend('keep', {
+        '%{""}',
+        draw_empty = true,
+        separator = '',
+    }, opts)
 end
 
 return {
@@ -97,18 +101,29 @@ return {
                 { 'ex.cwd', padding = 0 },
             },
             lualine_b = {
-                { 'ex.relative_filename', padding = 0 },
+                { 'ex.relative_filename', padding = 0 , separator = '' },
+                icon_only({
+                    icon = { '', color = { fg = 'orange' } },
+                    cond = function()
+                        return not vim.bo.modifiable
+                    end,
+                }),
+                icon_only({
+                    icon = { ' ', color = { fg = '#d76380' } },
+                    cond = function()
+                        return vim.bo.modified
+                    end,
+                }),
             },
             lualine_c = { 'lsp_progress' },
 
             lualine_x = { 'ex.git.branch' },
             lualine_y = {
                 'diagnostics',
-                { 'ex.lsp.all', icons_only = true, on_click = toggle_spell },
+                { 'ex.lsp.all', icons_only = true, icons = { bufls = { 'p' } } },
                 'fileformat',
-                'encoding',
                 { 'filetype', icons_enabled = false },
-                { 'ex.spellcheck' },
+                { 'location' },
             },
             lualine_z = {
                 'progress',

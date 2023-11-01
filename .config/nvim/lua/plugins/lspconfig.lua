@@ -7,13 +7,14 @@ return {
         { 'ray-x/lsp_signature.nvim' },
         { 'folke/neodev.nvim' },
     },
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'proto' },
     keys = {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },
     config = function()
         -- require('neodev').setup({})
         local nvim_lsp = require('lspconfig')
+        local util = require('lspconfig.util')
 
         -- LUA -----------------------------------------------------
         nvim_lsp.lua_ls.setup({
@@ -68,6 +69,13 @@ return {
         -- C -------------------------------------------------------
         nvim_lsp.clangd.setup({
             on_attach = on_attach,
+            filetypes = { 'c', 'cpp', 'objc', 'objcpp', 'cuda' },
+        })
+
+        -- Protobuf-------------------------------------------------
+        nvim_lsp.bufls.setup({
+            on_attach = on_attach,
+            root_dir = util.root_pattern('buf.work.yaml', '.git')
         })
     end,
 }

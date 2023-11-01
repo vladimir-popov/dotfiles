@@ -1,6 +1,7 @@
 zmodload zsh/zprof
 
 alias v=nvim
+alias vc="v -c \"normal '0\""
 alias lg=lazygit
 alias scli=scala-cli
 
@@ -169,6 +170,7 @@ export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
 
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
+B_CONFIGS='c:'$CONFIGS_PATH';'
 B_PROJECTS='p:'$PROJECTS';'
 B_NVIM='v:'$NVIM_PATH';'
 B_NVIMP='V:'$NVIM_PLUG';'
@@ -178,7 +180,7 @@ if [[ -f "$HOME/Projects/dash/" ]]; then
   B_DASH_WIKI='w:'$PROJECTS'/dash.wiki;'
 fi
 
-export NNN_BMS=$B_PROJECTS$B_DASH$B_DASH_WIKI$B_NVIM$B_NVIMP
+export NNN_BMS=$B_CONFIGS$B_PROJECTS$B_DASH$B_DASH_WIKI$B_NVIM$B_NVIMP
 
 export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 
