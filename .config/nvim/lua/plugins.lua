@@ -14,7 +14,7 @@ return {
         'Pocco81/auto-save.nvim',
         lazy = false,
         config = true,
-        enabled = true
+        enabled = true,
     },
     -- surround
     {
@@ -112,7 +112,7 @@ return {
     {
         'folke/trouble.nvim',
         config = true,
-        enabled = false
+        enabled = false,
     },
     -- Colorize
     {
@@ -138,6 +138,19 @@ return {
             'DiffviewToggleFiles',
             'DiffviewFileHistory',
         },
+        keys = {
+            {
+                '<space>gh',
+                '<cmd>DiffviewFileHistory %<cr>',
+                desc = 'show git history of the current file',
+            },
+            {
+                '<space>gh',
+                ":'<,'>DiffviewFileHistory %<cr>",
+                desc = 'show git history of the select text',
+                mode = 'v',
+            },
+        },
     },
     -- Markdown Preview
     {
@@ -146,11 +159,33 @@ return {
             vim.fn['mkdp#util#install']()
         end,
         cmd = { 'MarkdownPreview' },
-        config = function ()
+        config = function()
             vim.cmd([[
             let g:mkdp_auto_close = 0
         ]])
-        end
+        end,
+    },
+    -- Switch projects
+    {
+        'ahmedkhalf/project.nvim',
+        config = function()
+            require('project_nvim').setup({})
+            require('telescope').load_extension('projects')
+        end,
+        dependencies = { 'nvim-telescope/telescope.nvim' },
+        cmd = { 'ProjectRoot' },
+        keys = {
+            {
+                '<space>pc',
+                ':ProjectRoot<cr>',
+                desc = 'Set cwd to the project root',
+            },
+            {
+                '<space>pp',
+                ":lua require'telescope'.extensions.projects.projects()<cr>",
+                desc = 'Run Telescope with list of projects',
+            },
+        },
     },
     -- koka lang
     { 'Nymphium/vim-koka', lazy = false },

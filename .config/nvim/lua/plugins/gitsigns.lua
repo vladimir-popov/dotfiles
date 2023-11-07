@@ -18,7 +18,7 @@ return {
 					["[h"] = { gs.prev_hunk, "Go to the previous hunk" },
 					["]h"] = { gs.next_hunk, "Go to the next hunk" },
 					["<leader>hp"] = { gs.preview_hunk, "Preview the hunk" },
-					["<leader>hB"] = {
+					["<space>gb"] = {
 						function()
 							gs.blame_line({ full = true })
 						end,

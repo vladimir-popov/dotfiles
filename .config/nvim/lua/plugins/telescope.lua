@@ -1,5 +1,6 @@
 return {
     'nvim-telescope/telescope.nvim',
+    dependencies = {"natecraddock/telescope-zf-native.nvim"},
     config = function()
         local actions = require('telescope.actions')
         require('telescope').setup({
@@ -13,17 +14,15 @@ return {
             pickers = {
                 find_files = {
                     sort_lastused = true,
-                    theme = 'dropdown',
-                    previewer = false,
+                    path_display = { 'smart' },
                     layout_config = { width = 0.9 },
                 },
                 buffers = {
                     theme = 'dropdown',
                     sort_lastused = true,
-                    -- previewer = false,
+                    previewer = false,
                     path_display = { 'smart' },
                     layout_strategy = 'center',
-                    -- delete buffer
                     mappings = {
                         i = {
                             ['<c-d>'] = actions.delete_buffer + actions.move_to_top,
@@ -32,9 +31,13 @@ return {
                 },
                 oldfiles = {
                     sort_lastused = true,
-                    -- previewer = false,
+                    previewer = false,
                     path_display = { 'smart' },
                     theme = 'dropdown',
+                    layout_config = { width = 0.9 },
+                },
+                live_grep = {
+                    path_display = { 'smart' },
                     layout_config = { width = 0.9 },
                 },
                 help_tags = {
@@ -42,21 +45,24 @@ return {
                     theme = 'dropdown',
                     mappings = {
                         i = {
-                            ['<CR>'] = actions.select_tab
-                        }
-                    }
+                            ['<CR>'] = actions.select_tab,
+                        },
+                    },
                 },
                 lsp_document_symbols = {
                     theme = 'dropdown',
                 },
                 lsp_workspace_diagnostics = {
                     severity = 'error',
+                    path_display = { 'smart' },
+                    layout_config = { width = 0.9 },
                 },
                 colorscheme = {
                     enable_preview = true,
                 },
             },
         })
+        require("telescope").load_extension("zf-native")
     end,
     keys = {
         {
@@ -71,22 +77,22 @@ return {
         },
         {
             '<space>fA',
-            "<cmd>lua require('telescope.builtin').find_files({ hidden = true})<CR>",
+            "<cmd>lua require('telescope.builtin').find_files({ hidden = true })<CR>",
             desc = 'find all files',
         },
         {
             '<space>fs',
-            "<cmd>lua require('telescope.builtin').find_files({search_file='*.scala'})<CR>",
+            "<cmd>lua require('telescope.builtin').find_files({search_file='*.scala', no_ignore = true, file_ignore_patterns = {'%.semanticdb'}, results_title = 'Scala files' })<CR>",
             desc = 'find scala files',
         },
         {
             '<space>fp',
-            "<cmd>lua require('telescope.builtin').find_files({search_file='*.proto'})<CR>",
+            "<cmd>lua require('telescope.builtin').find_files({search_file='*.proto', results_title = 'Protobuf files'})<CR>",
             desc = 'find proto files',
         },
         {
             '<space>fl',
-            "<cmd>lua require('telescope.builtin').find_files({search_file='*.lua'})<CR>",
+            "<cmd>lua require('telescope.builtin').find_files({search_file='*.lua', results_title = 'Lua files'})<CR>",
             desc = 'find lua files',
         },
         {
@@ -155,17 +161,17 @@ return {
             desc = 'find class',
         },
         {
+            '<space>si',
+            "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='interface'})<CR>",
+            desc = 'find interface',
+        },
+        {
             '<space>wd',
             "<cmd>lua require('telescope.builtin').diagnostics()<CR>",
             desc = 'lists LSP diagnostics for the current workspace if supported, otherwise searches in all open buffers',
         },
         {
-            '<space>gb',
-            "<cmd>lua require('telescope.builtin').git_branches()<CR>",
-            desc = 'git branches',
-        },
-        {
-            '<space>gs',
+            '<space>fg',
             "<cmd>lua require('telescope.builtin').git_status()<CR>",
             desc = 'lists current changes per file with diff preview and add action.',
         },

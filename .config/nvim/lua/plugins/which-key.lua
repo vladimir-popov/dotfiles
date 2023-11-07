@@ -20,6 +20,7 @@ return {
 
 		wk.register({
 			["qq"] = { ":bp<bar>bd#<CR>", "Close the current buffer" },
+			["qt"] = { ":tabclose<CR>", "Close the current tab" },
 			["qw"] = { ":close<CR>", "Close the current window" },
 			["qQ"] = { ":bd<CR>", "Close the current buffer and window" },
 			["QQ"] = { ":bd!<CR>", "Force close the current buffer and window" },

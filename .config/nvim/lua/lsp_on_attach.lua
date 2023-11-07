@@ -6,9 +6,11 @@ local highlight_setup = function(client)
     if client.name == 'yamlls' or client.name == 'jsonls' or client.name == 'bufls' then
         return
     end
+    -- if client.server_capabilities.??? then
     vim.cmd([[autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()]])
     vim.cmd([[autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()]])
     vim.cmd([[autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()]])
+    -- end
 end
 
 local keys_mapping = function(client, bufnr)

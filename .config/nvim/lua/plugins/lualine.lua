@@ -101,7 +101,14 @@ return {
                 { 'ex.cwd', padding = 0 },
             },
             lualine_b = {
-                { 'ex.relative_filename', padding = 0 , separator = '' },
+                {
+                    'ex.relative_filename',
+                    padding = 0,
+                    external_prefix = '/…',
+                    filename_only_prefix = '…/',
+                    separator = '',
+                    shorten = { length = 2, exclude = { 1 } },
+                },
                 icon_only({
                     icon = { '', color = { fg = 'orange' } },
                     cond = function()
@@ -115,7 +122,10 @@ return {
                     end,
                 }),
             },
-            lualine_c = { 'lsp_progress' },
+            lualine_c = {
+                'lsp_progress',
+                'g:metals_status',
+            },
 
             lualine_x = { 'ex.git.branch' },
             lualine_y = {
