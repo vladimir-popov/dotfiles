@@ -32,6 +32,18 @@ brew install --cask font-fira-code-nerd-font
 
 # Neovim
 brew install neovim
+
+# fzf
+brew install fzf
+
+# ag
+brew install ag
+
+# nnn
+brew install nnn
+
+# nnn plugins
+sh -c "$(curl -Ls https://raw.githubusercontent.com/jarun/nnn/master/plugins/getplugs)"
 ```
 
 ### Add public key to github
