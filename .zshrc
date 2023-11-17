@@ -171,16 +171,19 @@ export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
 B_CONFIGS='c:'$CONFIGS_PATH';'
+B_LOCAL='l:'$LOCAL_PATH';'
 B_PROJECTS='p:'$PROJECTS';'
 B_NVIM='v:'$NVIM_PATH';'
 B_NVIMP='V:'$NVIM_PLUG';'
+NNN_BMS=$B_CONFIGS$B_LOCAL$B_PROJECTS$B_NVIM$B_NVIMP
 
-if [[ -f "$HOME/Projects/dash/" ]]; then
+if [[ -d "$PROJECTS/dash" ]]; then
   B_DASH='d:'$PROJECTS'/dash;'
   B_DASH_WIKI='w:'$PROJECTS'/dash.wiki;'
+  NNN_BMS="$NNN_BMS$B_DASH$B_DASH_WIKI"
 fi
 
-export NNN_BMS=$B_CONFIGS$B_PROJECTS$B_DASH$B_DASH_WIKI$B_NVIM$B_NVIMP
+export NNN_BMS
 
 export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 
@@ -188,7 +191,7 @@ export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 export NNN_FIFO='/tmp/nnn.fifo'
 
 # useful plugins:
-export NNN_PLUG='f:fzopen;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui;c:-!echo $(pwd -P)"/$nnn"'
+export NNN_PLUG='f:fzcd;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui;c:-!echo $(pwd -P)"/$nnn"'
 
 # context colors [default: '4444' (blue)]
 export NNN_COLORS='2354'
