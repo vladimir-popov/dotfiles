@@ -127,11 +127,15 @@ return {
                 'g:metals_status',
             },
 
-            lualine_x = { 'ex.git.branch' },
+            lualine_x = {
+                {
+                    'ex.git.branch',
+                    max_length = 0.2,
+                },
+            },
             lualine_y = {
                 'diagnostics',
                 { 'ex.lsp.all', icons_only = true, icons = { bufls = { 'p' } } },
-                'fileformat',
                 { 'filetype', icons_enabled = false },
                 { 'location' },
             },
