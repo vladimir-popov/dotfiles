@@ -136,3 +136,8 @@ cs setup
 ```sh
 brew install gcc
 ```
+
+### Json, Markdown, Html and CSS
+```sh
+npm i -g vscode-langservers-extracted
+```

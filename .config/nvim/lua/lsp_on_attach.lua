@@ -38,7 +38,8 @@ local keys_mapping = function(client, bufnr)
             'show place where type is defined',
         },
         ['K'] = {
-            '<cmd>lua vim.lsp.buf.hover()<CR>',
+            -- '<cmd>lua vim.lsp.buf.hover()<CR>',
+            '<cmd>Lspsaga hover_doc<CR>',
             'show description of the symbol under cursor',
         },
         ['<c-p>'] = {

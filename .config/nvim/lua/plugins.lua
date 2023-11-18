@@ -97,7 +97,7 @@ return {
         'mcchrish/nnn.vim',
         keys = {
             { '<c-n>', '<cmd>NnnPicker<cr>' },
-            { '<c-m>', '<cmd>NnnPicker %:p:h<cr>' },
+            { '<c-f>', '<cmd>NnnPicker %:p:h<cr>' },
         },
         config = function()
             vim.g['nnn#session'] = 'local'

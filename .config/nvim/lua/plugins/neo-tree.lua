@@ -49,7 +49,7 @@ return {
 			close_if_last_window = true,
 			window = {
 				position = "left",
-				width = 40,
+				width = 50,
 			},
 			sources = {
 				"filesystem",
@@ -76,6 +76,7 @@ return {
 				-- This will find and focus the file in the active buffer every
 				-- time the current file is changed while the tree is open.
 				follow_current_file = false,
+                group_empty_dirs = true
 			},
 			document_symbols = {
 				kinds = {
