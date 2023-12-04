@@ -1,8 +1,8 @@
-" set guifont=FiraCode_Nerd_Font:h14
-set guifont=Hack_Nerd_Font:h13
+set guifont=FiraCode_Nerd_Font:h13
+" set guifont=Hack_Nerd_Font:h14
 
-" set spell spelllang=ru,en
-autocmd FileType markdown,txt setlocal spell spelllang=ru,en
+set spelllang=ru,en
+" autocmd FileType markdown,txt setlocal spell spelllang=ru,en
 
 " use markers for folding
 set foldmethod=marker
@@ -13,7 +13,7 @@ colorscheme PaperColor
 
 set wrap
 set linebreak
-set linespace=5
+set linespace=3
 
 
 if exists("g:neovide")
