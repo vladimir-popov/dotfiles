@@ -1,4 +1,5 @@
 local on_attach = require('lsp_on_attach')
+local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
 return {
     'neovim/nvim-lspconfig',
@@ -7,7 +8,7 @@ return {
         { 'ray-x/lsp_signature.nvim' },
         { 'folke/neodev.nvim' },
     },
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'proto' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'proto', 'python' },
     keys = {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },
@@ -19,6 +20,7 @@ return {
         -- LUA -----------------------------------------------------
         nvim_lsp.lua_ls.setup({
             on_attach = on_attach,
+            capabilities = capabilities,
             -- see description here https://github.com/sumneko/vscode-lua/blob/master/setting/schema.json
             settings = {
                 Lua = {
@@ -45,11 +47,13 @@ return {
         nvim_lsp.vimls.setup({
             cmd = { 'vim-language-server', '--stdio' },
             on_attach = on_attach,
+            capabilities = capabilities,
         })
 
         -- JavaScript ----------------------------------------------
         nvim_lsp.jsonls.setup({
             on_attach = on_attach,
+            capabilities = capabilities,
             commands = {
                 Format = {
                     function()
@@ -63,6 +67,7 @@ return {
         nvim_lsp.yamlls.setup({
             cmd = { 'yaml-language-server', '--stdio' },
             on_attach = on_attach,
+            capabilities = capabilities,
             filetypes = { 'yaml' },
         })
 
@@ -75,7 +80,26 @@ return {
         -- Protobuf-------------------------------------------------
         nvim_lsp.bufls.setup({
             on_attach = on_attach,
-            root_dir = util.root_pattern('buf.work.yaml', '.git')
+            capabilities = capabilities,
+            root_dir = util.root_pattern('buf.work.yaml', '.git'),
+        })
+
+        -- Python --------------------------------------------------
+        nvim_lsp.pylyzer.setup({
+            on_attach = on_attach,
+            capabilities = capabilities,
+            root_dir = function(fname)
+                local root_files = {
+                    'setup.py',
+                    'tox.ini',
+                    'requirements.txt',
+                    'Pipfile',
+                    'pyproject.toml',
+                }
+                return util.root_pattern(unpack(root_files))(fname)
+                    or util.find_git_ancestor(fname)
+                    or vim.fn.getcwd()
+            end,
         })
     end,
 }

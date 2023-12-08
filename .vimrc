@@ -463,6 +463,9 @@ endfunction
 " Turn on/off spellchecking
 command! ToggleSpellCheck call g:ToggleSpellcheck()
 
+" Copy the full path to the file
+command! CopyFullPath let @+=expand('%:p')
+
 " }}}
 
 " fold this file by markers {{{

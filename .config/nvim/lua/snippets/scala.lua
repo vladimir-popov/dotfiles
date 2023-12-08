@@ -36,9 +36,8 @@ local snippets = {
     cats,
     asScala,
     scalatest_freespec,
-}
-local autosnippets = {
     forc,
 }
+local autosnippets = {}
 
 return snippets, autosnippets

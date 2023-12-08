@@ -80,7 +80,7 @@ return {
     lazy = false,
     dependencies = {
         'nvim-tree/nvim-web-devicons',
-        'vladimir-popov/lualine-ex',
+        { 'vladimir-popov/lualine-ex', dev = true },
         'arkav/lualine-lsp-progress',
         'nvim-lua/plenary.nvim',
     },

@@ -1,4 +1,4 @@
-local file_types = { 'bash', 'lua', 'vim', 'scala', 'c', 'cpp', 'java', 'proto' }
+local file_types = { 'bash', 'lua', 'vim', 'scala', 'c', 'cpp', 'java', 'proto', 'python' }
 return {
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',

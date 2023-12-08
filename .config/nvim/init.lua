@@ -150,7 +150,7 @@ require('lazy').setup('plugins', {
     },
     dev = {
         path = '~/Projects/nvim',
-        patterns = { 'dokwork' },
+        -- patterns = { 'vladimir-popov' },
     },
     -- debug = true,
 })

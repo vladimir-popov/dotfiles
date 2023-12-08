@@ -9,7 +9,7 @@ return {
 		},
 		{
 			'<leader>"',
-			":Neotree toggle reveal_force_cwd<cr>",
+			":Neotree focus reveal_force_cwd<cr>",
 			desc = "Show the current file in the NeoTree, and change cwd",
 		},
 		{
@@ -17,21 +17,21 @@ return {
 			":Neotree toggle document_symbols<cr>",
 			desc = "Show the symbols in the current document obtained by the LSP",
 		},
-		{ "<leader>1", ":Neotree toggle focus<cr>", desc = "Show the current file in the Files" },
+		{ "<leader>1", ":Neotree show reveal<cr>", desc = "Show the current file in the Files" },
 		{
 			"<leader>2",
-			":Neotree toggle document_symbols<cr>",
-			desc = "Show the symbols in the current document obtained by the LSP",
-		},
-		{
-			"<leader>3",
-			":Neotree toggle focus buffers<cr>",
+			":Neotree show buffers<cr>",
 			desc = "Show the current file in the Buffers",
 		},
 		{
-			"<leader>4",
-			":Neotree toggle focus git_status<cr>",
+			"<leader>3",
+			":Neotree show git_status<cr>",
 			desc = "Show the current file in the Git",
+		},
+		{
+			"<leader>4",
+			":Neotree show document_symbols<cr>",
+			desc = "Show the symbols in the current document obtained by the LSP",
 		},
 	},
 	dependencies = {

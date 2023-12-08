@@ -4,6 +4,7 @@ return {
         { 'tami5/lspsaga.nvim' },
         { 'ray-x/lsp_signature.nvim' },
         { 'mfussenegger/nvim-dap' },
+        { 'hrsh7th/nvim-cmp' },
     },
     ft = { 'scala', 'sbt', 'java' },
     keys = {
@@ -31,14 +32,12 @@ return {
             ['javaFormat.eclipseProfile'] = 'GoogleStyle',
         }
 
-        metals_config.handlers['textDocument/publishDiagnostics'] = vim.lsp.with(
-            vim.lsp.diagnostic.on_publish_diagnostics,
-            {
+        metals_config.handlers['textDocument/publishDiagnostics'] =
+            vim.lsp.with(vim.lsp.diagnostic.on_publish_diagnostics, {
                 virtual_text = {
                     prefix = '',
                 },
-            }
-        )
+            })
 
         metals_config.handlers['metals/executeClientCommand'] = function(a0, result)
             if
@@ -74,6 +73,8 @@ return {
                 ['<leader>o'] = { '<cmd>MetalsOrganizeImports<CR>', 'organize import in scala' },
             }, { buffer = bufnr })
         end
+
+        metals_config.capabilities = require('cmp_nvim_lsp').default_capabilities()
 
         -- Run metals on open scala file
         local aug_id = vim.api.nvim_create_augroup('scalametals', { clear = true })
