@@ -4,7 +4,7 @@ local capabilities = require('cmp_nvim_lsp').default_capabilities()
 return {
     'neovim/nvim-lspconfig',
     dependencies = {
-        { 'tami5/lspsaga.nvim' },
+        { 'nvimdev/lspsaga.nvim' },
         { 'ray-x/lsp_signature.nvim' },
         { 'folke/neodev.nvim' },
     },

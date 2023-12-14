@@ -1,4 +1,6 @@
 return {
+    -- show marks in the signcolumn
+    { 'yaocccc/vim-showmarks', lazy = false },
     -- replace selected
     {
         'vladimir-popov/vim-replace',

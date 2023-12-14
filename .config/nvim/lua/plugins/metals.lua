@@ -1,7 +1,7 @@
 return {
     'scalameta/nvim-metals',
     dependencies = {
-        { 'tami5/lspsaga.nvim' },
+        { 'nvimdev/lspsaga.nvim' },
         { 'ray-x/lsp_signature.nvim' },
         { 'mfussenegger/nvim-dap' },
         { 'hrsh7th/nvim-cmp' },
