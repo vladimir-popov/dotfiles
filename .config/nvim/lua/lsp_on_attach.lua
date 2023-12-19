@@ -3,7 +3,12 @@ vim.diagnostic.config({ virtual_text = false })
 
 -- Required for proper symbol highlighting
 local highlight_setup = function(client)
-    if client.name == 'yamlls' or client.name == 'jsonls' or client.name == 'bufls' or client.name == 'pylyzer' then
+    if
+        client.name == 'yamlls'
+        or client.name == 'jsonls'
+        or client.name == 'bufls'
+        or client.name == 'pylyzer'
+    then
         return
     end
     -- if client.server_capabilities.??? then
@@ -16,21 +21,28 @@ end
 local keys_mapping = function(client, bufnr)
     local wk = require('which-key')
     wk.register({
+        ['<space>n'] = {
+            '<cmd>lua require("telescope.builtin").lsp_dynamic_workspace_symbols()<CR>',
+            'search type in workspace',
+        },
         ['<leader>f'] = {
             client.name ~= 'lua_ls' and '<cmd>lua vim.lsp.buf.format()<CR>'
                 or ':silent !stylua --config-path ~/.stylua.default %<cr>',
             'format current buffer',
         },
         ['gd'] = {
-            '<cmd>lua vim.lsp.buf.definition()<CR>',
+            -- '<cmd>lua vim.lsp.buf.definition()<CR>',
+            '<cmd>lua require("telescope.builtin").lsp_definitions()<CR>',
             'go to definition',
         },
         ['gi'] = {
-            '<cmd>lua vim.lsp.buf.implementation()<CR>',
+            -- '<cmd>lua vim.lsp.buf.implementation()<CR>',
+            '<cmd>lua require("telescope.builtin").lsp_implementations()<CR>',
             'go to implementation',
         },
         ['gr'] = {
-            '<cmd>lua vim.lsp.buf.references()<CR>',
+            -- '<cmd>lua vim.lsp.buf.references()<CR>',
+            '<cmd>lua require("telescope.builtin").lsp_references()<CR>',
             'show all places where the symbol under cursor is used',
         },
         ['gt'] = {

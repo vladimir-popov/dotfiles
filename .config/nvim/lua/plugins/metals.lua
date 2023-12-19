@@ -1,4 +1,4 @@
-return {
+local M = {
     'scalameta/nvim-metals',
     dependencies = {
         { 'nvimdev/lspsaga.nvim' },
@@ -19,6 +19,13 @@ return {
                 end
             end,
             desc = 'run Metals doctor',
+        },
+        {
+            '<space>cc',
+            function()
+                require('plugins.metals').copyFullClassName()
+            end,
+            desc = 'copy full class name',
         },
     },
     config = function()
@@ -87,3 +94,45 @@ return {
         })
     end,
 }
+
+M.getFullClassName = function()
+    local symbol = vim.fn.expand('<cword>')
+    if not string.match(symbol, '%w+') then
+        vim.notify('Unappropriate class name ' .. symbol, vim.log.levels.ERROR)
+        return
+    end
+    local line = vim.api.nvim_get_current_line()
+    if
+        not (
+            string.find(line, 'class%s+' .. symbol)
+            or string.find(line, 'object%s+' .. symbol)
+            or string.find(line, 'trait%s+' .. symbol)
+        )
+    then
+        vim.notify(
+            'The full name of the ['
+                .. symbol
+                .. "] can't be copied. Put cursor on the object|class|trait name in declaration and try again.",
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
+    local pkg = ''
+    local pos = vim.fn.searchpos('package\\s\\+', 'cne')
+    if pos[1] > 0 then
+        pkg = vim.fn.trim(string.sub(vim.fn.getline(pos[1]), pos[2]))
+    end
+    return pkg .. '.' .. symbol
+end
+
+M.copyFullClassName = function()
+    local cn = M.getFullClassName()
+    if not cn then
+        return
+    end
+    vim.fn.setreg('+', cn)
+    vim.notify(cn .. ' was copied to the clipboard', vim.log.levels.DEBUG)
+end
+
+return M

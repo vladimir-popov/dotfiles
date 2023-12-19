@@ -50,6 +50,10 @@ return {
 				"Change cwd to the directory with current file",
 			},
 
+            ['<space>cf'] = { ":let @+=expand('%:t') | echo @+ .. ' was copied to the clipboard.'<cr>", "Copy file name" },
+            ['<space>cp'] = { ":let @+=expand('%:p') | echo @+ .. ' was copied to the clipboard.'<cr>", "Copy full file path" },
+            ['<space>cl'] = { ":let @+=expand('%')   | echo @+ .. ' was copied to the clipboard.'<cr>", "Copy local file path" },
+
 			["<F1>"] = { "K", "" },
 			["<F2>"] = { ":set wrap!<bar>set linebreak!<CR>", "Toggle the wrapping a text" },
 			["<F3>"] = { ":set hlsearch!<CR>", "Toggle search highlighting" },
