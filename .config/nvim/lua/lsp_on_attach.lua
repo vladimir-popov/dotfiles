@@ -3,19 +3,11 @@ vim.diagnostic.config({ virtual_text = false })
 
 -- Required for proper symbol highlighting
 local highlight_setup = function(client)
-    if
-        client.name == 'yamlls'
-        or client.name == 'jsonls'
-        or client.name == 'bufls'
-        or client.name == 'pylyzer'
-    then
-        return
+    if client.server_capabilities.documentHighlight then
+        vim.cmd([[autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()]])
+        vim.cmd([[autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()]])
+        vim.cmd([[autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()]])
     end
-    -- if client.server_capabilities.??? then
-    vim.cmd([[autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()]])
-    vim.cmd([[autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()]])
-    vim.cmd([[autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()]])
-    -- end
 end
 
 local keys_mapping = function(client, bufnr)
@@ -26,8 +18,7 @@ local keys_mapping = function(client, bufnr)
             'search type in workspace',
         },
         ['<leader>f'] = {
-            client.name ~= 'lua_ls' and '<cmd>lua vim.lsp.buf.format()<CR>'
-                or ':silent !stylua --config-path ~/.stylua.default %<cr>',
+            '<cmd>lua vim.lsp.buf.format()<CR>',
             'format current buffer',
         },
         ['gd'] = {
@@ -117,6 +108,10 @@ local keys_mapping = function(client, bufnr)
         ['K'] = {
             "<Esc><cmd>lua require('metals').type_of_range()<CR>",
             'show type of selected code',
+        },
+        ['<leader>f'] = {
+            '<cmd>lua vim.lsp.buf.format()<CR>',
+            'format selected code',
         },
     }, { mode = 'v', buffer = bufnr })
 end
