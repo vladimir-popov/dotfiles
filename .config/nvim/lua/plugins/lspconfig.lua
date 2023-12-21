@@ -8,7 +8,7 @@ return {
         { 'ray-x/lsp_signature.nvim' },
         { 'folke/neodev.nvim' },
     },
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'proto', 'python' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', --[[ 'proto', ]] 'python' },
     keys = {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },
@@ -78,11 +78,11 @@ return {
         })
 
         -- Protobuf-------------------------------------------------
-        nvim_lsp.bufls.setup({
-            on_attach = on_attach,
-            capabilities = capabilities,
-            root_dir = util.root_pattern('buf.work.yaml', '.git'),
-        })
+        -- nvim_lsp.bufls.setup({
+        --     on_attach = on_attach,
+        --     capabilities = capabilities,
+        --     root_dir = util.root_pattern('buf.work.yaml', '.git'),
+        -- })
 
         -- Python --------------------------------------------------
         nvim_lsp.pylyzer.setup({
