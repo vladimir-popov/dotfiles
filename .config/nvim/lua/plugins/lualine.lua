@@ -15,7 +15,6 @@ local cosmos_theme = {
         a = { bg = colors.bg, fg = colors.normal },
         b = { bg = colors.bg, fg = colors.fg },
         c = { bg = colors.alpha, fg = colors.inactive },
-
         x = { bg = colors.alpha, fg = 'green' },
         y = { bg = colors.bg, fg = colors.fg },
         z = { bg = colors.bg, fg = colors.normal },
@@ -24,7 +23,6 @@ local cosmos_theme = {
         a = { bg = colors.bg, fg = colors.insert },
         b = { bg = colors.bg, fg = colors.fg },
         c = { bg = colors.alpha, fg = colors.inactive },
-
         x = { bg = colors.alpha, fg = colors.inactive },
         y = { bg = colors.bg, fg = colors.fg },
         z = { bg = colors.bg, fg = colors.insert },
@@ -33,7 +31,6 @@ local cosmos_theme = {
         a = { bg = colors.bg, fg = colors.visual },
         b = { bg = colors.bg, fg = colors.fg },
         c = { bg = colors.alpha, fg = colors.inactive },
-
         x = { bg = colors.alpha, fg = colors.inactive },
         y = { bg = colors.bg, fg = colors.fg },
         z = { bg = colors.bg, fg = colors.visual },
@@ -42,7 +39,6 @@ local cosmos_theme = {
         a = { bg = colors.bg, fg = colors.replace },
         b = { bg = colors.bg, fg = colors.fg },
         c = { bg = colors.alpha, fg = colors.inactive },
-
         x = { bg = colors.alpha, fg = colors.inactive },
         y = { bg = colors.bg, fg = colors.fg },
         z = { bg = colors.bg, fg = colors.replace },
@@ -51,7 +47,6 @@ local cosmos_theme = {
         a = { bg = colors.bg, fg = colors.command },
         b = { bg = colors.bg, fg = colors.fg },
         c = { bg = colors.alpha, fg = colors.inactive },
-
         x = { bg = colors.alpha, fg = colors.inactive },
         y = { bg = colors.bg, fg = colors.fg },
         z = { bg = colors.bg, fg = colors.command },
@@ -60,7 +55,6 @@ local cosmos_theme = {
         a = { bg = colors.bg, fg = colors.inactive },
         b = { bg = colors.bg, fg = colors.fg },
         c = { bg = colors.alpha, fg = colors.inactive },
-
         x = { bg = colors.alpha, fg = colors.inactive },
         y = { bg = colors.bg, fg = colors.fg },
         z = { bg = colors.bg, fg = colors.inactive },
@@ -126,7 +120,6 @@ return {
                 'lsp_progress',
                 'g:metals_status',
             },
-
             lualine_x = {
                 {
                     'ex.git.branch',
@@ -135,7 +128,17 @@ return {
             },
             lualine_y = {
                 'diagnostics',
-                { 'ex.lsp.all', icons_only = true, icons = { bufls = { 'p' } } },
+                {
+                    'ex.lsp.all',
+                    icons_only = true,
+                    icons = { bufls = { 'p' }, ['null-ls'] = '' },
+                    separator = '',
+                },
+                {
+                    'ex.lsp.null_ls',
+                    padding = 0,
+                    icon = { '', color = { fg = 'green' } },
+                },
                 { 'filetype', icons_enabled = false },
                 { 'location' },
             },
