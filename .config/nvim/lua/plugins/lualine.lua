@@ -86,13 +86,13 @@ return {
                 left = '%#lualine_a_normal#|',
                 right = '%#lualine_a_normal#|',
             },
-            section_separators = { left = ' ', right = ' ' },
+            section_separators = { left = ' ', right = '' },
             theme = cosmos_theme,
         },
         sections = {
             lualine_a = {
                 { '%{"▊"}', separator = '', padding = 0 },
-                { 'ex.cwd', padding = 0 },
+                { 'ex.cwd',   padding = 0 },
             },
             lualine_b = {
                 {
@@ -131,7 +131,11 @@ return {
                 {
                     'ex.lsp.all',
                     icons_only = true,
-                    icons = { bufls = { 'p' }, ['null-ls'] = '' },
+                    icons = {
+                        lsp_is_off = '󰚦',
+                        bufls = { 'p' },
+                        ['null-ls'] = '',
+                    },
                     separator = '',
                 },
                 {
@@ -139,11 +143,11 @@ return {
                     padding = 0,
                     icon = { '', color = { fg = 'green' } },
                 },
-                { 'filetype', icons_enabled = false },
-                { 'location' },
+                { 'filetype',   icons_enabled = false },
+                { 'ex.location' },
             },
             lualine_z = {
-                'progress',
+                { 'ex.progress', top = false, bottom = false, mode = 'bar', padding = 0 },
             },
         },
         inactive_sections = {

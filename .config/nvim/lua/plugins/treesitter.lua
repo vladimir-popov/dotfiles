@@ -1,4 +1,5 @@
-local file_types = { 'bash', 'lua', 'vim', 'scala', 'c', 'cpp', 'java', 'proto', 'python' }
+local file_types =
+{ 'bash', 'lua', 'vim', 'scala', 'c', 'cpp', 'java', 'proto', 'python', 'markdown' }
 return {
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
@@ -12,11 +13,11 @@ return {
         require('nvim-treesitter.configs').setup({
             -- one of "all", "maintained" (parsers with maintainers),
             -- or a list of languages
-            ensure_installed = file_types,
-            ignore_install = {}, -- List of parsers to ignore installing
+            ensure_installed = { unpack(file_types), 'markdown_inline' },
+            ignore_install = {},          -- List of parsers to ignore installing
             highlight = {
-                enable = true, -- false will disable the whole extension
-                disable = { 'markdown' }, -- list of language that will be disabled
+                enable = true,            -- false will disable the whole extension
+                disable = { 'markdown', 'vimdoc' }, -- list of language that will be disabled
                 -- Setting this to true will run `:h syntax` and tree-sitter at the same time.
                 -- Set this to `true` if you depend on 'syntax' being enabled (like for indentation).
                 -- Using this option may slow down your editor, and you may see some duplicate highlights.
@@ -29,10 +30,8 @@ return {
             textobjects = {
                 select = {
                     enable = true,
-
                     -- Automatically jump forward to textobj, similar to targets.vim
                     lookahead = true,
-
                     keymaps = {
                         -- You can use the capture groups defined in textobjects.scm
                         ['ab'] = '@block.outer',

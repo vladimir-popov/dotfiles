@@ -1,5 +1,20 @@
+require('lspsaga').setup({
+    symbol_in_winbar = {
+        enable = true,
+    },
+})
+
+-- turn on boarder for default float windows
+local _border = 'single'
+vim.lsp.handlers['textDocument/hover'] = vim.lsp.with(vim.lsp.handlers.hover, {
+    border = _border,
+})
+
+vim.lsp.handlers['textDocument/signatureHelp'] = vim.lsp.with(vim.lsp.handlers.signature_help, {
+    border = _border,
+})
 -- do not show diagnostics in virtual text
-vim.diagnostic.config({ virtual_text = false })
+vim.diagnostic.config({ virtual_text = false, float = { border = _border } })
 
 -- Required for proper symbol highlighting
 local highlight_setup = function(client)
@@ -54,12 +69,13 @@ local keys_mapping = function(client, bufnr)
             'open a new window with a list of code-entities in the current document',
         },
         ['<space>rn'] = {
-            '<cmd>lua vim.lsp.buf.rename()<CR>',
-            -- '<cmd>Lspsaga rename<cr>',
+            -- '<cmd>lua vim.lsp.buf.rename()<CR>',
+            '<cmd>Lspsaga rename<cr>',
             'rename the symbol under cursor',
         },
         ['<space>qf'] = {
-            '<cmd>lua require("lspsaga.codeaction").code_action()<CR>',
+            -- '<cmd>lua vim.lsp.buf.code_action()<CR>',
+            '<cmd>Lspsaga code_action<CR>',
             'show all possible actions',
         },
         ['<leader>e'] = {
