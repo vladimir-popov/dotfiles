@@ -1,7 +1,13 @@
 require('lspsaga').setup({
+    lightbulb = {
+        virtual_text = false
+    },
     symbol_in_winbar = {
         enable = true,
     },
+    diagnostic = {
+        diagnostic_only_current = true
+    }
 })
 
 -- turn on boarder for default float windows

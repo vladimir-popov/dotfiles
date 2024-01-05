@@ -30,7 +30,7 @@ Plug 'NLKNguyen/papercolor-theme'
 " }}}
 
 " -- Auto-save --------------------------------------------------------------{{{
-let g:auto_save = 1  " enable AutoSave on Vim startup
+let g:auto_save = 0  " enable AutoSave on Vim startup
 Plug '907th/vim-auto-save'
 " }}}
 

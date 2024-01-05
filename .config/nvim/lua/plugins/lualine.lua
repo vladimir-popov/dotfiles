@@ -66,6 +66,7 @@ local function icon_only(opts)
         '%{""}',
         draw_empty = true,
         separator = '',
+        padding = { left = 1, right = 0 },
     }, opts)
 end
 
@@ -91,8 +92,15 @@ return {
         },
         sections = {
             lualine_a = {
-                { '%{"▊"}', separator = '', padding = 0 },
-                { 'ex.cwd',   padding = 0 },
+                {
+                    'ex.progress',
+                    top = false,
+                    bottom = false,
+                    mode = 'bar',
+                    padding = 0,
+                    separator = '',
+                },
+                { 'ex.cwd', padding = 0 },
             },
             lualine_b = {
                 {
@@ -113,6 +121,12 @@ return {
                     icon = { ' ', color = { fg = '#d76380' } },
                     cond = function()
                         return vim.bo.modified
+                    end,
+                }),
+                icon_only({
+                    icon = { '', color = { fg = colors.command } },
+                    cond = function()
+                        return vim.bo.readonly
                     end,
                 }),
             },
@@ -143,7 +157,7 @@ return {
                     padding = 0,
                     icon = { '', color = { fg = 'green' } },
                 },
-                { 'filetype',   icons_enabled = false },
+                { 'filetype', icons_enabled = false },
                 { 'ex.location' },
             },
             lualine_z = {
