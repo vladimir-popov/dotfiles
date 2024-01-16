@@ -75,8 +75,8 @@ local keys_mapping = function(client, bufnr)
             'open a new window with a list of code-entities in the current document',
         },
         ['<space>rn'] = {
-            -- '<cmd>lua vim.lsp.buf.rename()<CR>',
-            '<cmd>Lspsaga rename<cr>',
+            '<cmd>lua vim.lsp.buf.rename()<CR>',
+            -- '<cmd>Lspsaga rename<cr>',
             'rename the symbol under cursor',
         },
         ['<space>qf'] = {

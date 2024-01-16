@@ -52,7 +52,11 @@ return {
 
             ['<space>cf'] = { ":let @+=expand('%:t') | echo @+ .. ' was copied to the clipboard.'<cr>", "Copy file name" },
             ['<space>cp'] = { ":let @+=expand('%:p') | echo @+ .. ' was copied to the clipboard.'<cr>", "Copy full file path" },
-            ['<space>cl'] = { ":let @+=expand('%')   | echo @+ .. ' was copied to the clipboard.'<cr>", "Copy local file path" },
+            ['<space>cl'] = { ":let @+=fnamemodify(expand('%'), ':~:.') | echo @+ .. ' was copied to the clipboard.'<cr>", "Copy local file path" },
+
+            ['<space>yf'] = { ":let @\"=expand('%:t') | echo @\" .. ' was copied to the register \".'<cr>", "Yank file name" },
+            ['<space>yp'] = { ":let @\"=expand('%:p') | echo @\" .. ' was copied to the register \".'<cr>", "Yank full file path" },
+            ['<space>yl'] = { ":let @\"=fnamemodify(expand('%'), ':~:.') | echo @\" .. ' was copied to the register \".'<cr>", "Yank local file path" },
 
 			["<F1>"] = { "K", "" },
 			["<F2>"] = { ":set wrap!<bar>set linebreak!<CR>", "Toggle the wrapping a text" },
