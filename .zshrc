@@ -1,5 +1,12 @@
 zmodload zsh/zprof
 
+# Common paths:
+export PROJECTS=$HOME'/Projects'
+export CONFIGS_PATH=$HOME'/.config'
+export LOCAL_PATH=$HOME'/.local'
+export NVIM_PATH=$CONFIGS_PATH'/nvim'
+export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
+
 alias v=nvim
 alias vc="v -c \"normal '0\""
 alias lg=lazygit
@@ -141,6 +148,9 @@ bindkey '^v' edit-command-line
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
 
+# ==================================================================================================
+#                                         GCP configuration
+# ==================================================================================================
 export USE_GKE_GCLOUD_AUTH_PLUGIN=True
 export KUBE_EDITOR="nvim"
 
@@ -148,34 +158,51 @@ if [ -x "$(command -v kubectl)" ]; then
    source <(kubectl completion zsh)
 fi
 
-export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$PATH"
-export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
-# eval "$(pyenv init -)"
-# eval "$(pyenv virtualenv-init -)"
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 
+# The next line enables shell command completion for gcloud.
+if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
+
+# ==================================================================================================
+#                                         FZF configuration
+# ==================================================================================================
 export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -f -g ""'
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# ==================================================================================================
+#                                       Docker configuration
+# ==================================================================================================
 
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 export DOCKER_HOST="unix://${HOME}/.colima/docker.sock"
 
-# ==============================================================================
-#                               nnn configuration
-# ==============================================================================
-export PROJECTS=$HOME'/Projects'
-export CONFIGS_PATH=$HOME'/.config'
-export LOCAL_PATH=$HOME'/.local'
-export NVIM_PATH=$CONFIGS_PATH'/nvim'
-export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
+# ==================================================================================================
+#                                       Arduino configuration
+# ==================================================================================================
 
+export ARDUINO_DIR="$HOME/Library/Arduino15"
+if [[ -d "$ARDUINO_DIR" ]]; then
+
+# see https://github.com/tiberiusbrown/Ardens
+export ARDENS_PATH="$PROJECTS/Arduino/Ardens"
+
+# autocompletion for arduino-cli
+# see https://arduino.github.io/arduino-cli/0.33/command-line-completion
+if [[ -d "$HOME/completion_zsh" ]]; then
+	fpath=($HOME/completion_zsh $fpath)
+fi
+
+fi
+
+# ==================================================================================================
+#                                         nnn configuration
+# ==================================================================================================
 
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
-B_CONFIGS='c:'$CONFIGS_PATH';'
-B_LOCAL='l:'$LOCAL_PATH';'
-B_PROJECTS='p:'$PROJECTS';'
-B_NVIM='v:'$NVIM_PATH';'
-B_NVIMP='V:'$NVIM_PLUG';'
-NNN_BMS=$B_CONFIGS$B_LOCAL$B_PROJECTS$B_NVIM$B_NVIMP
+NNN_BMS="c:$CONFIGS_PATH;l:$LOCAL_PATH;p:$PROJECTS;v:$NVIM_PATH;V:$NVIM_PLUG;n:$PROJECTS/nvim;A:$HOME/Library/Arduino15/packages/arduino/hardware/avr/1.8.6;"
 
 if [[ -d "$PROJECTS/dash" ]]; then
   B_DASH='d:'$PROJECTS'/dash;'
@@ -191,7 +218,9 @@ export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 export NNN_FIFO='/tmp/nnn.fifo'
 
 # useful plugins:
-export NNN_PLUG='f:fzcd;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui;c:-!echo $(pwd -P)"/$nnn"'
+NNN_P_PWD='-!echo $(pwd -P)"/$nnn"'
+NNN_P_ARD='-!'$ARDENS_PATH'/Ardens file=$(pwd -P)"/$nnn"'
+export NNN_PLUG="f:fzcd;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui;c:$NNN_P_PWD;a:$NNN_P_ARD"
 
 # context colors [default: '4444' (blue)]
 export NNN_COLORS='2354'
@@ -230,11 +259,8 @@ n ()
             rm -f "$NNN_TMPFILE" > /dev/null
     fi
 }
+# ==================================================================================================
 
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
 
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
+export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$ARDENS_PATH:$PATH"
