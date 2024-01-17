@@ -1,9 +1,23 @@
 return {
     'nvim-telescope/telescope.nvim',
-    dependencies = {"natecraddock/telescope-zf-native.nvim"},
+    dependencies = {
+        'natecraddock/telescope-zf-native.nvim',
+        'debugloop/telescope-undo.nvim',
+    },
     config = function()
         local actions = require('telescope.actions')
         require('telescope').setup({
+            extensions = {
+                undo = {
+                    side_by_side = true,
+                    layout_strategy = 'vertical',
+                    mappings = {
+                        i = {
+                            ['<cr>'] = require('telescope-undo.actions').restore,
+                        },
+                    },
+                },
+            },
             defaults = {
                 mappings = {
                     i = {
@@ -62,7 +76,8 @@ return {
                 },
             },
         })
-        require("telescope").load_extension("zf-native")
+        require('telescope').load_extension('zf-native')
+        require('telescope').load_extension('undo')
     end,
     keys = {
         {
@@ -184,6 +199,11 @@ return {
             '<space>t',
             "<cmd>lua require('telescope.builtin').treesitter()<CR>",
             desc = 'treesitter',
+        },
+        {
+            '<space>lh',
+            '<cmd>Telescope undo<cr>',
+            desc = 'Undo history',
         },
     },
 }

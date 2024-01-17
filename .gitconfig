@@ -5,22 +5,30 @@
 	co = checkout
 	st = status -sb
 	ci = commit
-  cm = commit -am
+	cm = commit -am
 	br = branch
 	review = merge --no-ff --no-commit 
 	hist = log --pretty=format:%h %ad | %s%d [%an] --graph --date=short
 [init]
 	defaultBranch = main
 [merge]
-  tool = vimdiff
+	tool = vimdiff
+	conflictstyle = diff3
 [diff]
-  tool = vimdiff
+	tool = vimdiff
+	colorMoved = default
 [difftool "vimdiff"]
-  cmd = nvim -d "$LOCAL" "$REMOTE"
+	cmd = nvim -d "$LOCAL" "$REMOTE"
 [mergetool "vimdiff"]
-  cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
+	cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
 [core]
 	editor = nvim
+	pager = delta
 [pager]
 	branch = false
 	log = false
+[interactive]
+	diffFilter = delta --color-only
+
+[delta]
+	navigate = true

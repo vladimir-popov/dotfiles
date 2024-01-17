@@ -34,6 +34,13 @@ let g:auto_save = 0  " enable AutoSave on Vim startup
 Plug '907th/vim-auto-save'
 " }}}
 
+" -- Undo tree --------------------------------------------------------------{{{
+Plug 'mbbill/undotree'
+let g:undotree_WindowLayout = 2
+let g:undotree_SetFocusWhenToggle = 1
+nnoremap <leader>lh :UndotreeToggle<CR>
+" }}}
+
 " -- Commentary -------------------------------------------------------------{{{
 " gc - for comment
 Plug 'tpope/vim-commentary'
@@ -333,6 +340,12 @@ execute "set langmap=" .. printf("%s;%s,%s;%s", ru_up, en_up, ru_low, en_low)
 set keymap=russian-jcukenwin
 set iminsert=0
 set imsearch=0
+
+" turn on undo history
+set undodir=~/.vim/undodir
+set undofile
+set undolevels=1000
+set undoreload=10000
 
 " }}} 
  

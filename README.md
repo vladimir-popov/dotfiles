@@ -44,6 +44,9 @@ brew install nnn
 
 # nnn plugins
 sh -c "$(curl -Ls https://raw.githubusercontent.com/jarun/nnn/master/plugins/getplugs)"
+
+# delta
+brew install git-delta
 ```
 
 ### Add public key to github

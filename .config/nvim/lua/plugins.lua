@@ -18,6 +18,18 @@ return {
         config = true,
         enabled = true,
     },
+    -- undotree
+    {
+        'mbbill/undotree',
+        config = function()
+            vim.g.undotree_WindowLayout = 2
+            vim.g.undotree_SetFocusWhenToggle = 1
+        end,
+        cmd = { 'UndotreeToggle' },
+        keys = {
+            { '<leader>lh', '<cmd>UndotreeToggle<cr>' },
+        },
+    },
     -- surround
     {
         'kylechui/nvim-surround',
@@ -88,7 +100,7 @@ return {
         'phaazon/hop.nvim',
         branch = 'v2',
         keys = {
-            { 'gw', '<cmd>HopWord<cr>' },
+            { 'gw',              '<cmd>HopWord<cr>' },
             { '<space><space>b', '<cmd>HopWordBC<cr>' },
             { '<space><space>w', '<cmd>HopWordAC<cr>' },
         },
@@ -190,5 +202,5 @@ return {
         },
     },
     -- koka lang
-    { 'Nymphium/vim-koka', lazy = false },
+    { 'Nymphium/vim-koka',     lazy = false },
 }
