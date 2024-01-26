@@ -40,7 +40,7 @@ return {
     -- Comments
     {
         'numToStr/Comment.nvim',
-        ft = { 'lua', 'vim', 'scala', 'c', 'java' },
+        ft = { 'lua', 'vim', 'scala', 'c', 'cpp', 'make', 'sh', 'java' },
         opts = {
             toggler = {
                 ---Line-comment toggle keymap

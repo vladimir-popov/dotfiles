@@ -81,6 +81,8 @@ local M = {
             }, { buffer = bufnr })
         end
 
+        metals_config.find_root_dir_max_project_nesting = 2
+
         metals_config.capabilities = require('cmp_nvim_lsp').default_capabilities()
 
         -- Run metals on open scala file
@@ -104,15 +106,15 @@ M.getFullClassName = function()
     local line = vim.api.nvim_get_current_line()
     if
         not (
-            string.find(line, 'class%s+' .. symbol)
-            or string.find(line, 'object%s+' .. symbol)
-            or string.find(line, 'trait%s+' .. symbol)
+        string.find(line, 'class%s+' .. symbol)
+        or string.find(line, 'object%s+' .. symbol)
+        or string.find(line, 'trait%s+' .. symbol)
         )
     then
         vim.notify(
             'The full name of the ['
-                .. symbol
-                .. "] can't be copied. Put cursor on the object|class|trait name in declaration and try again.",
+            .. symbol
+            .. "] can't be copied. Put cursor on the object|class|trait name in declaration and try again.",
             vim.log.levels.ERROR
         )
         return

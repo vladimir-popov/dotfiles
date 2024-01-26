@@ -79,7 +79,7 @@ return {
                 group_empty_dirs = true,
                 window = {
                     mappings = {
-                        ['gg'] = 'live_grep',
+                        ['<space>gg'] = 'live_grep',
                     },
                 },
                 commands = {

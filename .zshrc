@@ -219,8 +219,9 @@ export NNN_FIFO='/tmp/nnn.fifo'
 
 # useful plugins:
 NNN_P_PWD='-!echo $(pwd -P)"/$nnn"'
+NNN_P_OPEN='-!open $(pwd -P)"/$nnn"'
 NNN_P_ARD='-!'$ARDENS_PATH'/Ardens file=$(pwd -P)"/$nnn"'
-export NNN_PLUG="f:fzcd;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui;c:$NNN_P_PWD;a:$NNN_P_ARD"
+export NNN_PLUG="f:fzcd;n:nuke;d:diffs;i:batview;v:imgview;p:preview-tui;c:$NNN_P_PWD;a:$NNN_P_ARD;o:$NNN_P_OPEN;"
 
 # context colors [default: '4444' (blue)]
 export NNN_COLORS='2354'
@@ -252,7 +253,7 @@ n ()
     # stty lwrap undef
     # stty lnext undef
 
-    nnn "$@"
+    nnn -A "$@"
 
     if [ -f "$NNN_TMPFILE" ]; then
             . "$NNN_TMPFILE"

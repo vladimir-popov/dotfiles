@@ -1,4 +1,4 @@
-PROMPT='%F{blue}%2c%B%F{013} ❱%f%b '
+PROMPT='%F{blue}%2c%B%F{013} $(nnn_marker)❱%f%b '
 RPROMPT='$(git_prompt_info) %F{gray}%D{%L:%M} %D{%p}%f'
 
 ZSH_THEME_GIT_PROMPT_PREFIX="%F{yellow}"

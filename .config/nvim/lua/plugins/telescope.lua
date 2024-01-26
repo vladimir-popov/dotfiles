@@ -14,6 +14,8 @@ return {
                     mappings = {
                         i = {
                             ['<cr>'] = require('telescope-undo.actions').restore,
+                            ['<C-a>'] = require('telescope-undo.actions').yank_additions,
+                            ['<C-d>'] = require('telescope-undo.actions').yank_deletions,
                         },
                     },
                 },
@@ -94,6 +96,11 @@ return {
             '<space>fA',
             "<cmd>lua require('telescope.builtin').find_files({ hidden = true })<CR>",
             desc = 'find all files',
+        },
+        {
+            '<space>fc',
+            "<cmd>lua require('telescope.builtin').find_files({ find_command = { 'find', '.', '-name', '*.c', '-o', '-name', '*.h', '-o', '-name', '*.cpp' }, results_title = 'C/C++ files' })<CR>",
+            desc = 'find C/C++ files',
         },
         {
             '<space>fs',
@@ -182,7 +189,7 @@ return {
         },
         {
             '<space>wd',
-            "<cmd>lua require('telescope.builtin').diagnostics()<CR>",
+            "<cmd>lua require('telescope.builtin').diagnostics({ severity_limit = 'ERROR'})<CR>",
             desc = 'lists LSP diagnostics for the current workspace if supported, otherwise searches in all open buffers',
         },
         {
