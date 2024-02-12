@@ -8,7 +8,7 @@ return {
         { 'ray-x/lsp_signature.nvim' },
         { 'folke/neodev.nvim' },
     },
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', --[[ 'proto', ]] 'python' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', --[[ 'proto', ]] 'python', 'zig' },
     keys = {
         { '<leader>[', ':LspInfo<cr>', desc = 'Show status of LSP clients' },
     },
@@ -75,6 +75,13 @@ return {
         nvim_lsp.clangd.setup({
             on_attach = on_attach,
             filetypes = { 'c', 'cpp', 'objc', 'objcpp', 'cuda' },
+            capabilities = capabilities,
+        })
+
+        -- Zig -----------------------------------------------------
+        nvim_lsp.zls.setup({
+            on_attach = on_attach,
+            capabilities = capabilities,
         })
 
         -- Protobuf-------------------------------------------------

@@ -1,45 +1,55 @@
+local function build_cmd(lang)
+    local cmds = {
+        c = 'make',
+        zig = { 'zig', 'build-exe', vim.fn.expand('%:t') },
+    }
+    return cmds[lang]
+end
+
 local function program()
-    local option = 0
-    if vim.g.previous_debug then
-        local options = '&new\n&previous [' .. vim.g.previous_debug .. ']'
-        option = vim.fn.confirm('Which binary run to debug?', options, 2)
-    end
-    if option < 2 then
-        vim.g.previous_debug = vim.fn.input(
-            'Path to executable: ',
-            vim.fn.getcwd() .. '/build/',
-            'file'
-        )
-    end
-    if vim.fn.filereadable(vim.g.previous_debug) == 0 then
-        if
-            vim.fn.confirm(
-                'File [' .. vim.g.previous_debug .. "] not found, or can't be read. Run `make`?",
-                '&no\n&yes',
-                2
-            ) == 2
-        then
-            local out = vim.fn.system('make')
-            if vim.v.shell_error == 0 then
-                print('Build has been successfully done.')
-            else
-                print('Build has been failed. Exit code: ' .. vim.v.shell_error .. '\n' .. out)
-            end
-            return program()
+        local lang = vim.fn.expand('%:e')
+        local option = 0
+        if vim.g.previous_debug then
+            local options = '&new\n&previous [' .. vim.g.previous_debug .. ']'
+            option = vim.fn.confirm('Which binary run to debug?', options, 2)
         end
-    end
-    return vim.g.previous_debug
+        if option < 2 then
+            vim.g.previous_debug = vim.fn.input('Path to executable: ', vim.fn.getcwd(), 'file')
+        end
+        local cmd = build_cmd(lang)
+        if vim.fn.filereadable(vim.g.previous_debug) == 0 then
+            if
+                vim.fn.confirm(
+                    string.format(
+                        "File [%s] was not found, or can't be read. Run `%s` to build it?",
+                        vim.g.previous_debug,
+                        (type(cmd) == 'table') and table.concat(cmd, ' ') or cmd
+                    ),
+                    '&no\n&yes',
+                    2
+                ) == 2
+            then
+                local out = vim.fn.system(cmd)
+                if vim.v.shell_error == 0 then
+                    print('Build has been successfully done.')
+                else
+                    print('Build has been failed. Exit code: ' .. vim.v.shell_error .. '\n' .. out)
+                end
+                return program()
+            end
+        end
+        return vim.g.previous_debug
 end
 
 return {
     'mfussenegger/nvim-dap',
-    ft = { 'c', 'cpp', 'scala' },
+    ft = { 'c', 'cpp', 'scala', 'zig' },
     config = function()
         local dap = require('dap')
         -- Change BP icon
         vim.fn.sign_define(
             'DapBreakpoint',
-            { text = '', texthl = 'Error', linehl = 'Error', numhl = 'Error' }
+            { text = '', texthl = 'Error', linehl = 'Error', numhl = 'Error' }
         )
         -- Configuration for C/C++
         dap.adapters.lldb = {
@@ -103,6 +113,18 @@ return {
                 type = 'scala_cli_server',
                 request = 'attach',
                 name = 'scala-cli-client',
+            },
+        }
+        dap.configurations.zig = {
+            {
+                name = 'Launch debug for Zig',
+                type = 'lldb',
+                request = 'launch',
+                program = program,
+                cwd = '${workspaceFolder}',
+                args = {},
+                stopOnEntry = false,
+                runInTerminal = false,
             },
         }
     end,

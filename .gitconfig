@@ -11,6 +11,12 @@
 	hist = log --pretty=format:%h %ad | %s%d [%an] --graph --date=short
 [init]
 	defaultBranch = main
+[core]
+	editor = nvim
+	pager = delta
+[pager]
+	branch = false
+	log = false
 [merge]
 	tool = vimdiff
 	conflictstyle = diff3
@@ -21,14 +27,10 @@
 	cmd = nvim -d "$LOCAL" "$REMOTE"
 [mergetool "vimdiff"]
 	cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
-[core]
-	editor = nvim
-	pager = delta
-[pager]
-	branch = false
-	log = false
 [interactive]
 	diffFilter = delta --color-only
 
 [delta]
+	line-numbers = true
+	side-by-side = true
 	navigate = true

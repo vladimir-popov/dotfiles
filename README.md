@@ -140,6 +140,11 @@ cs setup
 brew install gcc
 ```
 
+### Zig
+Install zig and zls from sources:
+https://github.com/ziglang/zig
+https://github.com/zigtools/zls
+
 ### Json, Markdown, Html and CSS
 ```sh
 npm i -g vscode-langservers-extracted

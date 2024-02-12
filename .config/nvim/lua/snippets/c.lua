@@ -59,8 +59,6 @@ local func = s(
 )
 
 local snippets = {
-    include_std,
-    include_custom,
     func,
     for_loop,
 }
@@ -69,6 +67,8 @@ local autosnippets = {
     one_line_comment,
     multyline_comment,
     for_loop_x,
+    include_std,
+    include_custom,
 }
 
 return snippets, autosnippets

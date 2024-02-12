@@ -6,6 +6,7 @@ export CONFIGS_PATH=$HOME'/.config'
 export LOCAL_PATH=$HOME'/.local'
 export NVIM_PATH=$CONFIGS_PATH'/nvim'
 export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
+export ZIG_HOME=$PROJECTS'/zig'
 
 alias v=nvim
 alias vc="v -c \"normal '0\""
@@ -32,9 +33,6 @@ fi
 #autoload -Uz edit-command-line
 #zle -N edit-command-line
 bindkey '^v' edit-command-line
-
-# If you come from bash you might have to change your $PATH.
-# export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Path to your oh-my-zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
@@ -202,7 +200,8 @@ fi
 
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
-NNN_BMS="c:$CONFIGS_PATH;l:$LOCAL_PATH;p:$PROJECTS;v:$NVIM_PATH;V:$NVIM_PLUG;n:$PROJECTS/nvim;A:$HOME/Library/Arduino15/packages/arduino/hardware/avr/1.8.6;"
+NNN_BMS="c:$CONFIGS_PATH;l:$LOCAL_PATH;p:$PROJECTS;v:$NVIM_PATH;V:$NVIM_PLUG;n:$PROJECTS/nvim;"
+NNN_BMS+="A:$HOME/Library/Arduino15/packages/arduino/hardware/avr/1.8.6;z:$ZIG_HOME/lib/std;"
 
 if [[ -d "$PROJECTS/dash" ]]; then
   B_DASH='d:'$PROJECTS'/dash;'
@@ -264,4 +263,4 @@ n ()
 
 export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
 
-export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$ARDENS_PATH:$PATH"
+export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$ARDENS_PATH:$ZIG_HOME:$PATH"

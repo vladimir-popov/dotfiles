@@ -103,6 +103,11 @@ return {
             desc = 'find C/C++ files',
         },
         {
+            '<space>fC',
+            "<cmd>lua require('telescope.builtin').find_files({ find_command = { 'find', '-L', '.', '-name', '*.c', '-o', '-name', '*.h', '-o', '-name', '*.cpp' }, results_title = 'C/C++ files with symlinks' })<CR>",
+            desc = 'find C/C++ files',
+        },
+        {
             '<space>fs',
             "<cmd>lua require('telescope.builtin').find_files({search_file='*.scala', no_ignore = true, file_ignore_patterns = {'%.semanticdb'}, results_title = 'Scala files' })<CR>",
             desc = 'find scala files',
@@ -116,6 +121,11 @@ return {
             '<space>fl',
             "<cmd>lua require('telescope.builtin').find_files({search_file='*.lua', results_title = 'Lua files'})<CR>",
             desc = 'find lua files',
+        },
+        {
+            '<space>fz',
+            "<cmd>lua require('telescope.builtin').find_files({search_file='*.zig', results_title = 'Zig files'})<CR>",
+            desc = 'find zig files',
         },
         {
             '<space>e',
