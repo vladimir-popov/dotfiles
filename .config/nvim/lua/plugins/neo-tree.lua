@@ -86,6 +86,7 @@ return {
                     live_grep = function(state)
                         local node = state.tree:get_node()
                         local path = node:get_id()
+                        vim.cmd("wincmd w")
                         require('telescope.builtin').live_grep({
                             prompt_title = 'Find string in ' .. path,
                             cwd = path,

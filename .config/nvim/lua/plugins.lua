@@ -1,6 +1,10 @@
 return {
     -- show marks in the signcolumn
-    { 'yaocccc/vim-showmarks', lazy = false },
+    {
+        'chentoast/marks.nvim',
+        lazy = false,
+        config = true,
+    },
     -- replace selected
     {
         'vladimir-popov/vim-replace',
@@ -9,7 +13,9 @@ return {
     -- better quick list
     {
         'kevinhwang91/nvim-bqf',
+        enabled = false,
         ft = 'qf',
+        cmd = { 'BqfEnable', 'BqfToggle' },
     },
     -- autosave
     {
@@ -64,7 +70,7 @@ return {
         main = 'ibl',
         opts = {
             scope = {
-                enabled = false,
+                enabled = true,
             },
         },
     },
@@ -127,6 +133,13 @@ return {
         'folke/trouble.nvim',
         config = true,
         enabled = false,
+        cmd = { 'TroubleToggle' },
+        keys = {
+            { 'qo', '<cmd>lua require("trouble").open("quickfix")<cr>' },
+            { 'qc', '<cmd>lua require("trouble").close()<cr>' },
+            { '[q', '<cmd>lua require("trouble").previous({skip_groups = true, jump = true})<cr>' },
+            { ']q', '<cmd>lua require("trouble").next({skip_groups = true, jump = true})<cr>' },
+        }
     },
     -- Colorize
     {
@@ -202,5 +215,5 @@ return {
         },
     },
     -- koka lang
-    { 'Nymphium/vim-koka',     lazy = false },
+    { 'Nymphium/vim-koka', lazy = false },
 }

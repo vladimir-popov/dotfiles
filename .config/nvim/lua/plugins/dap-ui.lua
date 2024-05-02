@@ -1,7 +1,7 @@
 return {
     'rcarriga/nvim-dap-ui',
     ft = { 'c', 'cpp', 'zig' },
-    dependencies = { 'nvim-dap' },
+    dependencies = { 'nvim-dap', 'nvim-neotest/nvim-nio' },
     config = function()
         local dap, dapui = require('dap'), require('dapui')
         dapui.setup({

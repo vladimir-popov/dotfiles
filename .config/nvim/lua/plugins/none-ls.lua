@@ -7,7 +7,7 @@ local zig = function(null_ls, h)
         -- that spawns the command with the given arguments and options
         generator = null_ls.generator({
             command = 'zig',
-            args = { 'build-exe', '$FILENAME' },
+            args = { 'build', 'test' },
             to_temp_file = true,
             to_stdin = false,
             from_stderr = true,
@@ -35,6 +35,7 @@ end
 local on_attach = require('lsp_on_attach')
 return {
     'nvimtools/none-ls.nvim',
+    enabled = false,
     dependencies = {
         { 'nvim-lua/plenary.nvim' },
     },
@@ -50,7 +51,6 @@ return {
                 null_ls.builtins.diagnostics.zsh.with({
                     filetypes = { 'sh', 'zsh' },
                 }),
-                null_ls.builtins.formatting.jq,
                 null_ls.builtins.formatting.protolint,
                 null_ls.builtins.formatting.stylua.with({
                     extra_args = { '--config-path', vim.fn.expand('~/.stylua.default') },
@@ -58,5 +58,6 @@ return {
             },
             on_attach = on_attach,
         })
+        null_ls.register(zig(null_ls, helpers))
     end,
 }

@@ -24,11 +24,15 @@ return {
 			["qw"] = { ":close<CR>", "Close the current window" },
 			["qQ"] = { ":bd<CR>", "Close the current buffer and window" },
 			["QQ"] = { ":bd!<CR>", "Force close the current buffer and window" },
-			["qo"] = { ":copen<CR>", "Open quickfix window" },
-			["qc"] = { ":cclose<CR>", "Close quickfix window" },
 			["qh"] = { ":helpclose<cr>", "Close the help window" },
 
 			["gb"] = { "<C-^>", "Go back" },
+
+            -- Communicate with quickfix
+			["qo"] = { ":copen<CR>", "Open quickfix window" },
+			["qc"] = { ":cclose<CR>", "Close quickfix window" },
+			["[q"] = { ":cprevious<CR>", "Go to previous quickfix item" },
+			["]q"] = { ":cnext<CR>", "Go to next quickfix item" },
 
 			-- hotkeys to swap between buffers
 			["[b"] = { ":bprevious<CR>", "Go to previous buffer" },

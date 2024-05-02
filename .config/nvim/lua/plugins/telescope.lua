@@ -78,8 +78,8 @@ return {
                 },
             },
         })
-        require('telescope').load_extension('zf-native')
         require('telescope').load_extension('undo')
+        require('telescope').load_extension('zf-native')
     end,
     keys = {
         {
@@ -129,7 +129,7 @@ return {
         },
         {
             '<space>e',
-            "<cmd>lua require('telescope.builtin').buffers()<cr>",
+            "<cmd>lua require('telescope.builtin').buffers({sort_lastused=true})<cr>",
             desc = 'find buffers',
         },
         {
@@ -160,6 +160,11 @@ return {
         {
             '<space>gg',
             "<cmd>lua require('telescope.builtin').live_grep()<CR>",
+            desc = 'live grep',
+        },
+        {
+            '<space>gb',
+            "<cmd>lua require('telescope.builtin').live_grep({grep_open_files=true,prompt_title = 'Live grep in buffers' })<CR>",
             desc = 'live grep',
         },
         {

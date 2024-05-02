@@ -24,7 +24,7 @@ vim.diagnostic.config({ virtual_text = false, float = { border = _border } })
 
 -- Required for proper symbol highlighting
 local highlight_setup = function(client)
-    if client.server_capabilities.documentHighlight then
+    if client.server_capabilities.documentHighlightProvider then
         vim.cmd([[autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()]])
         vim.cmd([[autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()]])
         vim.cmd([[autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()]])

@@ -152,11 +152,11 @@ return {
                     },
                     separator = '',
                 },
-                {
-                    'ex.lsp.null_ls',
-                    padding = 0,
-                    icon = { '', color = { fg = 'green' } },
-                },
+                -- {
+                --     'ex.lsp.null_ls',
+                --     padding = 0,
+                --     icon = { '', color = { fg = 'green' } },
+                -- },
                 { 'filetype', icons_enabled = false },
                 { 'ex.location' },
             },

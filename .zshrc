@@ -195,6 +195,14 @@ fi
 fi
 
 # ==================================================================================================
+#                                      Playdate configuration
+# ==================================================================================================
+
+export PLAYDATE_SDK_PATH=$HOME/Developer/PlaydateSDK
+
+# ==================================================================================================
+
+# ==================================================================================================
 #                                         nnn configuration
 # ==================================================================================================
 
@@ -261,6 +269,7 @@ n ()
 }
 # ==================================================================================================
 
-export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
+export SBT_OPTS="-Xmx12G -XX:+UseG1GC"
 
-export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$ARDENS_PATH:$ZIG_HOME:$PATH"
+export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$ARDENS_PATH:$ZIG_HOME/bin:$PATH"
+PATH+="$PLAYDATE_SDK_PATH/bin"
