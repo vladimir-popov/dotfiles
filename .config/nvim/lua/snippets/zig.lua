@@ -1,8 +1,24 @@
 local Self = s(
-    { trig = 'constself' },
+    { trig = 'selfconst' },
     fmta(
-        [[const Self = @This()<>]],
+        [[const <> = @This()<>]],
+        { i(1, "Self"), i(0) }
+    )
+)
+
+local STD = s(
+    { trig = 'import_std' },
+    fmta(
+        [[const std = @import("std");<>]],
         { i(0) }
+    )
+)
+
+local PTR_CAST = s(
+    { trig = 'ptrCast' },
+    fmta(
+        [[@ptrCast(@alignCast(<>))<>]],
+        { i(1, "ptr"), i(0) }
     )
 )
 
@@ -15,7 +31,7 @@ local println = s(
 )
 
 local snippets = {
-    Self,
+    Self, STD, PTR_CAST
 }
 
 local autosnippets = {

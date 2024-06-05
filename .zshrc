@@ -6,7 +6,7 @@ export CONFIGS_PATH=$HOME'/.config'
 export LOCAL_PATH=$HOME'/.local'
 export NVIM_PATH=$CONFIGS_PATH'/nvim'
 export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
-export ZIG_HOME=$PROJECTS'/zig'
+
 
 alias v=nvim
 alias vc="v -c \"normal '0\""
@@ -271,5 +271,18 @@ n ()
 
 export SBT_OPTS="-Xmx12G -XX:+UseG1GC"
 
-export PATH="$HOME/.pyenv/bin:$HOME/.local/bin:$HOME/go/bin:$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$HOME/.cargo/bin:$ARDENS_PATH:$ZIG_HOME/bin:$PATH"
-PATH+="$PLAYDATE_SDK_PATH/bin"
+path=(
+	$path
+	"$HOME/.pyenv/bin"
+	"$HOME/.local/bin"
+	"$HOME/go/bin"
+	"$HOME/.yarn/bin"
+	"$HOME/.config/yarn/global/node_modules/.bin"
+	"$HOME/.cargo/bin"
+	"$ARDENS_PATH"
+	"$PLAYDATE_SDK_PATH/bin"
+	"$HOME/.zvm/self"
+	"$HOME/.zvm/bin"
+	"$PROJECTS/zls/zig-out/bin"
+)
+export PATH

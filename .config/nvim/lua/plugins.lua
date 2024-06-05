@@ -33,7 +33,7 @@ return {
         end,
         cmd = { 'UndotreeToggle' },
         keys = {
-            { '<leader>lh', '<cmd>UndotreeToggle<cr>' },
+            { '<leader>lh', '<cmd>UndotreeToggle \\| Neotree close<cr>' },
         },
     },
     -- surround
@@ -144,6 +144,7 @@ return {
     -- Colorize
     {
         'uga-rosa/ccc.nvim',
+        config = true,
         cmd = { 'CccPick', 'CccConvert', 'CccHighlighterToggle' },
     },
     -- diffview

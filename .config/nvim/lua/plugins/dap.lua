@@ -1,44 +1,57 @@
-local function build_cmd(lang)
-    local cmds = {
-        c = 'make',
-        zig = { 'zig', 'build-exe', vim.fn.expand('%:t') },
-    }
-    return cmds[lang]
+local function debug_c()
+    local option = 0
+    if vim.g.previous_debug then
+        local options = '&new\n&previous [' .. vim.g.previous_debug .. ']'
+        option = vim.fn.confirm('Which binary run to debug?', options, 2)
+    end
+    if option < 2 then
+        vim.g.previous_debug = vim.fn.input('Path to executable: ', vim.fn.getcwd(), 'file')
+    end
+    local cmd = 'make'
+    if vim.fn.expand('%:e') == 'zig' then
+        cmd = 'zig build test'
+    end
+    if vim.fn.filereadable(vim.g.previous_debug) == 0 then
+        if
+            vim.fn.confirm(
+                string.format(
+                    "File [%s] was not found, or can't be read. Run `%s` to build it?",
+                    vim.g.previous_debug,
+                    (type(cmd) == 'table') and table.concat(cmd, ' ') or cmd
+                ),
+                '&no\n&yes',
+                2
+            ) == 2
+        then
+            local out = vim.fn.system(cmd)
+            if vim.v.shell_error == 0 then
+                print('Build has been successfully done.')
+            else
+                print('Build has been failed. Exit code: ' .. vim.v.shell_error .. '\n' .. out)
+            end
+            return debug_c()
+        end
+    end
+    return vim.g.previous_debug
 end
 
-local function program()
-        local lang = vim.fn.expand('%:e')
-        local option = 0
-        if vim.g.previous_debug then
-            local options = '&new\n&previous [' .. vim.g.previous_debug .. ']'
-            option = vim.fn.confirm('Which binary run to debug?', options, 2)
-        end
-        if option < 2 then
-            vim.g.previous_debug = vim.fn.input('Path to executable: ', vim.fn.getcwd(), 'file')
-        end
-        local cmd = build_cmd(lang)
-        if vim.fn.filereadable(vim.g.previous_debug) == 0 then
-            if
-                vim.fn.confirm(
-                    string.format(
-                        "File [%s] was not found, or can't be read. Run `%s` to build it?",
-                        vim.g.previous_debug,
-                        (type(cmd) == 'table') and table.concat(cmd, ' ') or cmd
-                    ),
-                    '&no\n&yes',
-                    2
-                ) == 2
-            then
-                local out = vim.fn.system(cmd)
-                if vim.v.shell_error == 0 then
-                    print('Build has been successfully done.')
-                else
-                    print('Build has been failed. Exit code: ' .. vim.v.shell_error .. '\n' .. out)
-                end
-                return program()
+local function debug_zig()
+    function find_test_exe()
+        local last_modified = 0
+        local exe = ''
+        for _, file in ipairs(vim.fs.find("test", { limit = math.huge, type = 'file', path = "./zig-cache" })) do
+            local modified = vim.fn.getftime(file)
+            if modified > last_modified then
+                last_modified = modified
+                exe = file
             end
         end
-        return vim.g.previous_debug
+        return exe
+    end
+
+    local exe = find_test_exe()
+    print('Run', exe, 'for debug')
+    return exe
 end
 
 return {
@@ -69,7 +82,7 @@ return {
                 name = 'Launch debug for C',
                 type = 'lldb',
                 request = 'launch',
-                program = program,
+                program = debug_c,
                 cwd = '${workspaceFolder}',
                 args = {},
                 stopOnEntry = false,
@@ -84,6 +97,20 @@ return {
             },
         }
         dap.configurations.cpp = dap.configurations.c
+
+        -- Configuration for Zig
+        dap.configurations.zig = {
+            {
+                name = 'Launch debug for Zig',
+                type = 'lldb',
+                request = 'launch',
+                program = debug_zig,
+                cwd = '${workspaceFolder}',
+                args = {},
+                stopOnEntry = true,
+                runInTerminal = false,
+            },
+        }
 
         -- Configuration for Scala
         dap.adapters.scala_cli_server = {
@@ -113,18 +140,6 @@ return {
                 type = 'scala_cli_server',
                 request = 'attach',
                 name = 'scala-cli-client',
-            },
-        }
-        dap.configurations.zig = {
-            {
-                name = 'Launch debug for Zig',
-                type = 'lldb',
-                request = 'launch',
-                program = program,
-                cwd = '${workspaceFolder}',
-                args = {},
-                stopOnEntry = false,
-                runInTerminal = false,
             },
         }
     end,

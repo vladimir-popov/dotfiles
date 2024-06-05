@@ -70,13 +70,17 @@ local function icon_only(opts)
     }, opts)
 end
 
+function lsp_status()
+    return require('lualine.utils.utils').stl_escape(vim.lsp.status())
+end
+
 return {
     'nvim-lualine/lualine.nvim',
     lazy = false,
     dependencies = {
         'nvim-tree/nvim-web-devicons',
         { 'vladimir-popov/lualine-ex', dev = true },
-        'arkav/lualine-lsp-progress',
+        {'vladimir-popov/lualine-lsp-progress', branch = 'patch-1'},
         'nvim-lua/plenary.nvim',
     },
     opts = {
@@ -132,7 +136,7 @@ return {
             },
             lualine_c = {
                 'lsp_progress',
-                'g:metals_status',
+                -- lsp_status
             },
             lualine_x = {
                 {
@@ -157,7 +161,14 @@ return {
                 --     padding = 0,
                 --     icon = { '', color = { fg = 'green' } },
                 -- },
-                { 'filetype', icons_enabled = false },
+                icon_only({
+                    icon = { '󱙃', color = { fg = '#d76380' } },
+                    cond = function()
+                        local status, plugin = pcall(require, 'auto-save')
+                        return not (status and plugin.get_autosave_state())
+                    end,
+                }),
+                { 'filetype',   icons_enabled = false },
                 { 'ex.location' },
             },
             lualine_z = {

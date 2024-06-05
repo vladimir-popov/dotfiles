@@ -129,7 +129,7 @@ return {
         },
         {
             '<space>e',
-            "<cmd>lua require('telescope.builtin').buffers({sort_lastused=true})<cr>",
+            "<cmd>lua require('telescope.builtin').buffers({sort_mru=true, sort_lastused=true})<cr>",
             desc = 'find buffers',
         },
         {

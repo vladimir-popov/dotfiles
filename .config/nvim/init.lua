@@ -111,8 +111,8 @@ vim.opt.updatetime = 300
 vim.o.autoread = true
 vim.api.nvim_create_autocmd({ 'BufEnter', 'CursorHold', 'CursorHoldI', 'FocusGained' }, {
     pattern = { '*' },
-    callback = function()
-        if vim.fn.mode() ~= 'c' and vim.fn.expand('%') ~= '[Command Line]' then
+    callback = function(arg)
+        if vim.fn.mode() ~= 'c' and vim.fn.getcmdwintype() == '' then
             vim.api.nvim_command('checktime')
         end
     end,
