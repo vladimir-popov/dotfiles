@@ -17,9 +17,9 @@ return {
         ft = 'qf',
         cmd = { 'BqfEnable', 'BqfToggle' },
     },
-    -- autosave
+    -- autosave (my fork with get_autosave_state method)
     {
-        'Pocco81/auto-save.nvim',
+        'vladimir-popov/auto-save.nvim',
         lazy = false,
         config = true,
         enabled = true,
