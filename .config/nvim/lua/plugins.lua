@@ -74,33 +74,6 @@ return {
             },
         },
     },
-    -- Modern fold
-    {
-        'kevinhwang91/nvim-ufo',
-        dependencies = 'kevinhwang91/promise-async',
-        enabled = false,
-        config = function()
-            -- Tell the server the capability of foldingRange,
-            -- Neovim hasn't added foldingRange to default capabilities, users must add it manually
-            local capabilities = vim.lsp.protocol.make_client_capabilities()
-            capabilities.textDocument.foldingRange = {
-                dynamicRegistration = false,
-                lineFoldingOnly = true,
-            }
-            local language_servers = require('lspconfig').util.available_servers() -- or list servers manually like {'gopls', 'clangd'}
-            for _, ls in ipairs(language_servers) do
-                require('lspconfig')[ls].setup({
-                    capabilities = capabilities,
-                    -- you can add other fields for setting up lsp server in this table
-                })
-            end
-            return {
-                provider_selector = function(bufnr, filetype, buftype)
-                    return { 'treesitter', 'indent' }
-                end,
-            }
-        end,
-    },
     -- Hop is similar to EasyMotion
     {
         'phaazon/hop.nvim',
@@ -217,4 +190,19 @@ return {
     },
     -- koka lang
     { 'Nymphium/vim-koka', lazy = false },
+    -- PlantUML
+    {
+        'weirongxu/plantuml-previewer.vim',
+        lazy = false,
+        dependencies = { 'aklt/plantuml-syntax', 'tyru/open-browser.vim' },
+        config = function()
+            vim.cmd [[
+au FileType plantuml let g:plantuml_previewer#plantuml_jar_path = get(
+    \  matchlist(system('cat `which plantuml` | grep plantuml.jar'), '\v.*\s[''"]?(\S+plantuml\.jar).*'),
+    \  1,
+    \  0
+    \)
+            ]]
+        end
+    }
 }
