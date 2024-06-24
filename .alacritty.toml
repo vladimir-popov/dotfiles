@@ -1,13 +1,18 @@
-live_config_reload = true
-
 import = [
+  "~/.config/alacritty/catppuccin-mocha.toml"
   # uncomment the flavour you want below:
   # "~/.config/alacritty/dark.toml"
   # "~/.config/alacritty/catppuccin-latte.toml"
   # "~/.config/alacritty/catppuccin-frappe.toml"
-  "~/.config/alacritty/catppuccin-macchiato.toml"
+  # "~/.config/alacritty/catppuccin-macchiato.toml"
   # "~/.config/alacritty/catppuccin-mocha.toml"
 ]
+
+live_config_reload = true
+
+[shell]
+args = ["--login", "-c", "tmux attach || tmux"]
+program = "/bin/zsh"
 
 [selection]
 save_to_clipboard = true
@@ -59,10 +64,6 @@ chars = "\u0002"
 key = "B"
 mode = "~Search"
 mods = "Command"
-
-[shell]
-args = ["--login", "-c", "tmux attach || tmux"]
-program = "/bin/zsh"
 
 [window]
 decorations = "full"

@@ -155,6 +155,7 @@ require('lazy').setup('plugins', {
     -- debug = true,
 })
 
+vim.cmd([[let g:catppuccin_flavour = $CATPPUCCIN]])
 vim.cmd('colorscheme catppuccin')
-vim.opt.background = 'dark'
-vim.cmd([[hi Folded ctermfg=102 guifg=#878787 guibg=NONE ctermbg=NONE]])
+-- vim.opt.background = 'dark'
+-- vim.cmd([[hi Folded ctermfg=102 guifg=#878787 guibg=NONE ctermbg=NONE]])

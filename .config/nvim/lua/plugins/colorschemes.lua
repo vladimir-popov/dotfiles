@@ -7,7 +7,6 @@ return {
         name = 'catppuccin',
         event = 'VeryLazy',
         config = function()
-            vim.g.catppuccin_flavour = 'macchiato'
             require('catppuccin').setup({
                 no_underline = true,
                 background = {

@@ -7,6 +7,20 @@ export LOCAL_PATH=$HOME'/.local'
 export NVIM_PATH=$CONFIGS_PATH'/nvim'
 export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
 
+# or frappe, macchiato, mocha, latte
+export CATPPUCCIN=latte
+catppuccin() {
+	if [ $# -lt 1 ]
+	then
+	    echo "Usage: $funcstack[1] frappe | macchiato | mocha | latte"
+	    return
+	fi
+	export CATPPUCCIN=$1
+	tmux set-environment -g CATPPUCCIN $1
+	tmux source ~/.tmux.conf
+	sed -i '' -E "2s/catppuccin-[a-z]+/catppuccin-$CATPPUCCIN/g" ~/.alacritty.toml
+}
+
 
 alias v=nvim
 alias vc="v -c \"normal '0\""
