@@ -5,9 +5,11 @@ return {
     {
         'catppuccin/nvim',
         name = 'catppuccin',
-        event = 'VeryLazy',
+        lazy = false,
+        priority = 1000,
         config = function()
             require('catppuccin').setup({
+                flavour = vim.env.CATPPUCCIN or 'macchiato',
                 no_underline = true,
                 background = {
                     light = 'latte',

@@ -7,7 +7,6 @@ return {
     dependencies = {
         'nvim-treesitter/playground',
         'nvim-treesitter/nvim-treesitter-textobjects',
-        'kevinhwang91/nvim-ufo',
     },
     config = function()
         require('nvim-treesitter.configs').setup({

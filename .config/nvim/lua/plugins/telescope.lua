@@ -79,7 +79,7 @@ return {
             },
         })
         require('telescope').load_extension('undo')
-        require('telescope').load_extension('zf-native')
+        -- require('telescope').load_extension('zf-native')
     end,
     keys = {
         {

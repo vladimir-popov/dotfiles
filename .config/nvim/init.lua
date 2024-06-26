@@ -137,6 +137,9 @@ require('lazy').setup('plugins', {
     defaults = { lazy = true },
     checker = { enabled = false },
     change_detection = { enabled = false },
+    rocks = {
+        enabled = false,
+    },
     performance = {
         rtp = {
             disabled_plugins = {
@@ -154,8 +157,4 @@ require('lazy').setup('plugins', {
     },
     -- debug = true,
 })
-
-vim.cmd([[let g:catppuccin_flavour = $CATPPUCCIN]])
-vim.cmd('colorscheme catppuccin')
--- vim.opt.background = 'dark'
--- vim.cmd([[hi Folded ctermfg=102 guifg=#878787 guibg=NONE ctermbg=NONE]])
+vim.cmd.colorscheme "catppuccin"
