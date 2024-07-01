@@ -157,4 +157,13 @@ require('lazy').setup('plugins', {
     },
     -- debug = true,
 })
-vim.cmd.colorscheme "catppuccin"
+local tmux_flavour = vim.fn.system('tmux show-environment -g CATPPUCCIN')
+local flavour = string.gsub(tmux_flavour, 'CATPPUCCIN=(%w+).*', '%1')
+if flavour == tmux_flavour then
+    flavour = vim.env.CATPPUCCIN or 'macchiato'
+end
+if flavour == 'latte' then
+    vim.cmd.colorscheme "edge"
+else
+    vim.cmd.colorscheme("catppuccin-" .. flavour)
+end
