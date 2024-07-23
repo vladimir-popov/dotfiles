@@ -153,12 +153,23 @@ return {
             },
         },
     },
-    -- Markdown Preview
+    -- Markdown
+    {
+        'MeanderingProgrammer/markdown.nvim',
+        main = "render-markdown",
+        opts = {},
+        ft = { 'markdown' },
+        cmd = { 'RenderMarkdown' },
+        -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.nvim' }, -- if you use the mini.nvim suite
+        -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.icons' }, -- if you use standalone mini plugins
+        dependencies = { 'nvim-treesitter/nvim-treesitter', 'nvim-tree/nvim-web-devicons' }, -- if you prefer nvim-web-devicons
+    },
     {
         'iamcco/markdown-preview.nvim',
         build = function()
             vim.fn['mkdp#util#install']()
         end,
+        ft = { 'markdown' },
         cmd = { 'MarkdownPreview' },
         config = function()
             vim.cmd([[
