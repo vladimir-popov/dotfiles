@@ -33,109 +33,147 @@ end
 
 local keys_mapping = function(client, bufnr)
     local wk = require('which-key')
-    wk.register({
-        ['<space>n'] = {
+    wk.add({
+        {
+            '<space>n',
             '<cmd>lua require("telescope.builtin").lsp_dynamic_workspace_symbols()<CR>',
-            'search type in workspace',
+            desc = 'search type in workspace',
+            buffer = bufnr
         },
-        ['<leader>f'] = {
+        {
+            '<leader>f',
             '<cmd>lua vim.lsp.buf.format()<CR>',
-            'format current buffer',
+            desc = 'format current buffer',
+            buffer = bufnr
         },
-        ['gd'] = {
-            -- '<cmd>lua vim.lsp.buf.definition()<CR>',
+        {
+            'gd',
             '<cmd>lua require("telescope.builtin").lsp_definitions()<CR>',
-            'go to definition',
+            desc = 'go to definition',
+            buffer = bufnr
         },
-        ['gi'] = {
-            -- '<cmd>lua vim.lsp.buf.implementation()<CR>',
+        {
+            'gi',
             '<cmd>lua require("telescope.builtin").lsp_implementations()<CR>',
-            'go to implementation',
+            desc = 'go to implementation',
+            buffer = bufnr
         },
-        ['gr'] = {
-            -- '<cmd>lua vim.lsp.buf.references()<CR>',
+        {
+            'gr',
             '<cmd>lua require("telescope.builtin").lsp_references()<CR>',
-            'show all places where the symbol under cursor is used',
+            desc = 'show all places where the symbol under cursor is used',
+            buffer = bufnr
         },
-        ['gt'] = {
+        {
+            'gt',
             '<cmd>lua vim.lsp.buf.type_definition()<CR>',
-            'show place where type is defined',
+            desc = 'show place where type is defined',
+            buffer = bufnr
         },
-        ['K'] = {
-            -- '<cmd>lua vim.lsp.buf.hover()<CR>',
+        {
+            'K',
             '<cmd>Lspsaga hover_doc<CR>',
-            'show description of the symbol under cursor',
+            desc = 'show description of the symbol under cursor',
+            buffer = bufnr
         },
-        ['<c-p>'] = {
+        {
+            '<c-p>',
             '<cmd>lua vim.lsp.buf.signature_help()<CR>',
-            'show signature of current method',
+            desc = 'show signature of current method',
+            buffer = bufnr
         },
-        ['<leader>p'] = {
+        {
+            '<leader>p',
             '<cmd>lua vim.lsp.buf.document_symbol()<CR>',
-            'open a new window with a list of code-entities in the current document',
+            desc = 'open a new window with a list of code-entities in the current document',
+            buffer = bufnr
         },
-        ['<space>rn'] = {
+        {
+            '<space>rn',
             '<cmd>lua vim.lsp.buf.rename()<CR>',
-            -- '<cmd>Lspsaga rename<cr>',
-            'rename the symbol under cursor',
+            desc = 'rename the symbol under cursor',
+            buffer = bufnr
         },
-        ['<space>qf'] = {
-            -- '<cmd>lua vim.lsp.buf.code_action()<CR>',
+        {
+            '<space>qf',
             '<cmd>Lspsaga code_action<CR>',
-            'show all possible actions',
+            desc = 'show all possible actions',
+            buffer = bufnr
         },
-        ['<leader>e'] = {
+        {
+            '<leader>e',
             string.format(
                 '<cmd>lua vim.diagnostic.open_float({ bufnr = %d, scope = "l" })<CR>',
                 bufnr
             ),
-            'Show errors on the current line',
+            desc = 'Show errors on the current line',
+            buffer = bufnr
         },
-        ['[e'] = {
+        {
+            '[e',
             '<cmd>lua vim.diagnostic.goto_prev({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>',
-            'go to error before cursor',
+            desc = 'go to error before cursor',
+            buffer = bufnr
         },
-        ['[E'] = {
+        {
+            '[E',
             '<cmd>lua vim.diagnostic.goto_prev({ severity={min=vim.diagnostic.severity.INFO} })<CR>',
-            'go to error before cursor and show in float window',
+            desc = 'go to error before cursor and show in float window',
+            buffer = bufnr
         },
-        [']e'] = {
+        {
+            ']e',
             '<cmd>lua vim.diagnostic.goto_next({ float=false, severity={min=vim.diagnostic.severity.INFO} })<CR>',
-            'go to error after cursor',
+            desc = 'go to error after cursor',
+            buffer = bufnr
         },
-        [']E'] = {
+        {
+            ']E',
             '<cmd>lua vim.diagnostic.goto_next({ severity={min=vim.diagnostic.severity.INFO} })<CR>',
-            'go to error after cursor and show in float window',
+            desc = 'go to error after cursor and show in float window',
+            buffer = bufnr
         },
-        ['<leader>tr'] = {
+        {
+            '<leader>tr',
             '<cmd>lua require"metals.tvp".reveal_in_tree()<CR>',
-            'show current buffer in the tree view',
+            desc = 'show current buffer in the tree view',
+            buffer = bufnr
         },
-        ['<leader>tt'] = {
+        {
+            '<leader>tt',
             '<cmd>lua require"metals.tvp".toggle_tree_view()<CR>',
-            'toggle the tree view',
+            desc = 'toggle the tree view',
+            buffer = bufnr
         },
-    }, { buffer = bufnr })
-    wk.register({
-        ['<c-p>'] = {
+        {
+            '<c-p>',
             '<cmd>lua vim.lsp.buf.signature_help()<CR>',
-            'show signature of current method',
+            desc = 'show signature of current method',
+            mode = 'i',
+            buffer = bufnr
         },
-    }, { mode = 'i', buffer = bufnr })
-    wk.register({
-        ['<space>qf'] = {
+        {
+            '<space>qf',
             '<cmd>lua require("lspsaga.codeaction").code_action()<CR>',
-            'show all possible actions for selected code',
+            desc = 'show all possible actions for selected code',
+            mode = 'v',
+            buffer = bufnr
         },
-        ['K'] = {
+        {
+            'K',
             "<Esc><cmd>lua require('metals').type_of_range()<CR>",
-            'show type of selected code',
+            desc = 'show type of selected code',
+            mode = 'v',
+            buffer = bufnr
         },
-        ['<leader>f'] = {
+        {
+            '<leader>f',
             '<cmd>lua vim.lsp.buf.format()<CR>',
-            'format selected code',
+            desc = 'format selected code',
+            mode = 'v',
+            buffer = bufnr
         },
-    }, { mode = 'v', buffer = bufnr })
+    })
 end
 
 return function(client, bufnr)
