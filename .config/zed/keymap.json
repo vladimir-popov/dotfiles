@@ -1,0 +1,48 @@
+[
+  // Surrounding the selection in visual mode
+  {
+    "context": "vim_mode == visual",
+    "bindings": {
+      "shift-s": [
+        "vim::PushOperator",
+        {
+          "AddSurrounds": {}
+        }
+      ]
+    }
+  },
+  // Key maps
+  {
+    "context": "Dock",
+    "bindings": {
+      "ctrl-w h": ["workspace::ActivatePaneInDirection", "Left"],
+      "ctrl-w l": ["workspace::ActivatePaneInDirection", "Right"],
+      "ctrl-w k": ["workspace::ActivatePaneInDirection", "Up"],
+      "ctrl-w j": ["workspace::ActivatePaneInDirection", "Down"]
+    }
+  },
+  {
+    "context": "VimControl && !menu",
+    "bindings": {
+      "\\ f": "editor::Format",
+      "\\ e": "editor::Hover",
+      "g r": "editor::FindAllReferences",
+      "space q f": "editor::ToggleCodeActions",
+      "space a": "file_finder::Toggle",
+      "space o": "file_finder::Toggle",
+      "space s s": "outline::Toggle",
+      "space g g": "pane::DeploySearch"
+    }
+  },
+  {
+    "context": "vim_mode == normal",
+    "bindings": {
+      "q w": "pane::CloseActiveItem",
+      "q q": "pane::CloseActiveItem",
+      "] e": "editor::GoToDiagnostic",
+      "[ e": "editor::GoToPrevDiagnostic",
+      "] h": "editor::GoToHunk",
+      "[ h": "editor::GoToPrevHunk"
+    }
+  }
+]
