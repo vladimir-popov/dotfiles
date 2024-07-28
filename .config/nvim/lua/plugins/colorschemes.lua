@@ -1,7 +1,8 @@
 return {
-    { 'Th3Whit3Wolf/one-nvim',  name = 'one-nvim',  event = 'VeryLazy' },
-    { 'sainnhe/edge',           event = 'VeryLazy' },
-    { 'EdenEast/nightfox.nvim', name = ' nightfox', event = 'VeryLazy' },
+    { 'Th3Whit3Wolf/one-nvim',     name = 'one-nvim',  event = 'VeryLazy' },
+    { 'sainnhe/edge',              event = 'VeryLazy' },
+    { 'EdenEast/nightfox.nvim',    name = ' nightfox', event = 'VeryLazy' },
+    { "olimorris/onedarkpro.nvim", lazy = false,       priority = 1000 },
     {
         'catppuccin/nvim',
         name = 'catppuccin',

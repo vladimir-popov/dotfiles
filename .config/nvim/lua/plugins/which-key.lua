@@ -88,7 +88,6 @@ return {
                 ":bnext<CR>",
                 desc = "Go to next buffer"
             },
-
             -- hotkeys to swap between tabs
             {
                 "[t",

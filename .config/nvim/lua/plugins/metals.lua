@@ -69,16 +69,21 @@ local M = {
             require('metals').setup_dap()
 
             local wk = require('which-key')
-            wk.register({
-                ['K'] = {
+            wk.add({
+                {
+                    'K',
                     "<Esc><cmd>lua require('metals').type_of_range()<CR>",
-                    'show type of selected code',
+                    desc = 'show type of selected code',
+                    mode = 'v',
+                    buffer = bufnr
                 },
-            }, { mode = 'v', buffer = bufnr })
-
-            wk.register({
-                ['<leader>o'] = { '<cmd>MetalsOrganizeImports<CR>', 'organize import in scala' },
-            }, { buffer = bufnr })
+                {
+                    '<leader>o',
+                    '<cmd>MetalsOrganizeImports<CR>',
+                    desc = 'organize import in scala',
+                    buffer = bufnr
+                },
+            })
         end
 
         metals_config.find_root_dir_max_project_nesting = 2
