@@ -1,4 +1,11 @@
 return {
+    {
+        'vladimir-popov/blogger.nvim',
+        dev = true,
+        config = true,
+        ft = 'html',
+        cmd = { 'BloggerPreview' },
+    },
     -- show marks in the signcolumn
     {
         'chentoast/marks.nvim',
@@ -46,6 +53,7 @@ return {
     -- Comments
     {
         'numToStr/Comment.nvim',
+        enabled = false,
         ft = { 'lua', 'vim', 'scala', 'c', 'cpp', 'make', 'sh', 'java', 'zig' },
         opts = {
             toggler = {

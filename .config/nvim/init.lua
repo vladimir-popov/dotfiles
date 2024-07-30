@@ -163,6 +163,7 @@ if flavour == tmux_flavour then
     flavour = vim.env.CATPPUCCIN or 'macchiato'
 end
 if flavour == 'latte' then
+    vim.cmd[[set background=light]]
     vim.cmd.colorscheme "edge"
 else
     vim.cmd.colorscheme("catppuccin-" .. flavour)

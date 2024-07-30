@@ -111,11 +111,6 @@ return {
                 desc = "move cursor up naturally by display"
             },
             {
-                "<C-p>",
-                '"+p',
-                desc = "past from the clipboard"
-            },
-            {
                 "Y",
                 "y$",
                 desc = "Yank till the end of line"
