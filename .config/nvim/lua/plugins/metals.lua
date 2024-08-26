@@ -87,6 +87,14 @@ local M = {
         end
 
         metals_config.find_root_dir_max_project_nesting = 2
+        metals_config.find_root_dir = function(patterns, bufname, maxParentSearch)
+            if string.find(bufname, 'dash/scripts') then
+                return vim.fn.expand("%:p:h")
+            else
+                local root_dir = require("metals.rootdir")
+                return root_dir.find_root_dir(patterns, bufname, maxParentSearch)
+            end
+        end
 
         metals_config.capabilities = require('cmp_nvim_lsp').default_capabilities()
 

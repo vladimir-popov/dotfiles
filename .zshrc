@@ -297,6 +297,5 @@ path=(
 	"$PLAYDATE_SDK_PATH/bin"
 	"$HOME/.zvm/self"
 	"$HOME/.zvm/bin"
-	"$PROJECTS/zls/zig-out/bin"
 )
 export PATH

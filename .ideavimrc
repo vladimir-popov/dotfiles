@@ -39,6 +39,7 @@ nnoremap ]e :action GotoNextError<cr>
 nnoremap [e :action GotoPreviousError<cr>
 nnoremap ]h :action VcsShowNextChangeMarker<cr>
 nnoremap [h :action VcsShowPrevChangeMarker<cr>
+nnoremap <F11> :action ActivateTerminalToolWindow<cr>
 
 " Navigation
 nnoremap <c-o> :action Back<cr>
@@ -48,6 +49,7 @@ nnoremap gf :action Forward<CR>
 nnoremap gd :action GotoDeclaration<CR>
 nnoremap gr :action FindUsages<CR>
 nnoremap gi :action GotoImplementation<CR>
+nnoremap <leader>" :action SelectInProjectView<CR>
 nnoremap <leader>sp :action ParameterInfo<CR>
 nnoremap <leader>si :action Scala.ShowImplicitArguments<CR>
 nnoremap <leader>sd :action QuickImplementations<CR>
@@ -55,6 +57,11 @@ nnoremap <leader>sd :action QuickImplementations<CR>
 " nnoremap <space><space>b <Plug>(easymotion-b)<cr>
 nmap <space><space>w <leader><leader>w
 nmap <space><space>b <leader><leader>b
+nnoremap <space>fa :action GotoFile<cr>
+nnoremap <space>n :action GotoClass<cr>
+nnoremap <space>ss :action FileStructurePopup<cr>
+nnoremap <space>gg :action TextSearchAction<cr>
+
 
 " Types
 nnoremap K :action QuickJavaDoc<CR>
@@ -90,4 +97,4 @@ nnoremap qw :action CloseAllEditors<CR>
 " Manage windows
 nnoremap <c-w>s :action SplitHorizontally<CR>
 nnoremap <c-w>v :action SplitVertically<CR>
-nnoremap <c-w>w :action NextSplitter<CR>
+nnoremap <c-w>w :action NextSplitter<CR>set ideajoin
