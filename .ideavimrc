@@ -57,8 +57,10 @@ nnoremap <leader>sd :action QuickImplementations<CR>
 " nnoremap <space><space>b <Plug>(easymotion-b)<cr>
 nmap <space><space>w <leader><leader>w
 nmap <space><space>b <leader><leader>b
-nnoremap <space>fa :action GotoFile<cr>
 nnoremap <space>n :action GotoClass<cr>
+nnoremap <space>o :action RecentChangedFiles<cr>
+nnoremap <space>e :action RecentFiles<CR>
+nnoremap <space>fa :action GotoFile<cr>
 nnoremap <space>ss :action FileStructurePopup<cr>
 nnoremap <space>gg :action TextSearchAction<cr>
 
@@ -67,12 +69,6 @@ nnoremap <space>gg :action TextSearchAction<cr>
 nnoremap K :action QuickJavaDoc<CR>
 vmap K :action QuickJavaDoc<CR>
 
-" Search
-nnoremap <space>e :action RecentFiles<CR>
-nnoremap <space>f :action Find<CR>
-nnoremap <space>a :action GotoFile<CR>
-nnoremap <space>gg :action FindInPath<CR>
-nnoremap <space>m :action ShowBookmarks<CR>
 nnoremap * :action FindWordAtCaret<CR>
 vnoremap * :action FindWordAtCaret<CR>
 
