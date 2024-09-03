@@ -2,23 +2,31 @@ return {
     'nvim-telescope/telescope.nvim',
     dependencies = {
         'natecraddock/telescope-zf-native.nvim',
-        'debugloop/telescope-undo.nvim',
+        "nvim-telescope/telescope-live-grep-args.nvim",
     },
     config = function()
         local actions = require('telescope.actions')
+        local lga_actions = require("telescope-live-grep-args.actions")
         require('telescope').setup({
             extensions = {
-                undo = {
-                    side_by_side = true,
-                    layout_strategy = 'vertical',
+                live_grep_args = {
+                    auto_quoting = true, -- enable/disable auto-quoting
+                    -- define mappings, e.g.
                     mappings = {
+                           -- extend mappings
                         i = {
-                            ['<cr>'] = require('telescope-undo.actions').restore,
-                            ['<C-a>'] = require('telescope-undo.actions').yank_additions,
-                            ['<C-d>'] = require('telescope-undo.actions').yank_deletions,
+                            ["<C-k>"] = lga_actions.quote_prompt(),
+                            ["<C-i>"] = lga_actions.quote_prompt({ postfix = " --iglob " }),
+                            ["<C-t>"] = lga_actions.quote_prompt({ postfix = " -t" }),
+                            -- freeze the current list and start a fuzzy search in the frozen list
+                            ["<C-space>"] = actions.to_fuzzy_refine,
                         },
                     },
-                },
+                    -- ... also accepts theme settings, for example:
+                    -- theme = "dropdown", -- use dropdown theme
+                    -- theme = { }, -- use own theme spec
+                    -- layout_config = { mirror=true }, -- mirror preview pane
+                }
             },
             defaults = {
                 mappings = {
@@ -78,8 +86,8 @@ return {
                 },
             },
         })
-        require('telescope').load_extension('undo')
-        -- require('telescope').load_extension('zf-native')
+        require('telescope').load_extension('zf-native')
+        require('telescope').load_extension("live_grep_args")
     end,
     keys = {
         {
@@ -159,7 +167,8 @@ return {
         },
         {
             '<space>gg',
-            "<cmd>lua require('telescope.builtin').live_grep({additional_args={'--hidden'}})<CR>",
+            -- "<cmd>lua require('telescope.builtin').live_grep({additional_args={'--hidden'}})<CR>",
+            '<cmd>lua require("telescope").extensions.live_grep_args.live_grep_args({additional_args={"--hidden"}})<CR>',
             desc = 'live grep',
         },
         {
