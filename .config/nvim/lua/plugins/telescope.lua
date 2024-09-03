@@ -159,7 +159,7 @@ return {
         },
         {
             '<space>gg',
-            "<cmd>lua require('telescope.builtin').live_grep()<CR>",
+            "<cmd>lua require('telescope.builtin').live_grep({additional_args={'--hidden'}})<CR>",
             desc = 'live grep',
         },
         {
