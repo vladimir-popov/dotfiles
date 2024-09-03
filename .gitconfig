@@ -17,20 +17,23 @@
 [pager]
 	branch = false
 	log = false
+        difftool = true
 [merge]
 	tool = vimdiff
 	conflictstyle = diff3
 [diff]
-	tool = vimdiff
+	external = difft
+	tool = difftastic
 	colorMoved = default
+
+[difftool]
+        prompt = false
+
+[difftool "difftastic"]
+        cmd = difft "$LOCAL" "$REMOTE"
+
 [difftool "vimdiff"]
 	cmd = nvim -d "$LOCAL" "$REMOTE"
+
 [mergetool "vimdiff"]
 	cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
-[interactive]
-	diffFilter = delta --color-only
-
-[delta]
-	line-numbers = true
-	side-by-side = true
-	navigate = true

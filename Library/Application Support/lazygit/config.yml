@@ -1,0 +1,35 @@
+git:
+  commitPrefixes:
+    dash: 
+      pattern: "^(\\w+-\\w+).*"
+      replace: '$1: '
+
+  paging:
+    # pager: delta --dark --paging=never
+    # Requires: https://github.com/Wilfred/difftastic
+    externalDiffCommand: difft --color=always --syntax-highlight=on --display=inline
+
+# Config relating to the Lazygit UI
+gui:
+   # Use NerdFonts
+  # nerdFontsVersion: "3"
+  # If true, show a random tip in the command log when Lazygit starts
+  showRandomTip: false
+
+   # If true, show the bottom line that contains keybinding info and useful buttons. If false, this line will be hidden except to display a loader for an in-progress action.
+  showBottomLine: false
+
+   # Config relating to the commit length indicator
+  commitLength:
+    # If true, show an indicator of commit message length
+    show: false
+
+  theme:
+    # Color for file with unstaged changes
+    unstagedChangesColor:
+      - red
+
+
+# Config relating to things outside of Lazygit like how files are opened, copying to clipboard, etc
+os:
+  editPreset: 'nvim'
