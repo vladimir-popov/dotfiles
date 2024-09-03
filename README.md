@@ -24,6 +24,7 @@ git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 # Git
 brew install git
+brew install difftastic
 brew install lazygit
 
 # Nerd fonts
@@ -44,9 +45,6 @@ brew install nnn
 
 # nnn plugins
 sh -c "$(curl -Ls https://raw.githubusercontent.com/jarun/nnn/master/plugins/getplugs)"
-
-# delta
-brew install git-delta
 ```
 
 ### Add public key to github
@@ -141,9 +139,15 @@ brew install gcc
 ```
 
 ### Zig
-Install zig and zls from sources:
-https://github.com/ziglang/zig
-https://github.com/zigtools/zls
+Install Zig Version Manager:
+```
+curl https://raw.githubusercontent.com/tristanisham/zvm/master/install.sh | bash
+```
+Install zig and zls:
+```
+zvm i master
+zvm i --zls master
+```
 
 ### Json, Markdown, Html and CSS
 ```sh
