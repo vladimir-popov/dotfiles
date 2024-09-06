@@ -61,25 +61,27 @@ return {
         }
 
         local cmp = require('cmp')
-        local luasnip = require('luasnip')
+        local compare = require('cmp.config.compare')
+        local types = require('cmp.types')
 
         local has_words_before = function()
             local line, col = unpack(vim.api.nvim_win_get_cursor(0))
             return col ~= 0
                 and vim.api
-                        .nvim_buf_get_lines(0, line - 1, line, true)[1]
-                        :sub(col, col)
-                        :match('%s')
-                    == nil
+                .nvim_buf_get_lines(0, line - 1, line, true)[1]
+                :sub(col, col)
+                :match('%s')
+                == nil
         end
 
         local default_sources = {
-            { name = 'luasnip' },
-            { name = 'nvim_lsp' },
-            { name = 'nvim_lsp_signature_help' },
-            { name = 'buffer' },
-            { name = 'path' },
+            { name = 'nvim_lsp',                group_index = 1 },
+            { name = 'nvim_lsp_signature_help', group_index = 2 },
+            { name = 'luasnip',                 group_index = 3 },
+            { name = 'buffer',                  group_index = 4 },
+            { name = 'path',                    group_index = 5 },
         }
+        -- See defaults here https://github.com/hrsh7th/nvim-cmp/blob/main/lua/cmp/config/default.lua
         cmp.setup({
             snippet = {
                 expand = function(args)
@@ -116,11 +118,52 @@ return {
                     end
                 end, { 'i', 's' }),
             },
+            preselect = types.cmp.PreselectMode.None,
             sources = cmp.config.sources(default_sources),
+            -- see https://github.com/hrsh7th/nvim-cmp/blob/a110e12d0b58eefcf5b771f533fc2cf3050680ac/lua/cmp/matcher_spec.lua#L39
+            matching = {
+                -- assert.is.truthy(matcher.match('fmodify', 'fnamemodify', { disallow_fuzzy_matching = true }) == 0)
+                -- assert.is.truthy(matcher.match('fmodify', 'fnamemodify', { disallow_fuzzy_matching = false }) >= 1)
+                -- default is false
+                disallow_fuzzy_matching = false,
+                -- assert.is.truthy(matcher.match('Unit', 'net.UnixListener', { disallow_partial_fuzzy_matching = true }, config.matching) == 0)
+                -- assert.is.truthy(matcher.match('Unit', 'net.UnixListener', { disallow_partial_fuzzy_matching = false }, config.matching) >= 1)
+                -- default is true
+                disallow_partial_fuzzy_matching = true,
+                -- assert.is.truthy(matcher.match('fb', 'foo_bar', { disallow_partial_matching = true }) == 0)
+                -- assert.is.truthy(matcher.match('fb', 'foo_bar', { disallow_partial_matching = false }) >= 1)
+                -- assert.is.truthy(matcher.match('fb', 'fboo_bar', { disallow_partial_matching = true }) >= 1)
+                -- assert.is.truthy(matcher.match('fb', 'fboo_bar', { disallow_partial_matching = false }) >= 1)
+                -- default is false
+                disallow_partial_matching = false,
+                -- assert.is.truthy(matcher.match('bar', 'foo_bar', { disallow_prefix_unmatching = true }) == 0)
+                -- assert.is.truthy(matcher.match('bar', 'foo_bar', { disallow_prefix_unmatching = false }) >= 1)
+                -- default is false
+                disallow_prefix_unmatching = false
+            },
+            sorting = {
+                priority_weight = 2,
+                comparators = {
+                    compare.offset,
+                    compare.exact,
+                    compare.score,
+                    compare.locality,
+                    compare.kind,
+                    compare.length,
+                    compare.order,
+                    compare.recently_used,
+                },
+            },
             formatting = {
                 format = function(entry, vim_item)
                     -- fancy icons + text
                     vim_item.kind = string.format('%s %s', kind_icons[vim_item.kind], vim_item.kind)
+
+                    -- cut the looooong text
+                    local MAX_LENGTH = 80
+                    if string.len(vim_item.abbr) > MAX_LENGTH then
+                        vim_item.abbr = string.sub(vim_item.abbr, 1, MAX_LENGTH) .. '...'
+                    end
 
                     -- set a name for each source
                     vim_item.menu = ({
