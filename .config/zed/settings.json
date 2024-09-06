@@ -9,6 +9,7 @@
 {
   "ui_font_size": 16,
   "buffer_font_size": 16,
+  "buffer_font_family": "JetBrainsMono Nerd Font",
   "autosave": "on_focus_change",
   "restore_on_startup": "none",
   "git": {

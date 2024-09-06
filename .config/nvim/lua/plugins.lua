@@ -160,12 +160,12 @@ return {
         },
         keys = {
             {
-                '<space>gh',
+                '<leader>gh',
                 '<cmd>DiffviewFileHistory %<cr>',
                 desc = 'show git history of the current file',
             },
             {
-                '<space>gh',
+                '<leader>gh',
                 ":'<,'>DiffviewFileHistory %<cr>",
                 desc = 'show git history of the select text',
                 mode = 'v',
