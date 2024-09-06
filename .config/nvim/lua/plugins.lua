@@ -1,5 +1,16 @@
 return {
     {
+        'akinsho/git-conflict.nvim',
+        version = "*",
+        config = true,
+        lazy = false,
+        cmd = {
+            'GitConflictChooseOurs', 'GitConflictChooseTheirs', 'GitConflictChooseBoth',
+            'GitConflictChooseNone', 'GitConflictNextConflict', 'GitConflictPrevConflict',
+            'GitConflictListQf'
+        }
+    },
+    {
         'vladimir-popov/blogger.nvim',
         dev = true,
         config = true,
