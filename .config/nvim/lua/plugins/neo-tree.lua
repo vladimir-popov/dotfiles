@@ -82,7 +82,7 @@ return {
                 follow_current_file = {
                     -- This will find and focus the file in the active buffer every
                     -- time the current file is changed while the tree is open.
-                    enabled = true,
+                    enabled = false,
                     leave_dirs_open = true
                 },
                 group_empty_dirs = true,
@@ -130,6 +130,9 @@ return {
                     StaticMethod = { icon = '󰠄 ', hl = 'Function' },
                 },
             },
+            git_status = {
+                group_empty_dirs = true,
+            }
         })
     end,
 }

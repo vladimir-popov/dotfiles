@@ -7,6 +7,11 @@ require('lspsaga').setup({
     },
     diagnostic = {
         diagnostic_only_current = true
+    },
+    code_action = {
+        keys = {
+            quit = '<esc>'
+        }
     }
 })
 
@@ -97,7 +102,15 @@ local keys_mapping = function(client, bufnr)
         {
             '<space>qf',
             '<cmd>Lspsaga code_action<CR>',
+            -- '<cmd>lua vim.lsp.buf.code_action()<cr>',
             desc = 'show all possible actions',
+            buffer = bufnr
+        },
+        {
+            '<space>qf',
+            '<cmd>Lspsaga code_action<CR>',
+            desc = 'show all possible actions for selected code',
+            mode = 'v',
             buffer = bufnr
         },
         {
@@ -150,13 +163,6 @@ local keys_mapping = function(client, bufnr)
             '<cmd>lua vim.lsp.buf.signature_help()<CR>',
             desc = 'show signature of current method',
             mode = 'i',
-            buffer = bufnr
-        },
-        {
-            '<space>qf',
-            '<cmd>lua require("lspsaga.codeaction").code_action()<CR>',
-            desc = 'show all possible actions for selected code',
-            mode = 'v',
             buffer = bufnr
         },
         {

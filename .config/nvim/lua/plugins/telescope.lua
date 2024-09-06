@@ -91,7 +91,7 @@ return {
     end,
     keys = {
         {
-            '<space>;',
+            '<space>/',
             "<cmd>lua require'telescope.builtin'.builtin()<cr>",
             desc = 'show all builtin pickers',
         },
