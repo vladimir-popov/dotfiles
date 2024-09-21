@@ -36,20 +36,17 @@ local function debug_c()
 end
 
 local function debug_zig()
-    function find_test_exe()
-        local last_modified = 0
-        local exe = ''
-        for _, file in ipairs(vim.fs.find("test", { limit = math.huge, type = 'file', path = "./zig-cache" })) do
-            local modified = vim.fn.getftime(file)
-            if modified > last_modified then
-                last_modified = modified
-                exe = file
-            end
-        end
-        return exe
+    local binaries = {}
+    for file in vim.fs.dir("./zig-out/bin/", { depth = 1 }, "file") do
+        table.insert(binaries, file);
     end
 
-    local exe = find_test_exe()
+    local options = "&" .. table.concat(binaries, '\n&')
+    local option = vim.fn.confirm('Which binary run to debug?', options, 1)
+
+    if option == 0 then return nil end
+
+    local exe = "./zig-out/bin/" .. binaries[option]
     print('Run', exe, 'for debug')
     return exe
 end
@@ -67,7 +64,7 @@ return {
         -- Configuration for C/C++
         dap.adapters.lldb = {
             type = 'executable',
-            command = '/opt/homebrew/opt/llvm/bin/lldb-vscode',
+            command = '/opt/homebrew/opt/llvm/bin/lldb-dap',
             name = 'lldb',
             env = {
                 LLDB_LAUNCH_FLAG_LAUNCH_IN_TTY = 'YES',

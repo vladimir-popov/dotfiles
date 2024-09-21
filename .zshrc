@@ -232,7 +232,7 @@ if [[ -d "$PROJECTS/dash" ]]; then
 fi
 
 export NNN_BMS
-
+export NNN_ARCHIVE="\\.(7z|bz2|gz|tar|tgz|zip|jar)$"
 export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"
 
 # setup FIFO for preview feature
