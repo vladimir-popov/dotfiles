@@ -30,12 +30,25 @@ local println = s(
     )
 )
 
+local assert = s('assert', t('std.debug.assert'))
+
+local logger = s(
+    { trig = 'logger', dscr = 'Generates std.log.scoped(<>);' },
+    fmta(
+        [[const log = std.log.scoped(<>);<>]],
+        { i(1), i(0) }
+    )
+)
+
+
+
 local snippets = {
-    Self, STD, PTR_CAST
+    Self, STD, PTR_CAST, logger
 }
 
 local autosnippets = {
     println,
+    assert,
 }
 
 return snippets, autosnippets
