@@ -1,0 +1,82 @@
+OPTIONS=gender:male,pettype:dog,dogname:Ralph,catname:Foxy
+OPTIONS=!autoquiver,autopickup,pickup_types:?!/$="
+AUTOPICKUP_EXCEPTION="<.*arrow"
+AUTOPICKUP_EXCEPTION=">.*corpse"
+AUTOPICKUP_EXCEPTION=">.* cursed.*"
+AUTOPICKUP_EXCEPTION="> named empty"
+AUTOPICKUP_EXCEPTION="> named crap"
+AUTOPICKUP_EXCEPTION="> named junk"
+AUTOPICKUP_EXCEPTION="> named worthless"
+OPTION=paranoid_confirmation:quit pray attack
+## Controls what information the program reveals when the game ends:
+#y - prompt you and default to yes on the prompt;
+#n - prompt you and default to no on the prompt;
+#+ - disclose it without prompting;
+#− - do not disclose it and do not prompt.
+#
+#i - inventory; a - attributes; 
+#v - summarize monsters that have been vanquished;
+#g - list monster species that have been genocided;
+#c - display your conduct; o - display dungeon overview
+OPTION=disclose:-i -a -v -g -c -o
+# Allows looking at things on the screen by navigating the mouse over them
+# and clicking the right mouse button 
+OPTION=clicklook
+#
+# 	UI
+#
+OPTIONS=windowtype:curses,align_status:left,perm_invent,hitpointbar,showexp,hilite_pet
+## Change symbols
+OPTION=boulder:0
+SYMBOLS=S_ghost:X
+SYMBOLS=S_mimic_def:m
+SYMBOLS=S_water:~
+SYMBOLS=S_lava:~
+#
+## Colored status
+#
+OPTION=statushilites:3
+# Str, Con, Dex, Int, Wis, Cha
+OPTIONS=hilite_status:characteristics/up/green/down/red
+OPTION=hilite_status:experience/always/magenta
+## Gold
+OPTION=hilite_status:gold/always/yellow
+OPTION=hilite_status:gold/up/green/down/brown
+## Hitpoints
+OPTION=hilite_status:hitpoints/100%/green&normal
+OPTION=hilite_status:hitpoints/<100%/green&normal
+OPTION=hilite_status:hitpoints/<66%/yellow&normal
+OPTION=hilite_status:hitpoints/<50%/orange&normal
+OPTION=hilite_status:hitpoints/<33%/red&bold
+OPTION=hilite_status:hitpoints/<15%/red&inverse
+## Mana
+OPTION=hilite_status:power/100%/blue&normal
+OPTION=hilite_status:power/<100%/blue&normal
+OPTION=hilite_status:power/<66%/yellow&normal
+OPTION=hilite_status:power/<50%/orange&normal
+OPTION=hilite_status:power/<33%/red&bold
+OPTION=hilite_status:power/<15%/red&inverse
+## Armor
+OPTION=hilite_status:armor-class/always/brown
+## Hunger
+OPTIONS=hilite_status:hunger/satiated/yellow/hungry/orange/weak/red&bold/fainting/red&inverse/fainted/red&inverse&blink
+## Mental
+OPTIONS=hilite_status:condition/hallu/yellow
+OPTIONS=hilite_status:condition/conf/orange
+OPTIONS=hilite_status:condition/stun/red&bold
+#
+## Colored menus
+#
+#OPTIONS=menucolors
+#MENUCOLOR=" blessed "=green
+#MENUCOLOR=" holy "=green
+#MENUCOLOR=" cursed "=red
+#MENUCOLOR=" unholy "=red
+#MENUCOLOR=" cursed .* (being worn)"=orange&underline
+#
+## Messagetypes
+#
+## Don't miss money
+MSGTYPE=stop "You hear someone cursing shoplifters."
+## displacing pets. hide the message.
+MSGTYPE=hide "You swap places with your .*"
