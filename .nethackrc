@@ -1,3 +1,5 @@
+# nethack -u Uruk-bar-orc
+# nethack -u Vasian-mon-dwa
 OPTIONS=gender:male,pettype:dog,dogname:Ralph,catname:Foxy
 OPTIONS=!autoquiver,autopickup,pickup_types:?!/$="
 AUTOPICKUP_EXCEPTION="<.*arrow"
@@ -19,6 +21,8 @@ OPTION=paranoid_confirmation:quit pray attack
 #g - list monster species that have been genocided;
 #c - display your conduct; o - display dungeon overview
 OPTION=disclose:-i -a -v -g -c -o
+## Specify the order to list object types
+OPTIONS=packorder:")[%!/=?+(*`0_
 # Allows looking at things on the screen by navigating the mouse over them
 # and clicking the right mouse button 
 OPTION=clicklook
@@ -67,15 +71,36 @@ OPTIONS=hilite_status:condition/stun/red&bold
 #
 ## Colored menus
 #
-#OPTIONS=menucolors
-#MENUCOLOR=" blessed "=green
-#MENUCOLOR=" holy "=green
-#MENUCOLOR=" cursed "=red
-#MENUCOLOR=" unholy "=red
-#MENUCOLOR=" cursed .* (being worn)"=orange&underline
+OPTIONS=menucolors
+## By types
+MENUCOLOR=".* blessed .*"=green
+MENUCOLOR=".* cursed .*"=red
+MENUCOLOR=".* cursed .*(being worn)"=red&underline
+## Weapon
+MENUCOLOR=".*weapon in hand.*"=light-cyan
+MENUCOLOR=".*in quiver pouch.*"=brown
+## Items
+MENUCOLOR=".*ration.*"=green
+MENUCOLOR=" scroll.*"=yellow
+MENUCOLOR=" spellbook .*"=orange
+MENUCOLOR=".*potion.*"=blue
+MENUCOLOR="wand .*"=light-cyan
+MENUCOLOR=".* wand"=cyan
+MENUCOLOR=" ring .*"=magenta
+MENUCOLOR=" bag .* holding"=magenta
+MENUCOLOR=" luck(stone)?($| )"=magenta
+MENUCOLOR=" wand .* wish(ing)?($| )"=magenta
+MENUCOLOR=" wand .* death"=magenta
+MENUCOLOR=" gain level"=magenta
+MENUCOLOR=" full healing"=light-green
+MENUCOLOR=" magic marker"=magenta&bold
+MENUCOLOR=" magic lamp|lamp .* magic"=magenta&bold
+MENUCOLOR=" unicorn horn[^[]*$"=magenta&bold
 #
 ## Messagetypes
 #
+## Your pet grows up
+MSGTYPE=stop ".*grows up.*"
 ## Don't miss money
 MSGTYPE=stop "You hear someone cursing shoplifters."
 ## displacing pets. hide the message.
