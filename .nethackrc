@@ -2,7 +2,7 @@
 # nethack -u Vasian-mon-dwa
 OPTIONS=gender:male,pettype:dog,dogname:Ralph,catname:Foxy
 OPTIONS=!autoquiver,autopickup,pickup_types:?!/$="
-AUTOPICKUP_EXCEPTION="<.*arrow"
+#AUTOPICKUP_EXCEPTION="<.*arrow"
 AUTOPICKUP_EXCEPTION=">.*corpse"
 AUTOPICKUP_EXCEPTION=">.* cursed.*"
 AUTOPICKUP_EXCEPTION="> named empty"
@@ -78,6 +78,7 @@ MENUCOLOR=".* cursed .*"=red
 MENUCOLOR=".* cursed .*(being worn)"=red&underline
 ## Weapon
 MENUCOLOR=".*weapon in hand.*"=light-cyan
+MENUCOLOR="\(wielded\)"=light-cyan
 MENUCOLOR=".*in quiver pouch.*"=brown
 ## Items
 MENUCOLOR=".*ration.*"=green
@@ -105,3 +106,49 @@ MSGTYPE=stop ".*grows up.*"
 MSGTYPE=stop "You hear someone cursing shoplifters."
 ## displacing pets. hide the message.
 MSGTYPE=hide "You swap places with your .*"
+#
+## Advices and helpful links
+#
+# * Sacrificing your own race on a cross-aligned altar will automatically convert 
+# that altar to chaotic.
+#
+# * HP and power starting values
+# https://www.steelypips.org/nethack/343/hppw-343.txt
+#
+## Sokoban
+#
+## Level ?                         
+#  ┌──────────────────────┐
+#  │··^^^^^^^^^^^^^^^^^^··│
+#  │··┌─────────────────┐·│
+#┌─┴┐·│    ┌───┐        │·│
+#│··│0└┐  ┌┘···│        │·│
+#│·····├──┤·0··│        │·│
+#│·!0··│··│··2·│        │·│
+#└┐··76│···43·┌┘        │·│
+# │0··5···│0··│   ┌─────┤·│
+# │·00·│··│··0│ ┌─┤·····│·│
+# │·0·8└──┤·0·│ │·+·····│·│
+# │·······│··┌┘ ├─┤·····│·│
+# └──┐·0··│·┌┘  │·+·····+·│
+#    └┬─·─┘·│   ├─┤·····├─┘
+#     │·1···│   │·+·····│  
+#     │>·│··│   └─┤·····│  
+#     └──┴──┘     └─────┘  
+#  ┌──────────────────────┐
+#  │··^^^^^^^^^^^^^^^^^^··│
+#  │··┌─────────────────┐·│
+#┌─┴┐·│    ┌───┐        │·│
+#│··│.└┐  ┌┘···│        │·│
+#│·····├──┤·02·│        │·│
+#│·!0·6│··│·3.·│        │·│
+#└┐·7..│4··..·┌┘        │·│
+# │0·5.···│0··│   ┌─────┤·│
+# │·00·│··│··0│ ┌─┤·····│·│
+# │·0·.└──┤·0·│ │·+·····│·│
+# │···8···│··┌┘ ├─┤·····│·│
+# └──┐·0··│·┌┘  │·+·····+·│
+#    └┬─1─┘·│   ├─┤·····├─┘
+#     │·.···│   │·+·····│  
+#     │>·│··│   └─┤·····│  
+#     └──┴──┘     └─────┘  
