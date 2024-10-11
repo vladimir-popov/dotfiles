@@ -7,7 +7,7 @@ git:
   paging:
     # pager: delta --dark --paging=never
     # Requires: https://github.com/Wilfred/difftastic
-    externalDiffCommand: difft --color=always --syntax-highlight=on --display=inline
+    # externalDiffCommand: difft --color=always --syntax-highlight=on --display=inline
 
 # Config relating to the Lazygit UI
 gui:
