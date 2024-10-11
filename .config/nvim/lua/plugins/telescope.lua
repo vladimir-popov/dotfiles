@@ -13,7 +13,7 @@ return {
                     auto_quoting = true, -- enable/disable auto-quoting
                     -- define mappings, e.g.
                     mappings = {
-                           -- extend mappings
+                        -- extend mappings
                         i = {
                             ["<C-k>"] = lga_actions.quote_prompt(),
                             ["<C-i>"] = lga_actions.quote_prompt({ postfix = " --iglob " }),
@@ -53,11 +53,18 @@ return {
                         },
                     },
                 },
-                oldfiles = {
+                git_status = {
+                    theme = 'dropdown',
                     sort_lastused = true,
                     previewer = false,
                     path_display = { 'smart' },
+                    layout_config = { width = 0.7 },
+                },
+                oldfiles = {
                     theme = 'dropdown',
+                    sort_lastused = true,
+                    previewer = false,
+                    path_display = { 'smart' },
                     layout_config = { width = 0.9 },
                 },
                 live_grep = {
@@ -94,6 +101,11 @@ return {
             '<space>/',
             "<cmd>lua require'telescope.builtin'.builtin()<cr>",
             desc = 'show all builtin pickers',
+        },
+        {
+            '<space>j',
+            "<cmd>lua require'telescope.builtin'.resume()<cr>",
+            desc = 'resume previos search',
         },
         {
             '<space>fa',
@@ -139,6 +151,11 @@ return {
             '<space>e',
             "<cmd>lua require('telescope.builtin').buffers({sort_mru=true, sort_lastused=true})<cr>",
             desc = 'find buffers',
+        },
+        {
+            '<space>fg',
+            "<cmd>lua require('telescope.builtin').git_status({git_icons = Git_icons})<cr>",
+            desc = 'changed files in the repo',
         },
         {
             '<space>o',
@@ -215,11 +232,6 @@ return {
             '<space>wd',
             "<cmd>lua require('telescope.builtin').diagnostics({ severity_limit = 'ERROR'})<CR>",
             desc = 'lists LSP diagnostics for the current workspace if supported, otherwise searches in all open buffers',
-        },
-        {
-            '<space>fg',
-            "<cmd>lua require('telescope.builtin').git_status()<CR>",
-            desc = 'lists current changes per file with diff preview and add action.',
         },
         {
             'zs',

@@ -1,3 +1,13 @@
+Git_icons = {
+    added = "",
+    changed = "󰷉",
+    copied = "󰈢",
+    deleted = "",
+    renamed = "➡",
+    unmerged = "󱪘",
+    untracked = "󱀶",
+}
+
 return {
     {
         'akinsho/git-conflict.nvim',
