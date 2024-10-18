@@ -1,3 +1,22 @@
+local sep = package.config:sub(1, 1)
+
+local function gitlabFile()
+    local commit = '-/tree/master'
+    local gitlabUrl = 'https://git.ringcentral.com/dash'
+    local fullPath = vim.fn.expand('%:p')
+    if fullPath:sub(1, #vim.env.PROJECTS) == vim.env.PROJECTS then
+        local localPath = fullPath:sub(#vim.env.PROJECTS + 1)
+        local sepIdx = localPath:find(sep, 2)
+        local project = localPath:sub(1, sepIdx)
+        return gitlabUrl .. project .. commit .. localPath:sub(sepIdx)
+    end
+end
+
+local function gitlabLine()
+    local url = gitlabFile()
+    return url and (url .. '#L' .. vim.api.nvim_win_get_cursor(0)[1])
+end
+
 return {
     "folke/which-key.nvim",
     lazy = false,
@@ -133,6 +152,44 @@ return {
                 '<space>cl',
                 ":let @+=fnamemodify(expand('%'), ':~:.') | echo @+ .. ' was copied to the clipboard.'<cr>",
                 desc = "Copy local file path"
+            },
+            {
+                '<space>glcf',
+                function()
+                    local url = gitlabFile()
+                    vim.fn.setreg('+', url)
+                    print(url, 'was copied to the clipboard')
+                end,
+                desc = "Copy gitlab url to the current file"
+            },
+            {
+                '<space>glcl',
+                function()
+                    local url = gitlabLine()
+                    vim.fn.setreg('+', url)
+                    print(url, 'was copied to the clipboard')
+                end,
+                desc = "Copy gitlab url to the current line"
+            },
+            {
+                '<space>glof',
+                function()
+                    local url = gitlabFile()
+                    -- vim.fn.setreg('+', url)
+                    -- print(url, 'was copied to the clipboard')
+                    os.execute('open ' .. url)
+                end,
+                desc = "Open gitlab url to the current file"
+            },
+            {
+                '<space>glol',
+                function()
+                    local url = gitlabLine()
+                    -- vim.fn.setreg('+', url)
+                    -- print(url, 'was copied to the clipboard')
+                    os.execute('open ' .. url)
+                end,
+                desc = "Open gitlab url to the current line"
             },
             {
                 '<space>yf',

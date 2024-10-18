@@ -1,7 +1,7 @@
 # nethack -u Uruk-bar-orc
 # nethack -u Vasian-mon-dwa
 OPTIONS=gender:male,pettype:dog,dogname:Ralph,catname:Foxy
-OPTIONS=!autoquiver,autopickup,pickup_types:?!/$="
+OPTIONS=!autoquiver,autopickup,pickup_types:?!/$="+
 # AUTOPICKUP_EXCEPTION="<.*arrow"
 AUTOPICKUP_EXCEPTION=">.*corpse"
 AUTOPICKUP_EXCEPTION=">.* cursed.*"
@@ -27,7 +27,11 @@ OPTIONS=packorder:")[%!/=?+(*`0_
 # and clicking the right mouse button 
 OPTION=clicklook
 #
-# 	UI
+# ============================================================
+#
+# 			UI
+#
+# ============================================================
 #
 OPTIONS=windowtype:curses,align_status:left,perm_invent,hitpointbar,showexp,hilite_pet
 ## Change symbols
@@ -37,7 +41,9 @@ SYMBOLS=S_mimic_def:m
 SYMBOLS=S_water:~
 SYMBOLS=S_lava:~
 #
+# ============================================================
 ## Colored status
+# ============================================================
 #
 OPTION=statushilites:3
 # Str, Con, Dex, Int, Wis, Cha
@@ -69,7 +75,9 @@ OPTIONS=hilite_status:condition/hallu/yellow
 OPTIONS=hilite_status:condition/conf/orange
 OPTIONS=hilite_status:condition/stun/red&bold
 #
+# ============================================================
 ## Colored menus
+# ============================================================
 #
 OPTIONS=menucolors
 ## By types
@@ -98,7 +106,9 @@ MENUCOLOR=" magic marker"=magenta&bold
 MENUCOLOR=" magic lamp|lamp .* magic"=magenta&bold
 MENUCOLOR=" unicorn horn[^[]*$"=magenta&bold
 #
+# ============================================================
 ## Messagetypes
+# ============================================================
 #
 ## Your pet grows up
 MSGTYPE=stop ".*grows up.*"
@@ -107,7 +117,11 @@ MSGTYPE=stop "You hear someone cursing shoplifters."
 ## displacing pets. hide the message.
 MSGTYPE=hide "You swap places with your .*"
 #
+# ============================================================
+#
 ## Advices and helpful links
+#
+# ============================================================
 #
 # * Sacrificing your own race on a cross-aligned altar will automatically convert 
 # that altar to chaotic.
@@ -115,7 +129,23 @@ MSGTYPE=hide "You swap places with your .*"
 # * HP and power starting values
 # https://www.steelypips.org/nethack/343/hppw-343.txt
 #
+# * Without protection (grater than 0) you can die in few attacks 
+#
+# * Be careful with magic, it can reflect off the walls!
+#
+# * Chat with your horse to give food at time:
+# The <unicorn/horse> whickers.
+#    You were chatting to a tame unicorn or horse.
+# The <unicorn/horse> whinnies.
+#    As above, but they are also hungry.
+# The <unicorn/horse> neighs.
+#    As above while they are low on tameness, or else are not tame.
+#
+# ============================================================
+#
 ## Sokoban
+#
+# ============================================================
 #
 ## Level ?                         
 #  ┌──────────────────────┐
