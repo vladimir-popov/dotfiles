@@ -6,7 +6,8 @@ local M = {
         { 'mfussenegger/nvim-dap' },
         { 'hrsh7th/nvim-cmp' },
     },
-    ft = { 'scala', 'sbt', 'java' },
+    -- ft = { 'scala', 'sbt', 'java' },
+    ft = { 'scala', 'sbt' },
     keys = {
         {
             '<leader>]',
@@ -32,6 +33,7 @@ local M = {
         local metals_config = require('metals').bare_config()
         metals_config.init_options.statusBarProvider = 'on'
         metals_config.settings = {
+            autoImportBuild = false,
             showImplicitArguments = true,
             showInferredType = false,
             ['javaFormat.eclipseConfigPath'] = vim.fn.stdpath('config')

@@ -2,12 +2,14 @@ local sep = package.config:sub(1, 1)
 
 local function gitlabFile()
     local commit = '-/tree/master'
-    local gitlabUrl = 'https://git.ringcentral.com/dash'
+    local rcGitlabUrl = 'https://git.ringcentral.com/dash'
+    local analyticsGitlabUrl = 'https://gitlab.ponylab.ringcentral.com/dash'
     local fullPath = vim.fn.expand('%:p')
     if fullPath:sub(1, #vim.env.PROJECTS) == vim.env.PROJECTS then
         local localPath = fullPath:sub(#vim.env.PROJECTS + 1)
         local sepIdx = localPath:find(sep, 2)
         local project = localPath:sub(1, sepIdx)
+        local gitlabUrl = project == 'dash' and analyticsGitlabUrl or rcGitlabUrl
         return gitlabUrl .. project .. commit .. localPath:sub(sepIdx)
     end
 end

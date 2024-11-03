@@ -18,6 +18,7 @@ return {
                             ["<C-k>"] = lga_actions.quote_prompt(),
                             ["<C-i>"] = lga_actions.quote_prompt({ postfix = " --iglob " }),
                             ["<C-t>"] = lga_actions.quote_prompt({ postfix = " -t" }),
+                            ["<C-w>"] = lga_actions.quote_prompt({ postfix = " -w" }),
                             -- freeze the current list and start a fuzzy search in the frozen list
                             ["<C-space>"] = actions.to_fuzzy_refine,
                         },

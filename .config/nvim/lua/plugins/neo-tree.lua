@@ -79,12 +79,12 @@ return {
                 filtered_items = {
                     hide_dotfiles = false,
                 },
-                follow_current_file = {
-                    -- This will find and focus the file in the active buffer every
-                    -- time the current file is changed while the tree is open.
-                    enabled = false,
-                    leave_dirs_open = true
-                },
+                -- follow_current_file = {
+                --     -- This will find and focus the file in the active buffer every
+                --     -- time the current file is changed while the tree is open.
+                --     enabled = false,
+                --     leave_dirs_open = true
+                -- },
                 group_empty_dirs = true,
                 window = {
                     mappings = {
