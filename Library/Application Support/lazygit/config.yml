@@ -1,7 +1,7 @@
 git:
   commitPrefixes:
     dash: 
-      pattern: "^(\\w+-\\w+).*"
+      pattern: "^(\\w+-\\d+|hotfix).*"
       replace: '$1: '
 
   paging:
