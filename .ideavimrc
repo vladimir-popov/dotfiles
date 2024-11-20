@@ -44,8 +44,11 @@ nnoremap <F11> :action ActivateTerminalToolWindow<cr>
 " Navigation
 nnoremap <c-o> :action Back<cr>
 nnoremap <c-i> :action Forward<cr>
-nnoremap gb :action Back<CR>
-nnoremap gf :action Forward<CR>
+nnoremap gb :action Back<cr>
+nnoremap gf :action Forward<cr>
+" nnoremap gb :action Switcher<CR>
+" nnoremap gb :action SwitcherBackward<CR>
+" nnoremap gf :action SwitcherForward<CR>
 nnoremap gd :action GotoDeclaration<CR>
 nnoremap gr :action FindUsages<CR>
 nnoremap gi :action GotoImplementation<CR>
@@ -85,7 +88,6 @@ nnoremap <leader>gr :action ChangesView.Revert<CR>
 inoremap <C-p> <esc>pi
 inoremap <c-i> <esc>I
 nnoremap <c-a> <esc>A
-nnoremap <c-i> <esc>I
 nnoremap <leader>p li<space><esc>p
 nnoremap qq :action CloseContent<CR>
 nnoremap qw :action CloseAllEditors<CR>
