@@ -12,7 +12,7 @@ if exists(':CompilerSet') != 2
   command -nargs=* CompilerSet setlocal <args>
 endif
 
-CompilerSet makeprg=zig\ build\ test
+CompilerSet makeprg=zig\ build
 CompilerSet shellpipe=2>&1\ \|\ grep\ ':\ error:'\ \|\ sort\ \|\ uniq\ \|\ tee"
 CompilerSet efm=%f:%l:%c:\ error:\ %m
 
