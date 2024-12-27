@@ -90,7 +90,7 @@ inoremap <c-i> <esc>I
 nnoremap <c-a> <esc>A
 nnoremap <leader>p li<space><esc>p
 nnoremap qq :action CloseContent<CR>
-nnoremap qw :action CloseAllEditors<CR>
+vnoremap <c-c> "+y
 
 " Manage windows
 nnoremap <c-w>s :action SplitHorizontally<CR>

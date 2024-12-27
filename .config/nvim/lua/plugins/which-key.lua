@@ -9,7 +9,8 @@ local function gitlabFile()
         local localPath = fullPath:sub(#vim.env.PROJECTS + 1)
         local sepIdx = localPath:find(sep, 2)
         local project = localPath:sub(1, sepIdx)
-        local gitlabUrl = project == 'dash' and analyticsGitlabUrl or rcGitlabUrl
+        print('Current project is', project)
+        local gitlabUrl = project:find('dash') and analyticsGitlabUrl or rcGitlabUrl
         return gitlabUrl .. project .. commit .. localPath:sub(sepIdx)
     end
 end
