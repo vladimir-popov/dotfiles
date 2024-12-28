@@ -146,8 +146,18 @@ MSGTYPE=hide "You swap places with your .*"
 # Wishes:
 # *    "blessed greased +2 gray dragon scale mail" (or +3) provides magic resistance, and
 # *    "blessed greased +2 silver dragon scale mail" (or +3) provides reflection.
-# *    "2 blessed scrolls of charging"
 # *    "blessed magic marker"
-# *    "blessed oilskin sack"
+# *    "2 blessed scrolls of charging"
+# *    "blessed +2 gauntlets of power"
+# *    "blessed +2 speed boots"
 # *    "blessed greased fireproof +2 cloak of displacement"
 # *    "blessed greased fireproof +2 elven leather helm"
+# *    "blessed oilskin sack"
+# artefacts:
+# *    "blessed +2 frost brand"
+# Magic marker:
+# *    "charging"
+# *    "identify"
+# *    "enchant armor"
+# *    "enchant weapon"
+# *    "genocide"

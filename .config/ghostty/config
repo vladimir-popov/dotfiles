@@ -1,7 +1,13 @@
 initial-command = "/bin/zsh --login -c tmux attach || tmux"
+title = " "
+# fullscreen = true
 font-family = "JetBrainsMono Nerd Font" 
 font-size = 16
+font-feature = -calt -liga -dlig
 theme = dark:catppuccin-macchiato,light:catppuccin-latte
 window-theme = dark
 window-save-state = always
-# fullscreen = true
+window-padding-x = 3
+window-padding-y = 3
+
+copy-on-select = true
