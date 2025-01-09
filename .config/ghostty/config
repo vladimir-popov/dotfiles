@@ -11,3 +11,7 @@ window-padding-x = 3
 window-padding-y = 3
 
 copy-on-select = true
+
+keybind = alt+f=text:\x1bf
+keybind = alt+b=text:\x1bb
+keybind = alt+o=text:\x1bo
