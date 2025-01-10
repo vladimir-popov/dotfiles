@@ -1,5 +1,6 @@
 # nethack -u Uruk-bar-orc
 # nethack -u Vasian-mon-dwa
+OPTIONS=!tutorial
 OPTIONS=gender:male
 OPTIONS=!bones
 # OPTIONS=pettype:dog,dogname:Ralph,catname:Foxy
@@ -27,7 +28,7 @@ OPTION=disclose:-i -a -v -g -c -o
 OPTIONS=packorder:")[%!/=?+(*`0_
 # Allows looking at things on the screen by navigating the mouse over them
 # and clicking the right mouse button 
-OPTION=clicklook
+# OPTION=clicklook
 #
 # ============================================================
 #
@@ -35,7 +36,7 @@ OPTION=clicklook
 #
 # ============================================================
 #
-OPTIONS=windowtype:curses,align_status:left,perm_invent,hitpointbar,showexp,hilite_pet
+OPTIONS=windowtype:curses,align_status:left,perm_invent,hitpointbar,showexp,hilite_pet,time
 ## Change symbols
 OPTION=boulder:0
 SYMBOLS=S_ghost:X
@@ -87,9 +88,10 @@ MENUCOLOR=".* blessed .*"=green
 MENUCOLOR=".* cursed .*"=red
 MENUCOLOR=".* cursed .*(being worn)"=red&underline
 ## Weapon
-MENUCOLOR=".*weapon in hand.*"=light-cyan
+MENUCOLOR=".*weapon in.*"=light-cyan
 MENUCOLOR="\(wielded\)"=light-cyan
-MENUCOLOR=".*in quiver pouch.*"=brown
+# MENUCOLOR=".*in quiver pouch.*"=light-cyan
+# MENUCOLOR=".*at the ready.*"=light-cyan
 ## Items
 MENUCOLOR=".*ration.*"=green
 MENUCOLOR=" scroll.*"=yellow
