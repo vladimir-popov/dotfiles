@@ -1,5 +1,8 @@
 zmodload zsh/zprof
 
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_ANALYTICS=1
+
 # Common paths:
 export PROJECTS=$HOME'/Projects'
 export CONFIGS_PATH=$HOME'/.config'

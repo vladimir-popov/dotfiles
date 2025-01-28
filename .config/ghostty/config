@@ -1,5 +1,5 @@
 initial-command = "/bin/zsh --login -c tmux attach || tmux"
-title = " "
+title = "Terminal"
 # fullscreen = true
 font-family = "JetBrainsMono Nerd Font" 
 font-size = 16
@@ -15,3 +15,4 @@ copy-on-select = true
 keybind = alt+f=text:\x1bf
 keybind = alt+b=text:\x1bb
 keybind = alt+o=text:\x1bo
+keybind = alt+d=text:\x1bd

@@ -83,6 +83,7 @@ nnoremap <leader>gs :action CheckinProject<CR>
 nnoremap <leader>ga :action Git.Add<CR>
 nnoremap <leader>gd :action Compare.LastVersion<CR>
 nnoremap <leader>gr :action ChangesView.Revert<CR>
+nnoremap <leader>lg :action ActivateTerminalToolWindow<CR>
 
 " Other
 inoremap <C-p> <esc>pi
