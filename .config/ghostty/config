@@ -12,7 +12,13 @@ window-padding-y = 3
 
 copy-on-select = true
 
-keybind = alt+f=text:\x1bf
-keybind = alt+b=text:\x1bb
-keybind = alt+o=text:\x1bo
-keybind = alt+d=text:\x1bd
+keybind = alt+f=esc:f
+keybind = alt+b=esc:b
+keybind = alt+o=esc:o
+keybind = alt+d=esc:d
+keybind = cmd+shift+f=esc:f
+keybind = cmd+shift+b=esc:b
+keybind = cmd+shift+o=esc:o
+keybind = cmd+shift+d=esc:d
+keybind = cmd+shift+r=reset
+keybind = global:f13=toggle_quick_terminal
