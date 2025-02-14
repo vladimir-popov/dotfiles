@@ -22,6 +22,7 @@ catppuccin() {
 	tmux set-environment -g CATPPUCCIN $1
 	tmux source ~/.tmux.conf
 	sed -i '' -E "2s/catppuccin-[a-z]+/catppuccin-$CATPPUCCIN/g" ~/.alacritty.toml
+	sed -i '' -E "2s/catppuccin-[a-z]+/catppuccin-$CATPPUCCIN/g" ~/.config/ghostty/config
 }
 
 
