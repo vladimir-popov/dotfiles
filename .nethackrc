@@ -150,13 +150,20 @@ MSGTYPE=hide "You swap places with your .*"
 # *    "blessed greased +2 silver dragon scale mail" (or +3) provides reflection.
 # *    "blessed magic marker"
 # *    "2 blessed scrolls of charging"
+# *    "2 blessed scrolls of genocide"
 # *    "blessed +2 gauntlets of power"
 # *    "blessed +2 speed boots"
+# *    "blessed greased fireproof +2 cloak of magic resistance"
 # *    "blessed greased fireproof +2 cloak of displacement"
 # *    "blessed greased fireproof +2 elven leather helm"
 # *    "blessed oilskin sack"
+# *    "blessed amulet of reflection"
+# *    "blessed ring of conflict"
+# *    "blessed ring of polymorph control"
 # artefacts:
 # *    "blessed +2 frost brand"
+#  chaotic:
+# *    "The Master Key of Thievery"
 # Magic marker:
 # *    "charging"
 # *    "identify"
