@@ -1,6 +1,6 @@
 #theme = dark:catppuccin-macchiato,light:catppuccin-latte
 theme = catppuccin-macchiato
-initial-command = "/bin/zsh --login -c tmux attach || tmux"
+command =/opt/homebrew/bin/tmux
 title = "Terminal"
 # fullscreen = true
 font-family = "JetBrainsMono Nerd Font" 
@@ -13,13 +13,11 @@ window-padding-y = 3
 
 copy-on-select = true
 
+macos-option-as-alt = true
+
 keybind = alt+f=esc:f
 keybind = alt+b=esc:b
 keybind = alt+o=esc:o
 keybind = alt+d=esc:d
-keybind = cmd+shift+f=esc:f
-keybind = cmd+shift+b=esc:b
-keybind = cmd+shift+o=esc:o
-keybind = cmd+shift+d=esc:d
 keybind = cmd+shift+r=reset
 keybind = global:f13=toggle_quick_terminal
