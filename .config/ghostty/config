@@ -21,3 +21,13 @@ keybind = alt+o=esc:o
 keybind = alt+d=esc:d
 keybind = cmd+shift+r=reset
 keybind = global:f13=toggle_quick_terminal
+
+keybind = super+right_bracket=text:\x02\x6e
+keybind = super+left_bracket=text:\x02\x6c
+keybind = super+'=text:\x02\x27
+keybind = super+s=text:\x02\x73
+keybind = super+one=text:\x02\x31
+keybind = super+two=text:\x02\x32
+keybind = super+three=text:\x02\x33
+keybind = super+four=text:\x02\x34
+keybind = super+five=text:\x02\x35
