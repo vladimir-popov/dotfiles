@@ -1,4 +1,4 @@
-local Self = s(
+local self = s(
     { trig = 'selfconst' },
     fmta(
         [[const <> = @This()<>]],
@@ -6,7 +6,7 @@ local Self = s(
     )
 )
 
-local STD = s(
+local std = s(
     { trig = 'import_std' },
     fmta(
         [[const std = @import("std");<>]],
@@ -14,7 +14,7 @@ local STD = s(
     )
 )
 
-local PTR_CAST = s(
+local ptr_cast = s(
     { trig = 'ptrCast' },
     fmta(
         [[@ptrCast(@alignCast(<>))<>]],
@@ -40,15 +40,23 @@ local logger = s(
     )
 )
 
+local format =  s(
+    { trig = 'format', dscr = 'Generates format function;' },
+    fmta(
+        [[pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    try writer.print("<>", .{<>});
+}
+<>]],
+        { i(1), i(2), i(0) }
+    )
+)
 
 
 local snippets = {
-    Self, STD, PTR_CAST, logger
+    self, std, ptr_cast, logger, assert, println, format
 }
 
 local autosnippets = {
-    println,
-    assert,
 }
 
 return snippets, autosnippets
