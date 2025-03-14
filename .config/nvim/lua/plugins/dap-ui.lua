@@ -1,5 +1,6 @@
 return {
     'rcarriga/nvim-dap-ui',
+    enabled = true,
     ft = { 'c', 'cpp', 'zig' },
     dependencies = { 'nvim-dap', 'nvim-neotest/nvim-nio' },
     config = function()

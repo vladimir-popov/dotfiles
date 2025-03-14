@@ -288,7 +288,8 @@ n ()
 }
 # ==================================================================================================
 
-export SBT_OPTS="-Xmx12G -XX:+UseG1GC"
+export SBT_OPTS="-Xmx16G -XX:+UseG1GC"
+export BLOOP_JAVA_OPTS="-Xmx16G -XX:+UseZGC -Xss4m"
 
 path=(
 	$path
