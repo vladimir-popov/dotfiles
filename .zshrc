@@ -183,7 +183,7 @@ if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-clou
 # ==================================================================================================
 #                                         FZF configuration
 # ==================================================================================================
-export FZF_DEFAULT_COMMAND='ag --hidden --ignore .git -f -g ""'
+export FZF_DEFAULT_COMMAND='fd --type file --follow --hidden --exclude .git'
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 

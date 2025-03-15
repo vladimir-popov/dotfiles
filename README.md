@@ -37,8 +37,11 @@ brew install neovim
 # fzf
 brew install fzf
 
-# ag
-brew install ag
+# fd
+brew install fd
+
+# rg
+brew install ripgrep
 
 # nnn
 brew install nnn
