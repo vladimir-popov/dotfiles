@@ -1,6 +1,7 @@
 #theme = dark:catppuccin-macchiato,light:catppuccin-latte
 theme = catppuccin-macchiato
-command =/opt/homebrew/bin/tmux
+command = /bin/zsh --login -c tmux attach || tmux
+quit-after-last-window-closed = true
 title = "Terminal"
 # fullscreen = true
 font-family = "JetBrainsMono Nerd Font" 
