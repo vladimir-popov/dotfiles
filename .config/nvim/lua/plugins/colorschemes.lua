@@ -2,7 +2,7 @@ return {
     { 'Th3Whit3Wolf/one-nvim',     name = 'one-nvim',  event = 'VeryLazy' },
     { 'sainnhe/edge',              event = 'VeryLazy' },
     { 'EdenEast/nightfox.nvim',    name = ' nightfox', event = 'VeryLazy' },
-    { "olimorris/onedarkpro.nvim", lazy = false,       priority = 1000 },
+    { "olimorris/onedarkpro.nvim", event = 'VeryLazy' },
     {
         'catppuccin/nvim',
         name = 'catppuccin',
@@ -19,7 +19,7 @@ return {
                     LspReferenceRead = { bg = '#374b7e' },
                     LspReferenceText = { bg = '#374b7e' },
                     LspReferenceWrite = { bg = '#374b7e' },
-                },
+                }
             })
         end,
     },
