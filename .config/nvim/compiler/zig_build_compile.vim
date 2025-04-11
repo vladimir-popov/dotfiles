@@ -13,7 +13,7 @@ if exists(':CompilerSet') != 2
 endif
 
 CompilerSet makeprg=zig\ build
-CompilerSet shellpipe=2>&1\ \|\ grep\ ':\ error:'\ \|\ sort\ \|\ uniq\ \|\ tee"
+CompilerSet shellpipe=2>&1\ \|\ grep\ ':\ error:'\ \|grep\ -v\ '.zig'\|\ sort\ \|\ uniq\ \|\ tee"
 CompilerSet efm=%f:%l:%c:\ error:\ %m
 
 let &cpo = s:save_cpo
