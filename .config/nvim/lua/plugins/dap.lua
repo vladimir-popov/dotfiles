@@ -1,8 +1,8 @@
 local fs_sep = package.config:sub(1, 1)
 
 ---@class ProgramOps : TelescopeOpts
----@field extra_args table
----@field relative_path fn(): string
+---@field extra_args table additional arguments for `fd`
+---@field relative_path fn(path: string): string the function to build a relative path to files
 
 ---@param buildOpts fun(): ProgramOps
 local function telescopeProgram(buildOpts)
@@ -68,12 +68,12 @@ local function telescopeProgram(buildOpts)
                                 size = size,
                                 dir = opts.relative_path(dir),
                                 path = path,
-                                ordinal = ''
+                                ordinal = path
                             }
                             return entry
                         end
                     }),
-                    sorter = sorters.empty(),
+                    sorter = sorters.get_fzy_sorter(opts),
                     attach_mappings = function(buffer_number)
                         actions.select_default:replace(function()
                             actions.close(buffer_number)
@@ -94,6 +94,7 @@ local function zigProgram()
     local catch_all = '.'
     local global_cache = vim.env.XDG_CACHE_HOME or vim.fs.joinpath(vim.env.HOME, '.cache', 'zig')
     local zig_out = 'zig-out'
+    zig_out = vim.fn.getcwd()
 
     local buildOpts = function()
         local opts = themes.get_dropdown({})
@@ -155,7 +156,7 @@ return {
                 program = zigProgram(),
                 cwd = '${workspaceFolder}',
                 args = {},
-                stopOnEntry = true,
+                stopOnEntry = false,
                 runInTerminal = false,
             },
         }

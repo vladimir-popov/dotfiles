@@ -47,12 +47,25 @@ return {
         })
         dap.listeners.after.event_initialized['dapui_config'] = function()
             dapui.open()
+            local ok, neotree_source = pcall(vim.api.nvim_buf_get_var, 0, 'neo_tree_source')
+            print('ok', ok, neotree_source)
+            if ok then
+                print('neotree_source => ', neotree_source)
+                dap.neotree_source = neotree_source
+            end
+            require("neo-tree.command").execute({ action = "close" })
         end
         dap.listeners.before.event_terminated['dapui_config'] = function()
             dapui.close()
+            if dap['neotree_source'] then
+                require("neo-tree.command").execute({ action = 'show', source = dap.neotree_source })
+            end
         end
         dap.listeners.before.event_exited['dapui_config'] = function()
             dapui.close()
+            if dap['neotree_source'] then
+                require("neo-tree.command").execute({ action = 'show', source = dap.neotree_source })
+            end
         end
     end,
     keys = {
