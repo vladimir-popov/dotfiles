@@ -2,7 +2,7 @@ local on_attach = require('lsp_on_attach')
 -- local capabilities = require('blink.cmp').get_lsp_capabilities(
 --     require('cmp_nvim_lsp').default_capabilities()
 -- )
-local capabilities = 
+local capabilities =
     require('cmp_nvim_lsp').default_capabilities()
 
 return {
@@ -19,6 +19,7 @@ return {
     config = function()
         -- require('neodev').setup({})
         local nvim_lsp = require('lspconfig')
+        local lspconfigs = require('lspconfig.configs')
         local util = require('lspconfig.util')
 
         -- LUA -----------------------------------------------------
@@ -68,11 +69,28 @@ return {
         })
 
         -- YAML ----------------------------------------------------
-        nvim_lsp.yamlls.setup({
-            cmd = { 'yaml-language-server', '--stdio' },
+        -- nvim_lsp.yamlls.setup({
+        --     cmd = { 'yaml-language-server', '--stdio' },
+        --     on_attach = on_attach,
+        --     capabilities = capabilities,
+        --     filetypes = { 'yaml' },
+        -- })
+
+        -- OpenAPI ----------------------------------------------------
+        lspconfigs.openapi = {
+            default_config = {
+                -- go install github.com/armsnyder/openapi-language-server@latest
+                cmd = { 'openapi-language-server' },
+                filetypes = { 'yaml' },
+                root_dir = function(fname)
+                    local root = nvim_lsp.util.root_pattern('.git')(fname)
+                    return root or vim.fs.dirname(fname)
+                end,
+            }
+        }
+        nvim_lsp.openapi.setup({
             on_attach = on_attach,
             capabilities = capabilities,
-            filetypes = { 'yaml' },
         })
 
         -- C -------------------------------------------------------
