@@ -1,3 +1,4 @@
+-- Lightweight yet powerful formatter plugin for Neovim
 return {
     "stevearc/conform.nvim",
     ft = { "lua", "json" },

@@ -186,7 +186,35 @@ return {
     {
         'MeanderingProgrammer/markdown.nvim',
         main = "render-markdown",
-        opts = {},
+        opts = {
+            code = {
+                -- Turn on / off code block & inline code rendering.
+                enabled = true,
+                -- Additional modes to render code blocks.
+                render_modes = false,
+                -- Turn on / off any sign column related rendering.
+                sign = true,
+                -- Determines how code blocks & inline code are rendered.
+                -- | none     | disables all rendering                                                    |
+                -- | normal   | highlight group to code blocks & inline code, adds padding to code blocks |
+                -- | language | language icon to sign column if enabled and icon + name above code blocks |
+                -- | full     | normal + language                                                         |
+                style = 'normal',
+                -- Determines where language icon is rendered.
+                -- | right | right side of code block |
+                -- | left  | left side of code block  |
+                position = 'left',
+                -- Whether to include the language icon above code blocks.
+                language_icon = false,
+                -- Whether to include the language name above code blocks.
+                language_name = true, -- Determines how the top / bottom of code block are rendered.
+                -- | none  | do not render a border                               |
+                -- | thick | use the same highlight as the code body              |
+                -- | thin  | when lines are empty overlay the above & below icons |
+                -- | hide  | conceal lines unless language name or icon is added  |
+                border = 'thin',
+            },
+        },
         ft = { 'markdown' },
         cmd = { 'RenderMarkdown' },
         -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.nvim' }, -- if you use the mini.nvim suite
