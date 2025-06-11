@@ -11,7 +11,7 @@
 
 # Turn off decorations
 # -p
---style=numbers,changes,header
+--style=numbers,changes
 
 # Turn off pager
 # -P
