@@ -159,6 +159,13 @@ return {
                         },
                         separator = '',
                     },
+                    icon_only({
+                        icon = { '', color = { fg = 'red' } },
+                        cond = function()
+                            local ok, dap = pcall(require, 'dap')
+                            return ok and dap.session() ~= nil
+                        end,
+                    }),
                     -- {
                     --     'ex.lsp.null_ls',
                     --     padding = 0,

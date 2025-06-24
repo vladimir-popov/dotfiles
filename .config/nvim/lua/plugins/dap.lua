@@ -1,3 +1,11 @@
+local pickers = require("telescope.pickers")
+local finders = require("telescope.finders")
+local sorters = require("telescope.sorters")
+local actions = require("telescope.actions")
+local conf = require("telescope.config").values
+local action_state = require("telescope.actions.state")
+local entry_display = require("telescope.pickers.entry_display")
+
 local fs_sep = package.config:sub(1, 1)
 
 ---@class ProgramOps : TelescopeOpts
@@ -5,15 +13,10 @@ local fs_sep = package.config:sub(1, 1)
 ---@field relative_path fn(path: string): string the function to build a relative path to files
 
 ---@param buildOpts fun(): ProgramOps
+---@return fun(): thread coroutine a function to choose a file to run and debug
 local function telescopeProgram(buildOpts)
-    local pickers = require("telescope.pickers")
-    local finders = require("telescope.finders")
-    local sorters = require("telescope.sorters")
-    local actions = require("telescope.actions")
-    local action_state = require("telescope.actions.state")
-    local entry_display = require("telescope.pickers.entry_display")
-
-    -- this function is run to start debug session
+    -- this function is run to start a debug session
+    -- @return the path to executable file for run and debug
     return function()
         return coroutine.create(function(co)
             local opts = buildOpts() or {}
@@ -88,37 +91,65 @@ local function telescopeProgram(buildOpts)
     end
 end
 
-local function zigProgram()
+---@return fun(): number pid a PID of the process to debug
+local function telescopeProcess(opts)
+    opts = opts or {}
+    local co = coroutine.running()
+    if co then
+        pickers.new(opts, {
+            prompt_title = "PIDs:",
+            finder = finders.new_table {
+                results = require('dap.utils').get_processes({}),
+                entry_maker = function(entry)
+                    return {
+                        value = entry,
+                        display = entry.pid .. ':' .. entry.name,
+                        ordinal = entry.name
+                    }
+                end,
+            },
+            sorter = conf.generic_sorter(opts),
+            attach_mappings = function(prompt_bufnr, map)
+                actions.select_default:replace(function()
+                    actions.close(prompt_bufnr)
+                    local selected_entry = action_state.get_selected_entry()
+                    coroutine.resume(co, selected_entry.value.pid)
+                end)
+                return true
+            end,
+        }):find()
+        return coroutine.yield()
+    else
+        return require('dap').ABORT
+    end
+end
+
+local function zigOpts()
     local themes = require("telescope.themes")
     local Path = require("plenary.path")
     local catch_all = '.'
     local global_cache = vim.env.XDG_CACHE_HOME or vim.fs.joinpath(vim.env.HOME, '.cache', 'zig')
-    local zig_out = 'zig-out'
-    zig_out = vim.fn.getcwd()
-
-    local buildOpts = function()
-        local opts = themes.get_dropdown({})
-        local is_single_file = vim.fn.filereadable('build.zig') == 1
-        opts.extra_args = is_single_file and { catch_all, zig_out } or
-            { catch_all, './', global_cache }
-        opts.relative_path = function(path)
-            local p = Path:new(path)
-            local relative = nil
-            if is_single_file then
-                if global_cache == path:sub(1, #global_cache) then
-                    relative = p:make_relative(global_cache)
-                else
-                    relative = p:make_relative(vim.fn.getcwd())
-                end
+    local zig_out = vim.fn.getcwd()
+    local opts = themes.get_dropdown({})
+    local is_single_file = vim.fn.filereadable('build.zig') == 1
+    opts.extra_args = is_single_file and { catch_all, zig_out } or
+        { catch_all, './', global_cache }
+    opts.relative_path = function(path)
+        local p = Path:new(path)
+        local relative = nil
+        if is_single_file then
+            if global_cache == path:sub(1, #global_cache) then
+                relative = p:make_relative(global_cache)
             else
-                relative = p:make_relative(zig_out)
+                relative = p:make_relative(vim.fn.getcwd())
             end
-            relative = Path:new(relative):shorten(3, { -1 })
-            return relative
+        else
+            relative = p:make_relative(zig_out)
         end
-        return opts
+        relative = Path:new(relative):shorten(3, { -1 })
+        return relative
     end
-    return telescopeProgram(buildOpts)
+    return opts
 end
 
 return {
@@ -127,6 +158,8 @@ return {
     dependencies = { 'nvim-telescope/telescope.nvim', 'nvim-lua/plenary.nvim' },
     config = function()
         local dap = require('dap')
+        -- Use "tabnew" for all debug adapters
+        dap.defaults.fallback.terminal_win_cmd = 'tabnew'
         dap.set_log_level('DEBUG')
         -- Change BP icon
         vim.fn.sign_define(
@@ -153,11 +186,19 @@ return {
                 name = 'Launch debug for Zig',
                 type = 'lldb',
                 request = 'launch',
-                program = zigProgram(),
+                program = telescopeProgram(zigOpts),
                 cwd = '${workspaceFolder}',
                 args = {},
                 stopOnEntry = false,
                 runInTerminal = false,
+            },
+            {
+                name = 'Attach to process',
+                type = 'lldb',
+                request = 'attach',
+                pid = telescopeProcess,
+                -- pid = require('dap.utils').pick_process,
+                args = {},
             },
         }
 
