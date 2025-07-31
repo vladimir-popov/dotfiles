@@ -12,6 +12,9 @@ require('lspsaga').setup({
         keys = {
             quit = '<esc>'
         }
+    },
+    hover = {
+        max_height = 0.95
     }
 })
 
@@ -77,7 +80,7 @@ local keys_mapping = function(client, bufnr)
         },
         {
             'K',
-            '<cmd>Lspsaga hover_doc<CR>',
+            '<cmd>Lspsaga hover_doc max_height=0.9<CR>',
             -- '<cmd>lua vim.lsp.buf.hover()<CR>',
             desc = 'show description of the symbol under cursor',
             buffer = bufnr
