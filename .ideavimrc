@@ -44,7 +44,8 @@ nnoremap <F11> :action ActivateTerminalToolWindow<cr>
 " Navigation
 nnoremap <c-o> :action Back<cr>
 nnoremap <c-i> :action Forward<cr>
-nnoremap gb :action Back<cr>
+" nnoremap gb :action Back<cr>
+nnoremap gb <c-^>
 nnoremap gf :action Forward<cr>
 " nnoremap gb :action Switcher<CR>
 " nnoremap gb :action SwitcherBackward<CR>
