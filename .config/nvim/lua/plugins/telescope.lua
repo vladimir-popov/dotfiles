@@ -221,8 +221,8 @@ return {
         },
         {
             '<space>sc',
-            "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='class'})<CR>",
-            desc = 'find class',
+            "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='constant'})<CR>",
+            desc = 'find constant',
         },
         {
             '<space>si',

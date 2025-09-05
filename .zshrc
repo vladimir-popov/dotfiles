@@ -226,7 +226,7 @@ export PLAYDATE_SDK_PATH=$HOME/Developer/PlaydateSDK
 
 # Bookmarks: set environment variable NNN_BMS as a string of
 # key_char:location pairs separated by semicolons (;):
-NNN_BMS="c:$CONFIGS_PATH;l:$LOCAL_PATH;p:$PROJECTS;v:$NVIM_PATH;V:$NVIM_PLUG;n:$PROJECTS/nvim;"
+NNN_BMS="c:$CONFIGS_PATH;l:$LOCAL_PATH;p:$PROJECTS;v:$NVIM_PATH;V:$NVIM_PLUG;n:$PROJECTS/nvim;P:$PLAYDATE_SDK_PATH;"
 NNN_BMS+="A:$HOME/Library/Arduino15/packages/arduino/hardware/avr/1.8.6;z:$ZIG_HOME/lib/std;"
 
 if [[ -d "$PROJECTS/dash" ]]; then

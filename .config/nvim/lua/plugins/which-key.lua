@@ -52,11 +52,6 @@ return {
                 desc = "Close the current tab"
             },
             {
-                "qw",
-                ":close<CR>",
-                desc = "Close the current window"
-            },
-            {
                 "qQ",
                 ":bd<CR>",
                 desc = "Close the current buffer and window"
@@ -65,11 +60,6 @@ return {
                 "QQ",
                 ":bd!<CR>",
                 desc = "Force close the current buffer and window"
-            },
-            {
-                "qh",
-                ":helpclose<cr>",
-                desc = "Close the help window"
             },
             {
                 "gb",
