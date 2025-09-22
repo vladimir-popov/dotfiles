@@ -154,7 +154,7 @@ return {
                         icons_only = true,
                         icons = {
                             lsp_is_off = '󰚦',
-                            bufls = { 'p' },
+                            buf_ls = { '󰰚' },
                             ['null-ls'] = '',
                         },
                         separator = '',

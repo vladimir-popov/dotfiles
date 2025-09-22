@@ -7,6 +7,14 @@
 // custom settings, run the `zed: Open Default Settings` command
 // from the command palette
 {
+  "agent": {
+    "model_parameters": [],
+    "default_model": {
+      "provider": "google",
+      "model": "gemini-2.0-flash-lite-preview"
+    },
+    "version": "2"
+  },
   "ui_font_size": 16,
   "buffer_font_size": 16,
   "buffer_font_family": "JetBrainsMono Nerd Font",
@@ -19,7 +27,7 @@
   },
   "theme": {
     "mode": "system",
-    "light": "One Light",
+    "light": "Catppuccin Macchiato",
     "dark": "One Light"
   },
   "auto_fold_dirs": true,

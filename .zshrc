@@ -43,9 +43,9 @@ alias dot='git --git-dir=$HOME/.git_dot/ --work-tree=$HOME'
 alias ld="lazygit -w $HOME -g $HOME/.git_dot/"
 
 # file with aliases
-if [[ -f "$HOME/.aliases" ]]; then
-  . $HOME/.aliases
-fi
+if [[ -f "$HOME/.aliases" ]]; then . $HOME/.aliases; fi
+
+if [[ -f "$HOME/.gemini" ]]; then . $HOME/.gemini; fi
 
 # allow v to edit the command line (standard behaviour)
 #autoload -Uz edit-command-line

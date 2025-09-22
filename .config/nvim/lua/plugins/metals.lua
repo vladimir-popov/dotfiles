@@ -8,6 +8,7 @@ local M = {
     },
     -- ft = { 'scala', 'sbt', 'java' },
     ft = { 'scala', 'sbt' },
+    cmd = "MetalsStartServer",
     keys = {
         {
             '<leader>]',
