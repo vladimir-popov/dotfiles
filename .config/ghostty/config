@@ -1,5 +1,5 @@
-#theme = dark:catppuccin-macchiato,light:catppuccin-latte
-theme = catppuccin-macchiato
+#theme = dark:Catppuccin Frappe,light:Catppuccin Latte
+theme = Catppuccin macchiato
 command = /bin/zsh --login -c tmux attach || tmux
 quit-after-last-window-closed = true
 title = "Terminal"
