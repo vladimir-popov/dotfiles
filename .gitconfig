@@ -20,7 +20,7 @@
         difftool = true
 [merge]
 	tool = vimdiff
-	conflictstyle = diff3
+	conflictStyle = zdiff3
 [diff]
 	external = difft
 	tool = difftastic
