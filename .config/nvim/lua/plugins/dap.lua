@@ -154,9 +154,15 @@ end
 
 return {
     'mfussenegger/nvim-dap',
-    ft = { 'c', 'cpp', 'scala', 'zig' },
-    dependencies = { 'nvim-telescope/telescope.nvim', 'nvim-lua/plenary.nvim' },
+    ft = { 'c', 'cpp', 'scala', 'zig', 'go' },
+    dependencies = { 'nvim-telescope/telescope.nvim', 'nvim-lua/plenary.nvim', 'leoluz/nvim-dap-go' },
     config = function()
+        require('dap-go').setup {
+            tests = {
+                -- enables verbosity when running the test.
+                verbose = false,
+            },
+        }
         local dap = require('dap')
         -- Use "tabnew" for all debug adapters
         dap.defaults.fallback.terminal_win_cmd = 'tabnew'
