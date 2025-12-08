@@ -1,14 +1,21 @@
 #theme = dark:Catppuccin Frappe,light:Catppuccin Latte
-theme = Catppuccin Latte
+theme = catppuccin macchiato
+
 command = /bin/zsh --login -c tmux attach || tmux
+
 quit-after-last-window-closed = true
+
 title = "Terminal"
-# fullscreen = true
+
+mouse-scroll-multiplier = precision:1,discrete:1
+
 font-family = "JetBrainsMono Nerd Font" 
 font-size = 16
 font-feature = -calt
+
 cursor-color = #ccb6ab
 cursor-text = #0c0c0d
+
 window-theme = dark
 window-save-state = always
 window-padding-x = 4

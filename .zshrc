@@ -22,7 +22,7 @@ catppuccin() {
 	tmux set-environment -g CATPPUCCIN $1
 	tmux source ~/.tmux.conf
 	sed -i '' -E "2s/catppuccin-[a-z]+/catppuccin-$CATPPUCCIN/g" ~/.alacritty.toml
-	sed -i '' -E "2s/catppuccin-[a-z]+/catppuccin-$CATPPUCCIN/g" ~/.config/ghostty/config
+	sed -i '' -E "2s/catppuccin [a-z]+/catppuccin $CATPPUCCIN/g" ~/.config/ghostty/config
 }
 
 
@@ -186,6 +186,8 @@ if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-clou
 export FZF_DEFAULT_COMMAND='fd --type file --follow --hidden --exclude .git'
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+source <(fzf --zsh)
 
 # ==================================================================================================
 #                                       Docker configuration
