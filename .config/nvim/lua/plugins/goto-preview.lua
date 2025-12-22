@@ -1,7 +1,7 @@
 -- A small Neovim plugin for previewing definitions using floating windows. 
 return {
     'rmagatti/goto-preview',
-    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'proto', 'python', 'scala' },
+    ft = { 'lua', 'vim', 'sh', 'yaml', 'c', 'cpp', 'proto', 'python', 'scala', 'zig' },
     config = {
         zindex = 51,
         post_open_hook = function(buf, win)
