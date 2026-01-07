@@ -153,7 +153,7 @@ return {
     {
         'sindrets/diffview.nvim',
         dependencies = 'nvim-lua/plenary.nvim',
-        enabled = false,
+        -- enabled = false,
         opts = {
             view = {
                 merge_tool = {

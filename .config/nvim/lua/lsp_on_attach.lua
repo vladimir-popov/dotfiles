@@ -80,8 +80,8 @@ local keys_mapping = function(client, bufnr)
         },
         {
             'K',
-            '<cmd>Lspsaga hover_doc max_height=0.9<CR>',
-            -- '<cmd>lua vim.lsp.buf.hover()<CR>',
+            -- '<cmd>Lspsaga hover_doc max_height=0.9<CR>',
+            '<cmd>lua vim.lsp.buf.hover({border = "single"})<CR>',
             desc = 'show description of the symbol under cursor',
             buffer = bufnr
         },
