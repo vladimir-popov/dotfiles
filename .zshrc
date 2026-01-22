@@ -184,8 +184,21 @@ if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-clou
 #                                         FZF configuration
 # ==================================================================================================
 export FZF_DEFAULT_COMMAND='fd --type file --follow --hidden --exclude .git'
+export FZF_DEFAULT_OPTS='--tmux 80%'
+# CTRL-Y to copy the command into clipboard using pbcopy
+export FZF_CTRL_R_OPTS="
+  --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'
+  --color header:italic
+  --header 'Press CTRL-Y to copy command into clipboard'"
+
+# Print tree structure in the preview window
+export FZF_ALT_C_OPTS="
+  --walker-skip .git,node_modules,target
+  --preview 'tree -C {}'"
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+alias vzf='v "$(fzf)"'
 
 source <(fzf --zsh)
 
@@ -291,7 +304,6 @@ n ()
 }
 # ==================================================================================================
 
-export SBT_OPTS="-Xmx16G -XX:+UseG1GC"
 export BLOOP_JAVA_OPTS="-Xmx16G -XX:+UseZGC -Xss4m"
 
 path=(
