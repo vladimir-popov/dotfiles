@@ -10,21 +10,6 @@ export LOCAL_PATH=$HOME'/.local'
 export NVIM_PATH=$CONFIGS_PATH'/nvim'
 export NVIM_PLUG=$LOCAL_PATH'/share/nvim/lazy'
 
-# or frappe, macchiato, mocha, latte
-export CATPPUCCIN=latte
-catppuccin() {
-	if [ $# -lt 1 ]
-	then
-	    echo "Usage: $funcstack[1] frappe | macchiato | mocha | latte"
-	    return
-	fi
-	export CATPPUCCIN=$1
-	tmux set-environment -g CATPPUCCIN $1
-	tmux source ~/.tmux.conf
-	sed -i '' -E "2s/catppuccin-[a-z]+/catppuccin-$CATPPUCCIN/g" ~/.alacritty.toml
-	sed -i '' -E "2s/catppuccin [a-z]+/catppuccin $CATPPUCCIN/g" ~/.config/ghostty/config
-}
-
 
 alias v=nvim
 alias vc="v -c \"normal '0\""
@@ -183,8 +168,29 @@ if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-clou
 # ==================================================================================================
 #                                         FZF configuration
 # ==================================================================================================
+FZF_OPTS_INIT="--tmux 80%"
+typeset -A fzf_themes
+fzf_themes[macchiato]=" \
+--color=bg+:#363A4F,bg:#24273A,spinner:#F4DBD6,hl:#ED8796 \
+--color=fg:#CAD3F5,header:#ED8796,info:#C6A0F6,pointer:#F4DBD6 \
+--color=marker:#B7BDF8,fg+:#CAD3F5,prompt:#C6A0F6,hl+:#ED8796 \
+--color=selected-bg:#494D64 \
+--color=border:#6E738D,label:#CAD3F5"
+fzf_themes[latte]=" \
+--color=bg+:#CCD0DA,bg:#EFF1F5,spinner:#DC8A78,hl:#D20F39 \
+--color=fg:#4C4F69,header:#D20F39,info:#8839EF,pointer:#DC8A78 \
+--color=marker:#7287FD,fg+:#4C4F69,prompt:#8839EF,hl+:#D20F39 \
+--color=selected-bg:#BCC0CC \
+--color=border:#9CA0B0,label:#4C4F69"
+fzf_themes[mocha]=" \
+--color=bg+:#313244,bg:#1E1E2E,spinner:#F5E0DC,hl:#F38BA8 \
+--color=fg:#CDD6F4,header:#F38BA8,info:#CBA6F7,pointer:#F5E0DC \
+--color=marker:#B4BEFE,fg+:#CDD6F4,prompt:#CBA6F7,hl+:#F38BA8 \
+--color=selected-bg:#45475A \
+--color=border:#6C7086,label:#CDD6F4"
+
 export FZF_DEFAULT_COMMAND='fd --type file --follow --hidden --exclude .git'
-export FZF_DEFAULT_OPTS='--tmux 80%'
+export FZF_DEFAULT_OPTS=${FZF_OPTS_INIT}
 # CTRL-Y to copy the command into clipboard using pbcopy
 export FZF_CTRL_R_OPTS="
   --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'
@@ -302,6 +308,34 @@ n ()
             rm -f "$NNN_TMPFILE" > /dev/null
     fi
 }
+# ======================== Global color schema ======================================================
+
+theme() {
+	case $1 in
+		dark)
+			# FZF_THEME=${fzf_themes[mocha]}
+			FZF_THEME=
+			CATPPUCCIN=macchiato
+			;;
+		light)
+			FZF_THEME=${fzf_themes[latte]}
+			CATPPUCCIN=latte
+			;;
+		*)
+			echo "Usage: $funcstack[1] dark | light"
+			return
+			;;
+	esac
+	export GLOBAL_THEME=$1
+	export FZF_DEFAULT_OPTS="${FZF_OPTS_INIT}${FZF_THEME}"
+	tmux set-environment -g GLOBAL_THEME $1
+	tmux set-environment -g CATPPUCCIN $CATPPUCCIN
+	tmux source ~/.tmux.conf
+	sed -i '' -E "2s/catppuccin-[a-z]+/catppuccin-$CATPPUCCIN/g" ~/.alacritty.toml
+	sed -i '' -E "2s/catppuccin [a-z]+/catppuccin $CATPPUCCIN/g" ~/.config/ghostty/config
+	
+}
+
 # ==================================================================================================
 
 export BLOOP_JAVA_OPTS="-Xmx16G -XX:+UseZGC -Xss4m"

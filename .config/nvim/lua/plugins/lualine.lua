@@ -1,4 +1,4 @@
-local colors = {
+local dark = {
     fg = '#abb2bf',
     bg = '#3c3c41',
     alpha = 'NONE',
@@ -9,57 +9,70 @@ local colors = {
     normal = '#61afef',
     replace = '#d3869b',
 }
-
-local cosmos_dark = {
-    normal = {
-        a = { bg = colors.bg, fg = colors.normal },
-        b = { bg = colors.bg, fg = colors.fg },
-        c = { bg = colors.alpha, fg = colors.inactive },
-        x = { bg = colors.alpha, fg = 'green' },
-        y = { bg = colors.bg, fg = colors.fg },
-        z = { bg = colors.bg, fg = colors.normal },
-    },
-    insert = {
-        a = { bg = colors.bg, fg = colors.insert },
-        b = { bg = colors.bg, fg = colors.fg },
-        c = { bg = colors.alpha, fg = colors.inactive },
-        x = { bg = colors.alpha, fg = colors.inactive },
-        y = { bg = colors.bg, fg = colors.fg },
-        z = { bg = colors.bg, fg = colors.insert },
-    },
-    visual = {
-        a = { bg = colors.bg, fg = colors.visual },
-        b = { bg = colors.bg, fg = colors.fg },
-        c = { bg = colors.alpha, fg = colors.inactive },
-        x = { bg = colors.alpha, fg = colors.inactive },
-        y = { bg = colors.bg, fg = colors.fg },
-        z = { bg = colors.bg, fg = colors.visual },
-    },
-    replace = {
-        a = { bg = colors.bg, fg = colors.replace },
-        b = { bg = colors.bg, fg = colors.fg },
-        c = { bg = colors.alpha, fg = colors.inactive },
-        x = { bg = colors.alpha, fg = colors.inactive },
-        y = { bg = colors.bg, fg = colors.fg },
-        z = { bg = colors.bg, fg = colors.replace },
-    },
-    command = {
-        a = { bg = colors.bg, fg = colors.command },
-        b = { bg = colors.bg, fg = colors.fg },
-        c = { bg = colors.alpha, fg = colors.inactive },
-        x = { bg = colors.alpha, fg = colors.inactive },
-        y = { bg = colors.bg, fg = colors.fg },
-        z = { bg = colors.bg, fg = colors.command },
-    },
-    inactive = {
-        a = { bg = colors.bg, fg = colors.inactive },
-        b = { bg = colors.bg, fg = colors.fg },
-        c = { bg = colors.alpha, fg = colors.inactive },
-        x = { bg = colors.alpha, fg = colors.inactive },
-        y = { bg = colors.bg, fg = colors.fg },
-        z = { bg = colors.bg, fg = colors.inactive },
-    },
+local light = {
+    fg = '#4c4f69',
+    bg = '#ccd0da',
+    alpha = 'NONE',
+    inactive = '#5c6370',
+    insert = '#79a15c',
+    command = '#e5c07b',
+    visual = '#c678dd',
+    normal = '#1e50bd',
+    replace = '#d3869b',
 }
+
+local cosmos = function(colors)
+    return {
+        normal = {
+            a = { bg = colors.bg, fg = colors.normal },
+            b = { bg = colors.bg, fg = colors.fg },
+            c = { bg = colors.alpha, fg = colors.inactive },
+            x = { bg = colors.alpha, fg = 'green' },
+            y = { bg = colors.bg, fg = colors.fg },
+            z = { bg = colors.bg, fg = colors.normal },
+        },
+        insert = {
+            a = { bg = colors.bg, fg = colors.insert },
+            b = { bg = colors.bg, fg = colors.fg },
+            c = { bg = colors.alpha, fg = colors.inactive },
+            x = { bg = colors.alpha, fg = colors.inactive },
+            y = { bg = colors.bg, fg = colors.fg },
+            z = { bg = colors.bg, fg = colors.insert },
+        },
+        visual = {
+            a = { bg = colors.bg, fg = colors.visual },
+            b = { bg = colors.bg, fg = colors.fg },
+            c = { bg = colors.alpha, fg = colors.inactive },
+            x = { bg = colors.alpha, fg = colors.inactive },
+            y = { bg = colors.bg, fg = colors.fg },
+            z = { bg = colors.bg, fg = colors.visual },
+        },
+        replace = {
+            a = { bg = colors.bg, fg = colors.replace },
+            b = { bg = colors.bg, fg = colors.fg },
+            c = { bg = colors.alpha, fg = colors.inactive },
+            x = { bg = colors.alpha, fg = colors.inactive },
+            y = { bg = colors.bg, fg = colors.fg },
+            z = { bg = colors.bg, fg = colors.replace },
+        },
+        command = {
+            a = { bg = colors.bg, fg = colors.command },
+            b = { bg = colors.bg, fg = colors.fg },
+            c = { bg = colors.alpha, fg = colors.inactive },
+            x = { bg = colors.alpha, fg = colors.inactive },
+            y = { bg = colors.bg, fg = colors.fg },
+            z = { bg = colors.bg, fg = colors.command },
+        },
+        inactive = {
+            a = { bg = colors.bg, fg = colors.inactive },
+            b = { bg = colors.bg, fg = colors.fg },
+            c = { bg = colors.alpha, fg = colors.inactive },
+            x = { bg = colors.alpha, fg = colors.inactive },
+            y = { bg = colors.bg, fg = colors.fg },
+            z = { bg = colors.bg, fg = colors.inactive },
+        },
+    }
+end
 
 local function icon_only(opts)
     return vim.tbl_extend('keep', {
@@ -85,7 +98,6 @@ return {
     },
     opts = function()
         vim.api.nvim_set_hl(0, 'StatusLine', {})
-
         return {
             options = {
                 always_divide_middle = true,
@@ -95,7 +107,7 @@ return {
                     right = '%#lualine_a_normal#|',
                 },
                 section_separators = { left = ' ', right = '' },
-                theme = cosmos_dark,
+                theme = cosmos(GLOBAL_THEME == 'light' and light or dark)
             },
             sections = {
                 lualine_a = {
@@ -131,7 +143,7 @@ return {
                         end,
                     }),
                     icon_only({
-                        icon = { '', color = { fg = colors.command } },
+                        icon = { '', color = { fg = '#e5c07b' } },
                         cond = function()
                             return vim.bo.readonly
                         end,

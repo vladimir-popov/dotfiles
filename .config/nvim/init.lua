@@ -77,9 +77,9 @@ vim.opt.syntax = 'on'
 -- open all folds on the start
 -- vim.opt.foldenable = false
 
-vim.api.nvim_create_autocmd({ 'BufNewFile', 'BufRead' }, {
+vim.api.nvim_create_autocmd({ 'FileType' }, {
     pattern = { '*' },
-    callback = function()
+    callback = function(ev)
         -- Do not comment a new line
         --  t       Auto-wrap text using textwidth
         --  c       Auto-wrap comments using textwidth,
@@ -89,7 +89,8 @@ vim.api.nvim_create_autocmd({ 'BufNewFile', 'BufRead' }, {
         --          <Enter> in Insert mode.
         --  o       Automatically insert the current comment leader after hitting
         --          'o' or 'O' in Normal mode.
-        vim.opt.formatoptions:remove({ 'c', 'r', 'o' })
+        -- vim.opt.formatoptions:remove({ 'c', 'r', 'o' })
+        vim.opt.formatoptions:remove({ 'o' })
     end,
 })
 
@@ -170,15 +171,12 @@ vim.lsp.config('*', {
 })
 vim.lsp.enable(lsp_configs)
 
--- configure colorscheme for the terminal, tmux and nvim
-local tmux_flavour = vim.fn.system('tmux show-environment -g CATPPUCCIN')
-local flavour = string.gsub(tmux_flavour, 'CATPPUCCIN=(%w+).*', '%1')
-if flavour == tmux_flavour then
-    flavour = vim.env.CATPPUCCIN or 'macchiato'
-end
-if flavour == 'latte' then
+-- configure colorscheme according to GLOBAL_THEME tmux variable
+GLOBAL_THEME = vim.fn.system('tmux show-environment -g GLOBAL_THEME'):gsub('GLOBAL_THEME=(%w+).*', '%1') or vim.env.GLOBAL_THEME
+if GLOBAL_THEME == 'light' then
     vim.cmd[[set background=light]]
     vim.cmd.colorscheme "edge"
 else
-    vim.cmd.colorscheme("catppuccin-" .. flavour)
+    vim.cmd[[set background=dark]]
+    vim.cmd.colorscheme("catppuccin-macchiato")
 end

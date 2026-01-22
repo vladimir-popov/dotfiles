@@ -15,10 +15,14 @@ return {
                     light = 'latte',
                     dark = 'macchiato',
                 },
-                custom_highlights = {
-                    LspReferenceRead = { bg = '#374b7e' },
-                    LspReferenceText = { bg = '#374b7e' },
-                    LspReferenceWrite = { bg = '#374b7e' },
+                highlight_overrides = {
+                    all = function(colors)
+                        return {
+                            LspReferenceRead = { bg = '#374b7e' },
+                            LspReferenceText = { bg = '#374b7e' },
+                            LspReferenceWrite = { bg = '#374b7e' },
+                        }
+                    end
                 }
             })
         end,
