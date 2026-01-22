@@ -157,6 +157,20 @@ require('lazy').setup('plugins', {
     },
     -- debug = true,
 })
+
+-- enable lsp
+local lsp_configs = {}
+for _, f in pairs(vim.api.nvim_get_runtime_file('lsp/*.lua', true)) do
+  local server_name = vim.fn.fnamemodify(f, ':t:r')
+  table.insert(lsp_configs, server_name)
+end
+vim.lsp.config('*', {
+    on_attach = require('lsp_on_attach'),
+    capabilities = require('cmp_nvim_lsp').default_capabilities(),
+})
+vim.lsp.enable(lsp_configs)
+
+-- configure colorscheme for the terminal, tmux and nvim
 local tmux_flavour = vim.fn.system('tmux show-environment -g CATPPUCCIN')
 local flavour = string.gsub(tmux_flavour, 'CATPPUCCIN=(%w+).*', '%1')
 if flavour == tmux_flavour then

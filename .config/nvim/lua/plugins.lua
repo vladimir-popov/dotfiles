@@ -9,6 +9,10 @@ Git_icons = {
 }
 
 return {
+    -- LSP extensions
+    { 'nvimdev/lspsaga.nvim' },
+    { 'ray-x/lsp_signature.nvim' },
+    { 'folke/neodev.nvim' },
     {
         'akinsho/git-conflict.nvim',
         version = "*",
@@ -193,10 +197,10 @@ return {
                 -- Keymaps in diff view
                 keymaps = {
                     view = {
-                        quit = "q",      -- Close diff tab
+                        quit = "q",                    -- Close diff tab
                         toggle_explorer = "<leader>1", -- Toggle explorer visibility (explorer mode only)
-                        next_hunk = "]h", -- Jump to next change
-                        prev_hunk = "[h", -- Jump to previous change
+                        next_hunk = "]h",              -- Jump to next change
+                        prev_hunk = "[h",              -- Jump to previous change
                     }
                 }
             })
