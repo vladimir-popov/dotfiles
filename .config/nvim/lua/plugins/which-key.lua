@@ -225,7 +225,7 @@ return {
             },
             -- Visual mode
             {
-                "<C-c>",
+                "<C-y>",
                 '"+y',
                 desc = "copy to the clipboard",
                 mode =
