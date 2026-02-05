@@ -148,6 +148,8 @@ bindkey '^v' edit-command-line
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
+# Turn on manual configuration for `rg`
+export RIPGREP_CONFIG_PATH=~/.ripgreprc
 
 # ==================================================================================================
 #                                         GCP configuration
