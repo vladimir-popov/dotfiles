@@ -104,6 +104,11 @@ return {
             desc = 'show all builtin pickers',
         },
         {
+            '<space>t',
+            "<cmd>lua require'telescope.builtin'.resume()<cr>",
+            desc = 'go back to the previous picker',
+        },
+        {
             '<space>j',
             "<cmd>lua require'telescope.builtin'.resume()<cr>",
             desc = 'resume previos search',

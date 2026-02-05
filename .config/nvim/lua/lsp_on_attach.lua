@@ -163,6 +163,12 @@ local keys_mapping = function(client, bufnr)
             buffer = bufnr
         },
         {
+            '<leader>[',
+            '<cmd>checkhealth vim.lsp<CR>',
+            desc = 'Check health of lsp clients',
+            buffer = bufnr
+        },
+        {
             '<c-p>',
             '<cmd>lua vim.lsp.buf.signature_help()<CR>',
             desc = 'show signature of current method',
