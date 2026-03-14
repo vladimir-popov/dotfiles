@@ -258,6 +258,14 @@ return {
         ]])
         end,
     },
+    -- Typst preview
+    {
+        'chomosuke/typst-preview.nvim',
+        ft = 'typst',
+        cmd = { 'TypstPreviewUpdate' },
+        version = '1.*',
+        opts = {},
+    },
     -- Switch projects
     {
         'ahmedkhalf/project.nvim',

@@ -310,6 +310,34 @@ n ()
             rm -f "$NNN_TMPFILE" > /dev/null
     fi
 }
+
+# Function to convert milliseconds to duration format DDdHH:MM:SS.ms
+duration() {
+    local total_millis=$1
+
+    local milliseconds=$((total_millis % 1000))
+    local total_seconds=$((total_millis / 1000))
+    local seconds=$((total_seconds % 60))
+    local total_minutes=$((total_seconds / 60))
+    local minutes=$((total_minutes % 60))
+    local total_hours=$((total_minutes / 60))
+    local hours=$((total_hours % 24))
+    local days=$((total_hours / 24))
+
+    # Use printf for consistent two-digit formatting for H, M, S, and three digits for ms
+    printf "%dd%02d:%02d:%02d.%03d\n" "$days" "$hours" "$minutes" "$seconds" "$milliseconds"
+}
+
+# Function to convert bytes to human readable format
+function bytes() {
+    local i="${1:-0}.0" d="" s=1 S=("Bytes" "KB" "MB" "GB" "TB" "PB" "EB")
+    while ((i > 1000 && s < ${#S[@]}-1)); do
+        i=$((i / 1000))
+        s=$((s + 1))
+    done
+    printf "%.2f %s\n" $i ${S[$s]}
+}
+
 # ======================== Global color schema ======================================================
 
 theme() {

@@ -45,7 +45,7 @@ return {
                 buffers = {
                     theme = 'dropdown',
                     sort_lastused = true,
-                    previewer = false,
+                    -- previewer = false,
                     path_display = { 'smart' },
                     layout_strategy = 'center',
                     mappings = {

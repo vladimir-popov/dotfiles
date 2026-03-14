@@ -121,8 +121,8 @@ vim.api.nvim_create_autocmd({ 'BufEnter', 'CursorHold', 'CursorHoldI', 'FocusGai
 
 -- setup plugins
 local lazypath = vim.fn.stdpath('data') .. '/lazy/lazy.nvim'
-if not vim.loop.fs_stat(lazypath) then
-    vim.fn.system({
+if not (vim.uv or vim.loop).fs_stat(lazypath) then
+    local out =vim.fn.system({
         'git',
         'clone',
         '--filter=blob:none',
@@ -130,8 +130,16 @@ if not vim.loop.fs_stat(lazypath) then
         'https://github.com/folke/lazy.nvim.git',
         lazypath,
     })
+    if vim.v.shell_error ~= 0 then
+        vim.api.nvim_echo({
+            { "Failed to clone lazy.nvim:\n", "ErrorMsg" },
+            { out,                            "WarningMsg" },
+            { "\nPress any key to exit..." },
+        }, true, {})
+        vim.fn.getchar()
+        os.exit(1)
+    end
 end
-
 vim.opt.runtimepath:prepend(lazypath)
 
 require('lazy').setup('plugins', {
@@ -162,8 +170,8 @@ require('lazy').setup('plugins', {
 -- enable lsp
 local lsp_configs = {}
 for _, f in pairs(vim.api.nvim_get_runtime_file('lsp/*.lua', true)) do
-  local server_name = vim.fn.fnamemodify(f, ':t:r')
-  table.insert(lsp_configs, server_name)
+    local server_name = vim.fn.fnamemodify(f, ':t:r')
+    table.insert(lsp_configs, server_name)
 end
 vim.lsp.config('*', {
     on_attach = require('lsp_on_attach'),
@@ -172,11 +180,12 @@ vim.lsp.config('*', {
 vim.lsp.enable(lsp_configs)
 
 -- configure colorscheme according to GLOBAL_THEME tmux variable
-GLOBAL_THEME = vim.fn.system('tmux show-environment -g GLOBAL_THEME'):gsub('GLOBAL_THEME=(%w+).*', '%1') or vim.env.GLOBAL_THEME
+GLOBAL_THEME = vim.fn.system('tmux show-environment -g GLOBAL_THEME'):gsub('GLOBAL_THEME=(%w+).*', '%1') or
+vim.env.GLOBAL_THEME
 if GLOBAL_THEME == 'light' then
-    vim.cmd[[set background=light]]
+    vim.cmd [[set background=light]]
     vim.cmd.colorscheme "edge"
 else
-    vim.cmd[[set background=dark]]
+    vim.cmd [[set background=dark]]
     vim.cmd.colorscheme("catppuccin-macchiato")
 end

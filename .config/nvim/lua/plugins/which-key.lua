@@ -33,6 +33,7 @@ return {
                     suggestions = 10,
                 },
             },
+            delay = 500,
         })
         local wk = require("which-key")
         -- wk.register({
@@ -147,7 +148,7 @@ return {
                 desc = "Copy local file path"
             },
             {
-                '<space>glcf',
+                '<space>cuf',
                 function()
                     local url = gitlabFile()
                     vim.fn.setreg('+', url)
@@ -156,7 +157,7 @@ return {
                 desc = "Copy gitlab url to the current file"
             },
             {
-                '<space>glcl',
+                '<space>cul',
                 function()
                     local url = gitlabLine()
                     vim.fn.setreg('+', url)
@@ -165,7 +166,7 @@ return {
                 desc = "Copy gitlab url to the current line"
             },
             {
-                '<space>glof',
+                '<space>ouf',
                 function()
                     local url = gitlabFile()
                     -- vim.fn.setreg('+', url)
@@ -175,7 +176,7 @@ return {
                 desc = "Open gitlab url to the current file"
             },
             {
-                '<space>glol',
+                '<space>oul',
                 function()
                     local url = gitlabLine()
                     -- vim.fn.setreg('+', url)
