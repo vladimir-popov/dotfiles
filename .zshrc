@@ -16,6 +16,11 @@ alias vc="v -c \"normal '0\""
 alias lg=lazygit
 alias scli=scala-cli
 
+# shorcuts for forgotten catacombs
+alias zbr='zig build run'
+alias zbt='zig build test'
+alias zbe='zig build emulate'
+
 # bindkey -l    --- to list all variants
 # bindkey -M    --- to read key binds in specified scheme
 #bindkey -v 

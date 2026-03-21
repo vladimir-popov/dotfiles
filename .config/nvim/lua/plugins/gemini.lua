@@ -4,13 +4,13 @@ return {
     event = "VeryLazy",
     opts = {
         hints = {
-            enabled = false
+            enabled = true
         },
         completion = {
             enabled = false
         },
         instruction = {
-            enabled = false
+            enabled = true
         },
         chat_config = {
             window = {
