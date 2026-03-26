@@ -17,9 +17,10 @@ alias lg=lazygit
 alias scli=scala-cli
 
 # shorcuts for forgotten catacombs
-alias zbr='zig build run'
-alias zbt='zig build test'
+alias zbr='zig build run -freference-trace=5'
+alias zbt='zig build test -freference-trace=5'
 alias zbe='zig build emulate'
+alias zfm='zig fmt .'
 
 # bindkey -l    --- to list all variants
 # bindkey -M    --- to read key binds in specified scheme
