@@ -1,5 +1,5 @@
 return {
-    'vladimir-popov/gemini.nvim',
+    'kiddos/gemini.nvim',
     dev = true,
     event = "VeryLazy",
     opts = {
