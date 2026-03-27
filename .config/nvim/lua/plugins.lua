@@ -16,12 +16,39 @@ return {
     {
         'akinsho/git-conflict.nvim',
         version = "*",
-        config = true,
+        config = function()
+            require('git-conflict').setup({
+                default_mappings = {
+                    ours = 'dc',
+                    theirs = 'di',
+                    none = 'd0',
+                    both = 'db',
+                    next = '[c',
+                    prev = ']c',
+                },
+            })
+            vim.api.nvim_create_user_command(
+                'GitConflictHelp',
+                function()
+                    print([[
+GitConflictChooseOurs < dc > — Select the current changes.
+GitConflictChooseTheirs < di > — Select the incoming changes.
+GitConflictChooseBoth < db > — Select both changes.
+GitConflictChooseNone < d0 > — Select none of the changes.
+GitConflictNextConflict < [c > — Move to the next conflict.
+GitConflictPrevConflict < ]c > — Move to the previous conflict.
+GitConflictListQf — Get all conflict to quickfix
+GitConflictHelp — Show this help
+                    ]])
+                end,
+                {}
+            )
+        end,
         lazy = false,
         cmd = {
             'GitConflictChooseOurs', 'GitConflictChooseTheirs', 'GitConflictChooseBoth',
             'GitConflictChooseNone', 'GitConflictNextConflict', 'GitConflictPrevConflict',
-            'GitConflictListQf'
+            'GitConflictListQf', 'GitConflictHelp'
         }
     },
     {
