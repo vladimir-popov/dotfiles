@@ -36,7 +36,7 @@ alias ld="lazygit -w $HOME -g $HOME/.git_dot/"
 # file with aliases
 if [[ -f "$HOME/.aliases" ]]; then . $HOME/.aliases; fi
 
-if [[ -f "$HOME/.gemini" ]]; then . $HOME/.gemini; fi
+if [[ -f "$HOME/.gemini_api_key" ]]; then . $HOME/.gemini_api_key; fi
 
 # allow v to edit the command line (standard behaviour)
 #autoload -Uz edit-command-line
