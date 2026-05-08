@@ -356,5 +356,10 @@ au FileType plantuml let g:plantuml_previewer#plantuml_jar_path = get(
         -- has to be loaded on startup. Otherwise, the interactive feature of the `Subs` will only be
         -- available after the first executing of it or after a keymap of text-case.nvim has been used.
         lazy = false,
+    },
+    -- Work with tables
+    {
+        "dhruvasagar/vim-table-mode",
+        cmd = { "TableModeToggle" }
     }
 }
