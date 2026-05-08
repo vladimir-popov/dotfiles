@@ -67,6 +67,7 @@ nnoremap <space>e :action RecentFiles<CR>
 nnoremap <space>fa :action GotoFile<cr>
 nnoremap <space>ss :action FileStructurePopup<cr>
 nnoremap <space>gg :action TextSearchAction<cr>
+nnoremap <space>m :action ShowBookmarks<cr>
 
 
 " Types
