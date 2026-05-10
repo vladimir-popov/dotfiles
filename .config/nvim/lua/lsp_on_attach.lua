@@ -1,5 +1,6 @@
 require('lspsaga').setup({
     lightbulb = {
+        enable = false,
         virtual_text = false
     },
     symbol_in_winbar = {

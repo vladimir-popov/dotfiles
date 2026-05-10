@@ -168,10 +168,10 @@ return {
         dap.defaults.fallback.terminal_win_cmd = 'tabnew'
         dap.set_log_level('DEBUG')
         -- Change BP icon
-        vim.fn.sign_define(
-            'DapBreakpoint',
-            { text = '', texthl = 'Error', linehl = 'Error', numhl = 'Error' }
-        )
+        vim.fn.sign_define('DapBreakpoint', {text='🔴', texthl='', linehl='', numhl=''})
+        vim.fn.sign_define('DapBreakpointCondition', {text='🟣', texthl='', linehl='', numhl=''})
+        vim.fn.sign_define('DapStopped', {text='➡️', texthl='', linehl='', numhl=''})
+        vim.fn.sign_define('DapBreakpointRejected', {text='🚫', texthl='', linehl='', numhl=''})
         -- Configuration for C/C++/zig
         dap.adapters.lldb = {
             type = 'executable',

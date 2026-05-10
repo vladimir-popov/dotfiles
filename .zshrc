@@ -17,8 +17,8 @@ alias lg=lazygit
 alias scli=scala-cli
 
 # shorcuts for forgotten catacombs
-alias zbr='zig build run -freference-trace=5'
-alias zbt='zig build test -freference-trace=5'
+alias zbr='zig build run -freference-trace=20'
+alias zbt='zig build test -freference-trace=20'
 alias zbe='zig build emulate'
 alias zfm='zig fmt .'
 
