@@ -149,11 +149,12 @@ GitConflictHelp — Show this help
     {
         'mcchrish/nnn.vim',
         keys = {
-            { '<c-n>', '<cmd>NnnPicker<cr>' },
+            { '<c-F>', '<cmd>NnnPicker<cr>' },
             { '<c-f>', '<cmd>NnnPicker %:p:h<cr>' },
         },
         config = function()
-            vim.g['nnn#session'] = 'local'
+            vim.g['nnn#session'] = 'none'
+            vim.g['nnn#command'] = 'nnn -s nvim'
         end,
     },
     -- lazygit
