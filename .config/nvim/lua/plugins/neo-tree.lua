@@ -3,13 +3,13 @@ return {
     -- branch = 'v3.x',
     branch = 'main',
     keys = {
+        -- {
+        --     "<leader>'",
+        --     ':Neotree toggle reveal<cr>',
+        --     desc = 'Show the current file in the NeoTree',
+        -- },
         {
             "<leader>'",
-            ':Neotree toggle reveal<cr>',
-            desc = 'Show the current file in the NeoTree',
-        },
-        {
-            '<leader>"',
             ':Neotree focus reveal_force_cwd<cr>',
             desc = 'Show the current file in the NeoTree, and change cwd',
         },

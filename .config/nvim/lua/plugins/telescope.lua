@@ -184,7 +184,7 @@ return {
             desc = 'show highlights',
         },
         {
-            '<space>r',
+            '<space>rr',
             "<cmd>lua require('telescope.builtin').registers()<cr>",
             desc = 'show registers content',
         },
@@ -203,11 +203,6 @@ return {
             '<space>ff',
             "<cmd>lua require('telescope.builtin').current_buffer_fuzzy_find()<CR>",
             desc = 'find in buffer',
-        },
-        {
-            '<leader>m',
-            '<cmd>Telescope metals commands<CR>',
-            desc = 'find metals commands',
         },
         {
             '<space>ss',

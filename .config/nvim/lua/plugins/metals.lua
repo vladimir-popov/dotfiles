@@ -7,7 +7,7 @@ local M = {
         { 'hrsh7th/nvim-cmp' },
     },
     -- ft = { 'scala', 'sbt', 'java' },
-    ft = { 'scala', 'sbt' },
+    -- ft = { 'scala', 'sbt' },
     cmd = "MetalsStartServer",
     keys = {
         {
@@ -29,91 +29,95 @@ local M = {
             end,
             desc = 'copy full class name',
         },
+        {
+            '<leader>m',
+            '<cmd>Telescope metals commands<CR>',
+            desc = 'find metals commands',
+        },
     },
     config = function()
-        local metals_config = require('metals').bare_config()
-        metals_config.init_options.statusBarProvider = 'on'
-        metals_config.settings = {
-            -- serverVersion = "2.0.0-M7",
-            -- serverProperties = { "-Xmx4g" },
-            autoImportBuild = false,
-            showImplicitArguments = true,
-            showInferredType = false,
-            ['javaFormat.eclipseConfigPath'] = vim.fn.stdpath('config')
-                .. '/formatters/eclipse-formatter.xml',
-            ['javaFormat.eclipseProfile'] = 'GoogleStyle',
-        }
-
-        metals_config.handlers['textDocument/publishDiagnostics'] =
-            vim.lsp.with(vim.lsp.diagnostic.on_publish_diagnostics, {
-                virtual_text = {
-                    prefix = '',
-                },
-            })
-
-        metals_config.handlers['metals/executeClientCommand'] = function(a0, result)
-            if
-                result.command == 'metals-doctor-run'
-                or result.command == 'metals-doctor-reload'
-            then
-                local _, response_json = next(result.arguments)
-                local response = vim.fn.json_decode(response_json)
-                vim.b['is_metals_ok'] = type(response) == 'table' and response.targets
-            end
-            require('metals/handlers')['metals/executeClientCommand'](a0, result)
-        end
-
-        metals_config.tvp = {
-            panel_alignment = 'right',
-        }
-
-        metals_config.on_attach = function(client, bufnr)
-            -- turn on highlight and key mapping
-            require('lsp_on_attach')(client, bufnr)
-
-            require('metals').setup_dap()
-
-            local wk = require('which-key')
-            wk.add({
-                {
-                    'K',
-                    "<Esc><cmd>lua require('metals').type_of_range()<CR>",
-                    desc = 'show type of selected code',
-                    mode = 'v',
-                    buffer = bufnr
-                },
-                {
-                    '<leader>o',
-                    '<cmd>MetalsOrganizeImports<CR>',
-                    desc = 'organize import in scala',
-                    buffer = bufnr
-                },
-            })
-        end
-
-        metals_config.find_root_dir_max_project_nesting = 2
-        metals_config.find_root_dir = function(patterns, bufname, maxParentSearch)
-            if string.find(bufname, 'dash/scripts') then
-                return vim.fn.expand("%:p:h")
-            else
-                local root_dir = require("metals.rootdir")
-                return root_dir.find_root_dir(patterns, bufname, maxParentSearch)
-            end
-        end
-
-        metals_config.capabilities = require('cmp_nvim_lsp').default_capabilities()
-
+        -- Run metals for the current file
+        require('metals').initialize_or_attach(require('plugins.metals').generateConfig())
         -- Run metals on open scala file
         local aug_id = vim.api.nvim_create_augroup('scalametals', { clear = true })
         vim.api.nvim_create_autocmd('FileType', {
             group = aug_id,
             pattern = { 'scala', 'sbt', 'java' },
             callback = function()
-                require('metals').initialize_or_attach(metals_config)
+                require('metals').initialize_or_attach(require('plugins.metals').generateConfig())
             end,
         })
     end,
 }
+
+M.generateConfig = function()
+    local metals_config = require('metals').bare_config()
+    metals_config.init_options.statusBarProvider = 'on'
+    metals_config.settings = {
+        -- serverVersion = "2.0.0-M7",
+        -- serverProperties = { "-Xmx4g" },
+        autoImportBuild = false,
+        showImplicitArguments = true,
+        showInferredType = false,
+        ['javaFormat.eclipseConfigPath'] = vim.fn.stdpath('config')
+            .. '/formatters/eclipse-formatter.xml',
+        ['javaFormat.eclipseProfile'] = 'GoogleStyle',
+    }
+
+
+    metals_config.handlers['metals/executeClientCommand'] = function(a0, result)
+        if
+            result.command == 'metals-doctor-run'
+            or result.command == 'metals-doctor-reload'
+        then
+            local _, response_json = next(result.arguments)
+            local response = vim.fn.json_decode(response_json)
+            vim.b['is_metals_ok'] = type(response) == 'table' and response.targets
+        end
+        require('metals/handlers')['metals/executeClientCommand'](a0, result)
+    end
+
+    metals_config.tvp = {
+        panel_alignment = 'right',
+    }
+
+    metals_config.on_attach = function(client, bufnr)
+        -- turn on highlight and key mapping
+        require('lsp_on_attach')(client, bufnr)
+
+        require('metals').setup_dap()
+
+        local wk = require('which-key')
+        wk.add({
+            {
+                'K',
+                "<Esc><cmd>lua require('metals').type_of_range()<CR>",
+                desc = 'show type of selected code',
+                mode = 'v',
+                buffer = bufnr
+            },
+            {
+                '<leader>o',
+                '<cmd>MetalsOrganizeImports<CR>',
+                desc = 'organize import in scala',
+                buffer = bufnr
+            },
+        })
+    end
+
+    metals_config.find_root_dir_max_project_nesting = 2
+    metals_config.find_root_dir = function(patterns, bufname, maxParentSearch)
+        if string.find(bufname, 'dash/scripts') then
+            return vim.fn.expand("%:p:h")
+        else
+            local root_dir = require("metals.rootdir")
+            return root_dir.find_root_dir(patterns, bufname, maxParentSearch)
+        end
+    end
+
+    metals_config.capabilities = require('cmp_nvim_lsp').default_capabilities()
+    return metals_config
+end
 
 M.getFullClassName = function()
     local symbol = vim.fn.expand('<cword>')
