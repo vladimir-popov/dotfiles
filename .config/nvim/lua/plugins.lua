@@ -361,6 +361,9 @@ au FileType plantuml let g:plantuml_previewer#plantuml_jar_path = get(
     -- Work with tables
     {
         "dhruvasagar/vim-table-mode",
-        cmd = { "TableModeToggle" }
+        cmd = { "TableModeToggle" },
+        config = function()
+            vim.g.table_mode_corner = '|'
+        end,
     }
 }
