@@ -136,8 +136,7 @@ GitConflictHelp — Show this help
     },
     -- Hop is similar to EasyMotion
     {
-        'phaazon/hop.nvim',
-        branch = 'v2',
+        'smoka7/hop.nvim',
         keys = {
             { 'gw',              '<cmd>HopWord<cr>' },
             { '<space><space>b', '<cmd>HopWordBC<cr>' },
@@ -269,9 +268,6 @@ GitConflictHelp — Show this help
         },
         ft = { 'markdown' },
         cmd = { 'RenderMarkdown' },
-        -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.nvim' }, -- if you use the mini.nvim suite
-        -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.icons' }, -- if you use standalone mini plugins
-        dependencies = { 'nvim-treesitter/nvim-treesitter', 'nvim-tree/nvim-web-devicons' }, -- if you prefer nvim-web-devicons
     },
     {
         'iamcco/markdown-preview.nvim',
@@ -317,7 +313,10 @@ GitConflictHelp — Show this help
         },
     },
     -- koka lang
-    { 'Nymphium/vim-koka', lazy = false },
+    { 
+        'Nymphium/vim-koka',
+        lazy = false
+    },
     -- PlantUML
     {
         'weirongxu/plantuml-previewer.vim',

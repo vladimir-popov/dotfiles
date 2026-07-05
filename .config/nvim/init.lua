@@ -8,6 +8,9 @@ vim.opt.spell = true
 vim.opt.spelllang = { 'ru', 'en' }
 vim.opt.sps = { 'best', 5 }
 
+-- keys mapping
+vim.opt.langmap = "ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖ;ABCDEFGHIJKLMNOPQRSTUVWXYZ:,фисвуапршолдьтщзйкыегмцчня;abcdefghijklmnopqrstuvwxyz"
+
 -- highlight the current line
 vim.opt.cursorline = true
 
@@ -180,6 +183,9 @@ vim.lsp.config('*', {
     capabilities = require('cmp_nvim_lsp').default_capabilities(),
 })
 vim.lsp.enable(lsp_configs)
+
+-- setup langmapper
+require('langmapper').automapping({ global = true, buffer = true })
 
 -- configure colorscheme according to GLOBAL_THEME tmux variable
 GLOBAL_THEME = vim.fn.system('tmux show-environment -g GLOBAL_THEME'):gsub('GLOBAL_THEME=(%w+).*', '%1') or
