@@ -49,7 +49,14 @@ GitConflictHelp — Show this help
             'GitConflictChooseOurs', 'GitConflictChooseTheirs', 'GitConflictChooseBoth',
             'GitConflictChooseNone', 'GitConflictNextConflict', 'GitConflictPrevConflict',
             'GitConflictListQf', 'GitConflictHelp'
-        }
+        },
+        keys = {
+            {
+                '<leader>gc',
+                "<cmd>GitConflictListQf<cr>",
+                desc = 'Show all git conflicts in the quick list',
+            },
+        },
     },
     {
         'vladimir-popov/blogger.nvim',

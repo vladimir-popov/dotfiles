@@ -90,6 +90,17 @@ return {
                 window = {
                     mappings = {
                         ['<space>gg'] = 'live_grep',
+                        ["Y"] = function(state)
+                            -- Get the current node under the cursor
+                            local node = state.tree:get_node()
+                            local filepath = node:get_id()
+
+                            -- Copy the absolute path to the system clipboard register (+)
+                            vim.fn.setreg("+", filepath)
+
+                            -- Notify the user
+                            vim.notify("Copied path: " .. filepath)
+                        end,
                     },
                 },
                 commands = {
