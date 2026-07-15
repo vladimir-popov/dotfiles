@@ -195,6 +195,12 @@ return {
             desc = 'live grep',
         },
         {
+            '<space>gg',
+            "\"zy<cmd>exec 'Telescope grep_string default_text=' . escape(@z, ' ')<CR>",
+            desc = 'live grep of the selected text',
+            mode = "v",
+        },
+        {
             '<space>gb',
             "<cmd>lua require('telescope.builtin').live_grep({grep_open_files=true,prompt_title = 'Live grep in buffers' })<CR>",
             desc = 'live grep',
@@ -210,14 +216,9 @@ return {
             desc = 'lists LSP document symbols in the current buffer',
         },
         {
-            '<space>sm',
+            '<space>sf',
             "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols={'method', 'function'}})<CR>",
             desc = 'find method',
-        },
-        {
-            '<space>sf',
-            "<cmd>lua require('telescope.builtin').lsp_document_symbols({symbols='field'})<CR>",
-            desc = 'find field',
         },
         {
             '<space>sc',

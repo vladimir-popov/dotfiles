@@ -12,19 +12,19 @@ return {
         -- swap
         local swap = require("nvim-treesitter-textobjects.swap")
         vim.keymap.set("n", "<space>swa", function()
-            swap.swap_next "@parameter.inner"
+            swap.swap_next "@parameter.outer"
         end)
         vim.keymap.set("n", "<space>swA", function()
             swap.swap_previous "@parameter.outer"
         end)
         vim.keymap.set("n", "<space>swf", function()
-            swap.swap_next "@function.inner"
+            swap.swap_next "@function.outer"
         end)
         vim.keymap.set("n", "<space>swF", function()
             swap.swap_previous "@function.outer"
         end)
         vim.keymap.set("n", "<space>swc", function()
-            swap.swap_next "@class.inner"
+            swap.swap_next "@class.outer"
         end)
         vim.keymap.set("n", "<space>swC", function()
             swap.swap_previous "@class.outer"

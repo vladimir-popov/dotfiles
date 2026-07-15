@@ -54,14 +54,12 @@ M.generateConfig = function()
     local metals_config = require('metals').bare_config()
     metals_config.init_options.statusBarProvider = 'on'
     metals_config.settings = {
-        -- serverVersion = "2.0.0-M7",
-        -- serverProperties = { "-Xmx4g" },
-        autoImportBuild = false,
+        defaultBspToBuildTool = true,
         showImplicitArguments = true,
         showInferredType = false,
-        ['javaFormat.eclipseConfigPath'] = vim.fn.stdpath('config')
-            .. '/formatters/eclipse-formatter.xml',
-        ['javaFormat.eclipseProfile'] = 'GoogleStyle',
+        serverProperties = {
+            "-Dmetals.macos-max-watch-roots=256",
+        },
     }
 
 

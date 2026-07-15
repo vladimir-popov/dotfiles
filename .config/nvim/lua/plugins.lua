@@ -1,4 +1,4 @@
-Git_icons = {
+_icons = {
     added = "",
     changed = "󰷉",
     copied = "󰈢",
@@ -168,19 +168,6 @@ GitConflictHelp — Show this help
         'kdheepak/lazygit.nvim',
         keys = { { '<leader>lg', '<cmd>LazyGit<cr>', desc = 'Run LazyGit' } },
     },
-    -- trouble.nvim
-    {
-        'folke/trouble.nvim',
-        config = true,
-        enabled = false,
-        cmd = { 'TroubleToggle' },
-        keys = {
-            { 'qo', '<cmd>lua require("trouble").open("quickfix")<cr>' },
-            { 'qc', '<cmd>lua require("trouble").close()<cr>' },
-            { '[q', '<cmd>lua require("trouble").previous({skip_groups = true, jump = true})<cr>' },
-            { ']q', '<cmd>lua require("trouble").next({skip_groups = true, jump = true})<cr>' },
-        }
-    },
     -- Colorize
     {
         'uga-rosa/ccc.nvim',
@@ -228,6 +215,13 @@ GitConflictHelp — Show this help
         cmd = "CodeDiff",
         config = function()
             require("vscode-diff").setup({
+                diff = {
+                    layout = "inline", -- Diff layout: "side-by-side" (two panes) or "inline" (single pane with virtual lines)
+                },
+                -- History panel configuration (for :CodeDiff history)
+                history = {
+                    position = "left", -- "left" or "bottom" (default: bottom)
+                },
                 -- Keymaps in diff view
                 keymaps = {
                     view = {
@@ -244,6 +238,7 @@ GitConflictHelp — Show this help
     {
         'MeanderingProgrammer/markdown.nvim',
         main = "render-markdown",
+        enabled = false,
         opts = {
             code = {
                 -- Turn on / off code block & inline code rendering.
@@ -297,30 +292,8 @@ GitConflictHelp — Show this help
         version = '1.*',
         opts = {},
     },
-    -- Switch projects
-    {
-        'ahmedkhalf/project.nvim',
-        config = function()
-            require('project_nvim').setup({})
-            require('telescope').load_extension('projects')
-        end,
-        dependencies = { 'nvim-telescope/telescope.nvim' },
-        cmd = { 'ProjectRoot' },
-        keys = {
-            {
-                '<space>pc',
-                ':ProjectRoot<cr>',
-                desc = 'Set cwd to the project root',
-            },
-            {
-                '<space>pp',
-                ":lua require'telescope'.extensions.projects.projects()<cr>",
-                desc = 'Run Telescope with list of projects',
-            },
-        },
-    },
     -- koka lang
-    { 
+    {
         'Nymphium/vim-koka',
         lazy = false
     },

@@ -82,19 +82,26 @@ local keys_mapping = function(client, bufnr)
         {
             'K',
             -- '<cmd>Lspsaga hover_doc max_height=0.9<CR>',
-            '<cmd>lua vim.lsp.buf.hover({border = "single"})<CR>',
+            '<cmd>lua vim.lsp.buf.hover({border = "rounded"})<CR>',
             desc = 'show description of the symbol under cursor',
             buffer = bufnr
         },
         {
             '<c-p>',
-            '<cmd>lua vim.lsp.buf.signature_help()<CR>',
+            '<cmd>lua vim.lsp.buf.signature_help({ border = "rounded" })<CR>',
             desc = 'show signature of current method',
             buffer = bufnr
         },
         {
+            '<c-p>',
+            '<cmd>lua vim.lsp.buf.signature_help({ border = "rounded" })<CR>',
+            desc = 'show signature of current method',
+            mode = 'i',
+            buffer = bufnr
+        },
+        {
             '<leader>p',
-            '<cmd>lua vim.lsp.buf.document_symbol()<CR>',
+            '<cmd>lua vim.lsp.buf.document_symbol({border = "rounded"})<CR>',
             desc = 'open a new window with a list of code-entities in the current document',
             buffer = bufnr
         },
@@ -107,7 +114,7 @@ local keys_mapping = function(client, bufnr)
         {
             '<space>qf',
             '<cmd>Lspsaga code_action<CR>',
-            -- '<cmd>lua vim.lsp.buf.code_action()<cr>',
+            -- '<cmd>lua vim.lsp.buf.code_action({border = "rounded"})<cr>',
             desc = 'show all possible actions',
             buffer = bufnr
         },
@@ -167,13 +174,6 @@ local keys_mapping = function(client, bufnr)
             '<leader>[',
             '<cmd>checkhealth vim.lsp<CR>',
             desc = 'Check health of lsp clients',
-            buffer = bufnr
-        },
-        {
-            '<c-p>',
-            '<cmd>lua vim.lsp.buf.signature_help()<CR>',
-            desc = 'show signature of current method',
-            mode = 'i',
             buffer = bufnr
         },
         {
