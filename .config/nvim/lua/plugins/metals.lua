@@ -52,14 +52,19 @@ local M = {
 
 M.generateConfig = function()
     local metals_config = require('metals').bare_config()
-    metals_config.init_options.statusBarProvider = 'on'
+    metals_config.init_options = {
+        statusBarProvider = 'on',
+        excludedPackages = {
+            "**/glob:.sbt-local-cache/**"
+        }
+    }
+    metals_config.serverProperties = {
+        "-Dmetals.macos-max-watch-roots=256",
+    }
     metals_config.settings = {
         defaultBspToBuildTool = true,
         showImplicitArguments = true,
         showInferredType = false,
-        serverProperties = {
-            "-Dmetals.macos-max-watch-roots=256",
-        },
     }
 
 
@@ -103,7 +108,7 @@ M.generateConfig = function()
         })
     end
 
-    metals_config.find_root_dir_max_project_nesting = 2
+    metals_config.find_root_dir_max_project_nesting = 4
     metals_config.find_root_dir = function(patterns, bufname, maxParentSearch)
         if string.find(bufname, 'dash/scripts') then
             return vim.fn.expand("%:p:h")
