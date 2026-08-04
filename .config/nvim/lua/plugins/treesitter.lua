@@ -1,6 +1,6 @@
 local required_parsers =
 { 'bash', 'go', 'lua', 'luadoc', 'vim', 'vimdoc', 'scala', 'c', 'cpp',
-    'java', 'proto', 'python', 'markdown', 'zig', 'html', 'yaml', }
+    'java', 'proto', 'python', 'markdown', 'zig', 'html', 'yaml', 'mermaid' }
 return {
     'romus204/tree-sitter-manager.nvim',
     ft = required_parsers,
