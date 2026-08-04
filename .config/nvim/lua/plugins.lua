@@ -312,6 +312,17 @@ au FileType plantuml let g:plantuml_previewer#plantuml_jar_path = get(
             ]]
         end
     },
+    -- Mermaid
+    {
+        "kevalin/mermaid.nvim",
+        ft = 'mermaid',
+        config = function()
+            require("mermaid").setup()
+
+            -- Install the Tree-sitter parser:
+            -- :TSInstall mermaid
+        end,
+    },
     -- Manage string_cases
     {
         "johmsalas/text-case.nvim",
