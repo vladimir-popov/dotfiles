@@ -1,7 +1,7 @@
 #theme = dark:Catppuccin Frappe,light:Catppuccin Latte
 theme = catppuccin macchiato
 
-command = /bin/zsh --login -c tmux attach || tmux
+command = /bin/zsh --login -c 'exec tmux attach-session || exec tmux'
 
 quit-after-last-window-closed = true
 
