@@ -194,7 +194,10 @@ return {
                 request = 'launch',
                 program = telescopeProgram(zigOpts),
                 cwd = '${workspaceFolder}',
-                args = {},
+                args = function()
+                    local input = vim.fn.input("Program args: ")
+                    return require("dap.utils").splitstr(input)
+                end,
                 stopOnEntry = false,
                 runInTerminal = false,
             },
