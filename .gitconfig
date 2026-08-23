@@ -19,7 +19,7 @@
 	log = false
         difftool = true
 [merge]
-	tool = vimdiff
+	tool = codediff
 	conflictStyle = zdiff3
 [diff]
 	external = difft
@@ -39,3 +39,5 @@
 	cmd = nvim -d "$LOCAL" "$MERGED" "$REMOTE"
 [url "git@github.com:"]
 	insteadOf = https://github.com/
+[mergetool "codediff"]
+	cmd = nvim \"$MERGED\" -c \"CodeDiff --exit-on-close merge \\\"$MERGED\\\"\"

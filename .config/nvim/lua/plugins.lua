@@ -14,51 +14,6 @@ return {
     { 'ray-x/lsp_signature.nvim' },
     { 'folke/neodev.nvim' },
     {
-        'akinsho/git-conflict.nvim',
-        version = "*",
-        config = function()
-            require('git-conflict').setup({
-                default_mappings = {
-                    ours = 'dc',
-                    theirs = 'di',
-                    none = 'd0',
-                    both = 'db',
-                    next = '[c',
-                    prev = ']c',
-                },
-            })
-            vim.api.nvim_create_user_command(
-                'GitConflictHelp',
-                function()
-                    print([[
-GitConflictChooseOurs < dc > — Select the current changes.
-GitConflictChooseTheirs < di > — Select the incoming changes.
-GitConflictChooseBoth < db > — Select both changes.
-GitConflictChooseNone < d0 > — Select none of the changes.
-GitConflictNextConflict < [c > — Move to the next conflict.
-GitConflictPrevConflict < ]c > — Move to the previous conflict.
-GitConflictListQf — Get all conflict to quickfix
-GitConflictHelp — Show this help
-                    ]])
-                end,
-                {}
-            )
-        end,
-        lazy = false,
-        cmd = {
-            'GitConflictChooseOurs', 'GitConflictChooseTheirs', 'GitConflictChooseBoth',
-            'GitConflictChooseNone', 'GitConflictNextConflict', 'GitConflictPrevConflict',
-            'GitConflictListQf', 'GitConflictHelp'
-        },
-        keys = {
-            {
-                '<leader>gc',
-                "<cmd>GitConflictListQf<cr>",
-                desc = 'Show all git conflicts in the quick list',
-            },
-        },
-    },
-    {
         'vladimir-popov/blogger.nvim',
         dev = true,
         config = true,
@@ -208,6 +163,52 @@ GitConflictHelp — Show this help
             },
         },
     },
+    {
+        'akinsho/git-conflict.nvim',
+        version = "*",
+        enabled = false,
+        config = function()
+            require('git-conflict').setup({
+                default_mappings = {
+                    ours = '<leader>to',
+                    theirs = '<leader>ti',
+                    none = '<leader>tx',
+                    both = '<leader>tb',
+                    next = '[x',
+                    prev = ']x',
+                },
+            })
+            vim.api.nvim_create_user_command(
+                'GitConflictHelp',
+                function()
+                    print([[
+GitConflictChooseOurs  <leader>to  — Select the current changes.
+GitConflictChooseTheirs  <leader>ti  — Select the incoming changes.
+GitConflictChooseBoth  <leader>tb  — Select both changes.
+GitConflictChooseNone  <leader>tx  — Select none of the changes.
+GitConflictNextConflict  [x  — Move to the next conflict.
+GitConflictPrevConflict  ]x  — Move to the previous conflict.
+GitConflictListQf — Get all conflict to quickfix
+GitConflictHelp — Show this help
+                    ]])
+                end,
+                {}
+            )
+        end,
+        lazy = false,
+        cmd = {
+            'GitConflictChooseOurs', 'GitConflictChooseTheirs', 'GitConflictChooseBoth',
+            'GitConflictChooseNone', 'GitConflictNextConflict', 'GitConflictPrevConflict',
+            'GitConflictListQf', 'GitConflictHelp'
+        },
+        keys = {
+            {
+                '<leader>gc',
+                "<cmd>GitConflictListQf<cr>",
+                desc = 'Show all git conflicts in the quick list',
+            },
+        },
+    },
     -- vscode-diff
     {
         "esmuellert/vscode-diff.nvim",
@@ -215,21 +216,34 @@ GitConflictHelp — Show this help
         cmd = "CodeDiff",
         config = function()
             require("vscode-diff").setup({
-                diff = {
-                    layout = "inline", -- Diff layout: "side-by-side" (two panes) or "inline" (single pane with virtual lines)
-                },
+                -- diff = {
+                --     compact = false,
+                --     compact_sync_folds = false,
+                -- },
                 -- History panel configuration (for :CodeDiff history)
                 history = {
-                    position = "left", -- "left" or "bottom" (default: bottom)
+                    position = "bottom", -- "left" or "bottom" (default: bottom)
                 },
                 -- Keymaps in diff view
                 keymaps = {
                     view = {
-                        quit = "q",                    -- Close diff tab
-                        toggle_explorer = "<leader>1", -- Toggle explorer visibility (explorer mode only)
-                        next_hunk = "]h",              -- Jump to next change
-                        prev_hunk = "[h",              -- Jump to previous change
-                    }
+                        next_hunk = "]h", -- Jump to next change
+                        prev_hunk = "[h", -- Jump to previous change
+                    },
+                    conflict = {
+                        accept_incoming = "<leader>ci",
+                        accept_current = "<leader>cc",
+                        accept_both = "<leader>cb",
+                        discard = "<leader>cx",
+
+                        accept_all_incoming = "<leader>cI",
+                        accept_all_current = "<leader>cC",
+                        accept_all_both = "<leader>cB",
+                        discard_all = "<leader>cX",
+
+                        next_conflict = "]c",
+                        prev_conflict = "[c",
+                    },
                 }
             })
         end
