@@ -41,3 +41,5 @@
 	insteadOf = https://github.com/
 [mergetool "codediff"]
 	cmd = nvim \"$MERGED\" -c \"CodeDiff --exit-on-close merge \\\"$MERGED\\\"\"
+[push]
+	useForceIfIncludes = true
