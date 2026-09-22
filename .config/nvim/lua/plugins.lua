@@ -363,7 +363,25 @@ au FileType plantuml let g:plantuml_previewer#plantuml_jar_path = get(
     {
         "hat0uma/csvview.nvim",
         opts = {
+            delimiter = {
+                ft = {
+                    csv = ",",
+                    tsv = "\t",
+                },
+                fallbacks = {
+                    ",",
+                    "\t",
+                    ";",
+                    "|",
+                    ":",
+                    " ",
+                },
+            },
             parser = { comments = { "#", "//" } },
+            view = {
+                display_mode = "border", -- "highlight"
+                header_lnum = 1,
+            },
             keymaps = {
                 -- Text objects for selecting fields
                 textobject_field_inner = { "ic", mode = { "o", "x" } },
