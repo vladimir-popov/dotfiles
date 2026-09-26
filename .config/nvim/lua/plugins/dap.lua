@@ -152,6 +152,11 @@ local function zigOpts()
     return opts
 end
 
+local zig_lldb_commands = {
+    '?type format add --format unsigned "unsigned char"',
+    '?type format add --format decimal "signed char"',
+}
+
 return {
     'mfussenegger/nvim-dap',
     ft = { 'c', 'cpp', 'scala', 'zig', 'go' },
@@ -192,6 +197,7 @@ return {
                 name = 'Launch debug for Zig',
                 type = 'lldb',
                 request = 'launch',
+                initCommands = zig_lldb_commands,
                 program = telescopeProgram(zigOpts),
                 cwd = '${workspaceFolder}',
                 args = function()
@@ -205,6 +211,7 @@ return {
                 name = 'Attach to process',
                 type = 'lldb',
                 request = 'attach',
+                initCommands = zig_lldb_commands,
                 pid = telescopeProcess,
                 -- pid = require('dap.utils').pick_process,
                 args = {},
