@@ -235,12 +235,10 @@ GitConflictHelp — Show this help
                         accept_current = "<leader>cc",
                         accept_both = "<leader>cb",
                         discard = "<leader>cx",
-
                         accept_all_incoming = "<leader>cI",
                         accept_all_current = "<leader>cC",
                         accept_all_both = "<leader>cB",
                         discard_all = "<leader>cX",
-
                         next_conflict = "]c",
                         prev_conflict = "[c",
                     },
@@ -287,8 +285,16 @@ GitConflictHelp — Show this help
     },
     {
         'iamcco/markdown-preview.nvim',
-        build = function()
-            vim.fn['mkdp#util#install']()
+        build = function(plugin)
+            vim.fn["mkdp#util#install"]()
+
+            vim.system({
+                "curl",
+                "-fL",
+                "https://cdn.jsdelivr.net/npm/mermaid@11.10.1/dist/mermaid.min.js",
+                "-o",
+                plugin.dir .. "/app/_static/mermaid.min.js",
+            }):wait()
         end,
         ft = { 'markdown' },
         cmd = { 'MarkdownPreview' },
