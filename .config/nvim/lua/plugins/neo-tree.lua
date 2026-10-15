@@ -1,3 +1,19 @@
+local function copy_node_path(state, absolute)
+    local node = state.tree:get_node()
+    if not node then
+        vim.notify('No file or directory under the cursor', vim.log.levels.WARN)
+        return
+    end
+
+    local path = node:get_id()
+    if not absolute then
+        path = vim.fs.relpath(state.path, path) or path
+    end
+
+    vim.fn.setreg('+', path)
+    vim.notify('Copied path: ' .. path)
+end
+
 return {
     'nvim-neo-tree/neo-tree.nvim',
     -- branch = 'v3.x',
@@ -37,7 +53,10 @@ return {
     dependencies = {
         'nvim-lua/plenary.nvim',
         'nvim-tree/nvim-web-devicons',
-        'MunifTanjim/nui.nvim',
+        {
+            'MunifTanjim/nui.nvim',
+            commit = '5959922693a785a0e1624b45c968c844822f1ca1',
+        },
     },
     config = function()
         vim.fn.sign_define('DiagnosticSignError', { text = ' ', texthl = 'DiagnosticSignError' })
@@ -90,16 +109,14 @@ return {
                 window = {
                     mappings = {
                         ['<space>gg'] = 'live_grep',
+                        ['<space>cl'] = function(state)
+                            copy_node_path(state, false)
+                        end,
+                        ['<space>cp'] = function(state)
+                            copy_node_path(state, true)
+                        end,
                         ["Y"] = function(state)
-                            -- Get the current node under the cursor
-                            local node = state.tree:get_node()
-                            local filepath = node:get_id()
-
-                            -- Copy the absolute path to the system clipboard register (+)
-                            vim.fn.setreg("+", filepath)
-
-                            -- Notify the user
-                            vim.notify("Copied path: " .. filepath)
+                            copy_node_path(state, true)
                         end,
                     },
                 },

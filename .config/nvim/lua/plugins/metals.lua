@@ -62,7 +62,7 @@ M.generateConfig = function()
         "-Dmetals.macos-max-watch-roots=256",
     }
     metals_config.settings = {
-        serverVersion = "2.0.0-M17",
+        -- serverVersion = "2.0.0-M17",
         serverProperties = { "-Xmx6g" },
         defaultBspToBuildTool = true,
         showImplicitArguments = true,
