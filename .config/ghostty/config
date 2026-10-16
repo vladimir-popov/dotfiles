@@ -1,7 +1,8 @@
 #theme = dark:Catppuccin Frappe,light:Catppuccin Latte
 theme = catppuccin macchiato
 
-command = /bin/zsh --login -c 'exec tmux attach-session || exec tmux'
+#command = /bin/zsh --login -c 'exec tmux attach-session || exec tmux'
+command = /bin/zsh --login -c 'if tmux has-session 2>/dev/null; then exec tmux attach-session \; choose-tree -Zs; else exec tmux new-session; fi'
 
 quit-after-last-window-closed = true
 
@@ -36,6 +37,7 @@ keybind = super+]=text:\x02\x6e
 keybind = super+[=text:\x02\x6c
 keybind = super+'=text:\x02\x27
 keybind = super+s=text:\x02\x73
+keybind = super+S=text:\x02\x73
 keybind = super+digit_1=text:\x02\x31
 keybind = super+digit_2=text:\x02\x32
 keybind = super+digit_3=text:\x02\x33
