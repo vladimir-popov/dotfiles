@@ -191,7 +191,7 @@ return {
         {
             '<space>gg',
             -- "<cmd>lua require('telescope.builtin').live_grep({additional_args={'--hidden'}})<CR>",
-            '<cmd>lua require("telescope").extensions.live_grep_args.live_grep_args({additional_args={"--hidden"}})<CR>',
+            '<cmd>lua require("telescope").extensions.live_grep_args.live_grep_args({additional_args={"--hidden", "--fixed-strings"}})<CR>',
             desc = 'live grep',
         },
         {

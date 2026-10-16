@@ -18,7 +18,7 @@ return {
         dev = true,
         config = true,
         ft = 'html',
-        cmd = { 'BloggerPreview' },
+        cmd = { 'BloggerPreview', 'BloggerCopy' },
     },
     -- show marks in the signcolumn
     {
