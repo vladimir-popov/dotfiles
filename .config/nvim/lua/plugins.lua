@@ -8,6 +8,14 @@ _icons = {
     untracked = "󱀶",
 }
 
+vim.api.nvim_create_user_command("GitConflict", function()
+    vim.fn.setqflist({}, " ", {
+        lines = vim.fn.systemlist("git diff --name-only --diff-filter=U"),
+        efm = "%f",
+    })
+    vim.cmd.copen()
+end, {})
+
 return {
     -- LSP extensions
     { 'nvimdev/lspsaga.nvim' },
