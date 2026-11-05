@@ -1,188 +1,181 @@
 # Task workflow
 
-![Five connected neuron-like stages with a flash of progress between them](assets/task-workflow-emblem-transparent-v2.png)
+![A small waterfall flowing into a river past stepping stones](assets/task-flow-waterfall.png)
 
-`/task` guides a coding task through context collection, code research, roadmap approval, step design, implementation, and review. It keeps compact task artifacts in the project and starts separate Pi processes for implementation and review. The parent session shows the diff and review findings before accepting the step.
+`/task` guides a coding task through context collection, research, roadmap, step design, implementation, and review. Context and research share one saved Pi session. Later phases use separate sessions, with compact task artifacts carrying agreed decisions forward.
 
 ## 🔄 Workflow
 
 ```mermaid
 flowchart LR
-    A["Start<br/>/task TASK-ID"] --> B["Context<br/>context.md"]
-    B -->|/task next| C["Research<br/>Refine context.md"]
-    C -->|/task next| D["Roadmap<br/>proposal in chat"]
-    D -->|/task next| E["Step design<br/>step-N.md"]
-    E -->|/task next: next step| E
-    E -->|/task next| F["Implement<br/>diff"]
-    F --> G["Review<br/>review-N.md"]
-    G -->|open findings: /task next| F
-    G -->|all findings closed: /task next| H["Commit<br/>Git only"]
-    H -->|/task next: next step| F
+    A["Context"] -->|/task next| B["Research"]
+    B -->|/task next| C["Roadmap"]
+    C -->|/task next| D["Step design"]
+    D -->|/task next: another step| D
+    D -->|/task next: all designed| E["Implement"]
+    E -->|/task next: ready| F["Review"]
+    F -->|/task next: open findings| E
+    F -->|/task next: clear| G["Commit proposal"]
+    G -->|next step| E
 ```
 
-`/task next` advances only when the current discussion has no open questions or unapproved proposals. `/task accept` approves a concrete pending proposal and then performs the same transition, provided no questions remain. With no proposal, `/task accept` leaves the phase unchanged. A short clarification can be included, for example `/task accept "I prefer option B"`. The diagram shows `/task next` after the discussion is settled; `/task accept` follows the same edge when a proposal needs approval.
+Context → research changes the rules inside the same conversation. The implementation session is reused after review finds issues. Each review round opens a fresh session. A clear review accepts the step and produces a commit proposal or, if enabled, a Git commit. Projects without Git skip the commit.
 
 ## 🚀 Usage
 
-From the project directory, identify the task:
+Start Pi in the project directory and enter `/task TASK-100500`. Pi asks whether to create a missing task or continue an existing one. Declining leaves the current session unchanged. `/task` and `/task list` show tasks with a short state description and open the same selector in the terminal UI. Existing IDs also appear in command completion.
 
-```text
-/task list
-/task TASK-100500
+The extension shows the current phase in a small header above the editor when a task session opens. Once Pi finishes a response, the second line tells you when `/task next` is useful; a pending proposal may instead need `/task accept`. Pi's built-in footer shows the session name. For step design, implementation, and review, the extension adds a short title from the current numbered roadmap step to that name. These UI labels do not enter the model conversation.
+
+Phase kickoffs are hidden extension messages. They guide Pi and start its work without appearing in the editor's ↑ history. After a session switch, ↑ browses the new session's history; the `/task next` command entered in the previous session may therefore not be the first item.
+
+Describe the task over ordinary messages. Use `/task next` when the current discussion is settled. Use `/task accept` to agree to pending proposals and advance; agreement is implied by the command, with no extra note needed. If Pi proposes a version and asks whether to keep it or add an optional feature, `/task accept` keeps the proposed version. If Pi offers several alternatives without recommending one, choose explicitly, for example `/task accept "I prefer option B"`. If there is no pending proposal, `/task accept` advances exactly like `/task next`. Both commands stop when material questions remain, and `/task next` also stops when a proposal still needs approval. A slash command embedded in ordinary text, such as `I agree. /task next`, does not run.
+
+| Command | Action |
+| --- | --- |
+| `/task TASK-ID [--dir PATH]` | Create or open a task and switch to its current saved session. |
+| `/task` or `/task list` | Select an existing task, or show a list outside the terminal UI. |
+| `/task delete [TASK-ID]` | Permanently delete a task after a separate confirmation. Without an ID, choose from a selector in the terminal UI. |
+| `/task status` | Show the phase, step, session paths, review status, and settings without adding text to the conversation. |
+| `/task show [FILE.md]` | Select an existing Markdown artifact or show the named file without adding it to the conversation. File names have completion. |
+| `/task next` | Advance after checking the current discussion. In a fresh implementation session, capture a baseline and begin work. |
+| `/task accept [NOTE]` | Agree to pending proposals and advance. With no proposal, act like `/task next`. A note is optional. |
+| `/task help` | Show a short command summary outside the conversation. |
+
+### Hotkeys
+
+The extension binds **Alt+N** to `/task next`, **Alt+A** to `/task accept`, **Alt+S** to `/task status`, and **Alt+W** to `/task show` by default. They invoke the same commands and checks as the slash forms. Hotkeys work when Pi is idle and the input editor is empty; otherwise the extension shows a reminder and leaves the draft untouched. Run Pi's `/hotkeys` to inspect active bindings. On macOS, your terminal may need Option configured as Meta for Alt shortcuts to work.
+
+`/task show` and Alt+W open a selector containing the existing `.md` files directly in the task artifact directory, including previous review rounds. `/task show roadmap.md` opens one directly; `/task show ` completes existing Markdown file names. Outside the terminal UI, `/task show` lists available files. Diff files are not included in this Markdown viewer.
+
+Set `hotkeys` in `~/.pi/agent/task-workflow.json` to change a binding or give any `/task` command a key. Map a command string without `/task` to a Pi key name; use `null` to disable a default. Commands with arguments work too, for example `"show roadmap.md"` or `"TASK-100500"`. Reload Pi after changing the configuration.
+
+```json
+{
+  "hotkeys": {
+    "next": "alt+n",
+    "accept": "alt+a",
+    "status": "alt+s",
+    "show": "alt+w",
+    "list": "alt+l",
+    "delete": null
+  }
+}
 ```
-
-`/task list` opens a selector for tasks in the current project. Each option shows the ID, phase and step progress, review status when relevant, and a short description from `context.md`. Choose a task to continue it; `Esc` cancels without changing the session. If another task is already attached, the selected task opens in a new session so their conversations stay separate. Outside the terminal UI, the command prints the list instead. The list does not enter the model context. Existing IDs also appear in `/task` argument completion with their current state.
-
-If the task does not exist, Pi asks whether to create it and open a new session. If it already exists, `/task TASK-ID` asks whether to continue it. It attaches to the current session when no other task is attached; otherwise it opens a new session. Declining either prompt leaves the session and task files untouched. Once a new task starts, describe the problem or task and share the context you have; you can include ticket text if useful. Add more details as they come to mind. Pi maintains a compact `context.md` during this phase.
 
 ### Task ID parsing
 
-The ID is the first argument after `/task`. An unquoted ID ends at the first space. Single or double quotes let an ID contain spaces; the quotes are removed before the ID is stored.
+An ID is required to create or open a particular task; `/task` alone opens the list. An unquoted ID ends at a space; quote an ID with internal spaces: `/task "TASK 100500"` or `/task 'TASK 100500'`. `/task TASK 100500` is invalid. IDs may contain ASCII letters, digits, dots, underscores, hyphens, and internal spaces. They must begin with a letter or digit and have no leading or trailing spaces. Slashes and quote characters are invalid. The unquoted command words `help`, `list`, `delete`, `status`, `log`, `abort`, `next`, `accept`, `show`, `start`, and `continue` are reserved; quote one to use it as an ID. `--dir PATH` after the ID chooses a task artifact directory; quote a path containing spaces.
 
-| Input | Parsed task ID |
-| --- | --- |
-| `/task TASK-100500` | `TASK-100500` |
-| `/task "TASK 100500"` or `/task 'TASK 100500'` | `TASK 100500` |
-| `/task TASK 100500` | Invalid: two separate arguments. |
+`/task delete` lists tasks in the current project for selection. `/task delete TASK-100500` selects one directly; quote IDs with spaces as above. Both routes ask you to confirm the ID and full artifact directory before deleting. The command removes that directory, including task artifacts, baselines, and saved Pi sessions; project files outside it remain. If the task is open, Pi first switches to a normal session outside the task directory. Finish or cancel a running Pi response before deleting. Outside the terminal UI, provide an explicit ID because there is no selector.
 
-IDs may contain ASCII letters, digits, dots, underscores, hyphens, and internal spaces. They must start with a letter or digit and cannot have leading or trailing spaces. Slashes, path separators, and quote characters are not allowed. The unquoted words `help`, `list`, `status`, `log`, `abort`, `next`, `accept`, `show`, `start`, and `continue` are reserved; quote one if you intend it as an ID, for example `/task "help"`. Unquoted `start` and `continue` show a migration hint.
+### Phases and artifacts
 
-The ID is required and becomes the task's directory name through the `artifactDir` template. `/task` without an ID does not create or attach a task. Add `--dir PATH` after the ID to select an artifact directory for this invocation; quote a path containing spaces. Pi records the location of tasks started or continued with `--dir`, so `/task list` and `/task TASK-ID` can find them later.
+| Phase | What happens | Artifact updates |
+| --- | --- | --- |
+| **Context** | Describe the problem, constraints, and possible approaches over several messages. | Pi keeps `context.md` compact and current after each answer. |
+| **Research** | Continue in the same session; inspect code and discuss feasibility, code locations, and unresolved questions. | Agreed findings update `context.md`. Open doubts stay out. |
+| **Roadmap** | Discuss a numbered plan. New agreed requirements update context and cause a revised complete roadmap proposal. | `context.md` and a draft `roadmap.md`; `/task next` finalizes the roadmap. Top-level steps must be numbered consecutively from 1; short bold titles and dash explanations are preferred, but ordinary numbered Markdown steps are accepted. |
+| **Step design** | Discuss each step's approach and checks. Add or revise roadmap items when agreed. | `context.md`, `roadmap.md`, and `step-N.md` as needed; `/task next` finalizes the current step. |
+| **Implementation** | Work on the current step in a normal, saved Pi session. After review, repair open findings in that same session. | Project code may change. `/task next` writes `implementation-N.diff` and opens review. |
+| **Review** | Inspect the code with read-only project tools in a fresh session. Discuss and track findings. Each finding includes a short exact excerpt from the diff in both the saved review and Pi's response. | `review-N.md`; older rounds are archived as `review-N-round-M.md`. `/task next` returns open findings to implementation or accepts a clear review. |
 
-### Phases
+On accepting a clear review, the extension proposes a commit title and body. With `autoCommit: true`, it commits the reviewed files instead. It then opens the next step's implementation session, ready for `/task next` to start editing. After the final step, the task is complete. A project without Git has no commit step.
 
-Use `/task next` after the discussion is settled. Use `/task accept` when you want to approve Pi's pending proposal. The phases run in this order:
+Artifacts can be updated in any phase when an agreed change requires it. Project code can be edited only after `/task next` starts implementation and captures a baseline. The extension tracks the current phase and all saved session files in `state.json`.
 
-| Phase | Purpose and discussion | Artifact updates | What `/task next` does |
-| --- | --- | --- | --- |
-| **Context** | Describe the problem, requirements, and possible approaches. Add details over several messages. | Pi updates `context.md` after each input with compact task context. | Starts code research. |
-| **Research** | Inspect the project, check feasibility, and discuss findings and open questions. Agree which code locations and decisions matter. | Pi updates `context.md` as confirmed facts and decisions emerge. Unresolved doubts stay out. | Consolidates `context.md`, then asks Pi to propose a roadmap. |
-| **Roadmap** | Discuss the numbered plan and resolve questions or additions. If agreed task context changes, Pi updates `context.md` and presents a complete revised roadmap in chat. | Pi may maintain `roadmap.md` as a draft during discussion. | Confirms the approved plan in `roadmap.md`, then starts step 1 design. |
-| **Step design** | Discuss each roadmap step in detail, one at a time. New requirements or plan items can be agreed here. | Pi can update `context.md`, `roadmap.md`, or any `step-N.md` as needed. For example, adding a roadmap item during step 1 updates `roadmap.md` before advancing. | Confirms the current `step-N.md` and starts the next discussion. After the last design, implementation becomes available. |
-| **Implementation** | A separate Pi implements one approved step. | The worker changes project code. The parent saves `implementation-N.diff` after the run. | Starts the worker. When it finishes, review begins automatically. |
-| **Review** | A separate Pi inspects the implementation with read-only tools. Discuss each finding and its status. Each finding includes a short exact excerpt from the diff. | The parent creates `review-N.md`. During discussion Pi updates findings as `open`, `resolved`, or `dismissed`, preserving excerpts. Earlier review rounds are archived as `review-N-round-M.md`. | With open findings, starts a separate write-capable repair process and then repeats read-only review. When all findings are resolved or dismissed, accepts the step and proposes or creates a commit in Git projects. Without Git, it skips the commit. Another `/task next` starts the next step. |
-
-The phase describes what you are discussing, not which task artifacts Pi may edit. Any phase may update `context.md`, `roadmap.md`, `step-N.md`, or `review-N.md` when an agreed change calls for it. A successful transition confirms the artifact for that phase. The extension updates `state.json` when a phase or step changes. Only the implementation worker edits project code.
-
-`resolved` means the code was checked after a fix; `dismissed` records an agreed reason for rejecting a finding. Missing status in an older review file is treated as `open`. A successful transition with open findings starts a repair worker; it cannot accept the step until another review clears them.
-
-Pi only recognizes a slash command at the start of an input. `I agree. /task next` is ordinary text and will not advance. Use `/task accept` to combine approval and transition in one input. Its optional note can select or qualify the proposal. Free-form wording such as “advance if there are no questions” remains a discussion message and does not change the phase.
-
-Before either command changes the phase or starts a worker, the active Pi model checks the recent discussion. An unanswered material question blocks both commands. An unapproved proposal blocks `/task next`; the absence of a proposal blocks `/task accept`. If the check fails or cannot produce a valid answer, the phase stays unchanged. This check is a model judgment over the conversation, so keep important decisions explicit; the extension cannot prove from free-form chat that every question has been resolved.
+The task instructions tell Pi to converse in your language, including explanations, questions, and review discussion. Only task artifact content uses English prose and headings. Pi translates the agreed meaning into English when it writes or revises `context.md`, `roadmap.md`, `step-N.md`, and `review-N.md`. Exact code, identifiers, paths, and required diff excerpts remain unchanged. Existing non-English prose is rewritten when an artifact is next updated or finalized; loading an old task does not rewrite its files automatically.
 
 ### What each Pi sees
 
-The main Pi keeps the task's conversation in its normal session context, subject to Pi's usual context compaction. The extension adds instructions for the current phase. Task artifacts are files on disk: the main Pi reads them when the phase instructions call for them, rather than having every artifact inserted into every prompt.
+Context and research use the same Pi conversation, so research sees the original task description and the full context discussion. `/task next` changes the phase instructions and allowed tools without switching sessions. A configured research model is selected at this boundary; otherwise the current model continues.
 
-| Phase or action | Context available to the model |
-| --- | --- |
-| **Context, research, roadmap, and step design** | The main Pi's conversation, including your answers and earlier decisions, plus phase-specific instructions. It can read project files and task artifacts. In the context phase it reads and updates `context.md` after your input; later phases read and update the relevant artifacts as discussion requires. |
-| **Implementation** | A fresh Pi process receives the full contents of `context.md`, `roadmap.md`, and every `step-N.md`. Steps are marked completed, current, or planned. It can inspect the current project files and receives the approved proposal when `/task accept` starts the run. It does not receive the main conversation history. |
-| **Review worker** | Another fresh Pi process receives paths to `context.md`, `roadmap.md`, the current `step-N.md`, and `implementation-N.diff`; it reads those files and relevant code. On repeated review it also reads the previous `review-N.md`. It may load the configured review skill. It does not receive the main conversation or the implementation worker's conversation. |
-| **Review discussion** | Back in the main Pi session, the implementation summary and diff and the review result appear as messages. The main Pi can read `review-N.md`, the diff, and project files while discussing findings with you. |
-| **Repair** | A new implementation process receives the same task artifacts as the initial implementation, plus the current `review-N.md` and any approval passed through `/task accept`. It inspects the current code, addresses open findings, and then a fresh review worker runs again. |
+Roadmap, each step design, each step implementation, and each review round have their own saved conversations. They see their own messages, Pi's normal instructions, the phase instruction, and task artifacts they read. They do not inherit the preceding phase's chat transcript. The durable handoff is `context.md`, `roadmap.md`, and `step-N.md`.
 
-Implementation and review workers use `--no-session`, so their own conversations are not saved as Pi sessions. Their durable handoff is the task artifacts and current project files. Each process still starts with Pi's normal system prompt and discovers applicable project instructions; the review worker's tools are restricted to reading. The `/task next` and `/task accept` readiness check is a separate model call with a limited view: up to 16 recent messages from the current phase, the current review artifact when present, and the command note. It does not read the whole session or project code.
+The implementation session stays with its step. Returning from review restores that same conversation, including implementation decisions and tool output, and adds the current `review-N.md` as repair guidance. Review is a separate conversation and sees task artifacts, the implementation diff, and code it reads. Each repeated review is a new conversation, so it checks the repaired code independently. Sessions are saved in `<artifactDir>/sessions/`, next to the task artifacts. Opening an older task without a session map creates a saved session for its current phase; earlier background worker conversations cannot be reconstructed.
 
-Other commands:
+## ⚙️ Configuration
 
-| Command | Purpose |
-| --- | --- |
-| `/task help` | Show a summary of commands without adding it to the session. |
-| `/task list` | Select a current-project task to continue; outside the terminal UI, show the list. |
-| `/task status` | Show the phase, paths, worker activity, Git availability, step status, commit mode, and `/tree` setting without adding it to the session. |
-| `/task log` | Reopen the live implementation, repair, or review progress window. |
-| `/task abort` | Stop the running worker; the task remains available for a later retry. |
-| `/task TASK-100500` | Start or continue the task after confirmation. |
-| `/task show roadmap` | Open an artifact in a scrollable overlay without adding it to the session. |
-
-`/task show` accepts `context`, `research`, `roadmap`, `step-N`, `implementation-N`, and `review-N`. Its arguments are available through command completion. Use `j` and `k` or the arrow keys to scroll, and `Enter` or `Esc` to close the overlay.
-
-## 🗂️ Artifacts and configuration
-
-By default, all task files live under `<project>/.agents/projects/<task-id>/`:
-
-| File | Purpose |
-| --- | --- |
-| `context.md` | Compact task context and agreed research findings. |
-| `roadmap.md` | Approved numbered roadmap. |
-| `step-N.md` | Approved design for step N. |
-| `implementation-N.diff` | Diff produced by implementation step N. |
-| `review-N.md` | Review summary, findings, diff excerpts, and discussion state for step N. |
-| `state.json` | Phase, paths, and completed step status. |
-
-To place all artifacts elsewhere, use `/task TASK-100500 --dir PATH`, or set `artifactDir` in `~/.pi/agent/task-workflow.json`. Use the same directory with `/task TASK-100500 --dir PATH` if you later change the config. The config file also controls automatic commits, the implementation model, and `/tree` navigation:
+The extension reads `~/.pi/agent/task-workflow.json` (or `task-workflow.json` in `PI_CODING_AGENT_DIR`). The file is optional; omitted properties use the defaults below. Here is a complete example with different models for implementation and review:
 
 ```json
 {
   "artifactDir": "{projectRoot}/.agents/projects/{taskId}",
   "autoCommit": false,
-  "implementModel": null,
+  "phaseModels": {
+    "implement": {
+      "provider": "openrouter",
+      "model": "openai/gpt-6-luna",
+      "thinkingLevel": "medium"
+    },
+    "review": {
+      "provider": "openrouter",
+      "model": "openai/gpt-6-luna",
+      "thinkingLevel": "high"
+    }
+  },
   "reviewSkill": "task-review",
+  "reviewTools": [],
   "allowTreeNavigation": false,
   "snapshotMaxFiles": 4000,
   "snapshotMaxMiB": 100
 }
 ```
 
-`autoCommit` defaults to `false`, so accepting a review in a Git repository produces an English commit title and detailed body for you to use. When set to `true`, the extension commits the step's code changes with that message. Automatic commits require a clean code working tree before the implementation run and verify that the reviewed files have not changed before committing. In a project without Git, accepting a review completes the step without drafting or creating a commit, regardless of `autoCommit`. The implementation agent itself does not commit.
+The model IDs above are examples. Use a provider and model available in your Pi installation.
 
-With `implementModel: null` (or with the setting omitted), the implementation agent inherits the active Pi model and thinking level. To override them for every implementation step, set:
+| Property | Type and default | Effect |
+| --- | --- | --- |
+| `artifactDir` | Nonempty path template; `{projectRoot}/.agents/projects/{taskId}` | Directory for all task artifacts and saved sessions. A relative path resolves from the project root. `{projectRoot}` and `{taskId}` are replaced when a task is created. `/task TASK-ID --dir PATH` overrides it for that task. Existing tasks keep the directory recorded in `state.json`. |
+| `autoCommit` | Boolean; `false` | After a clear review in a Git project, `false` prepares an English commit title and body; `true` commits the reviewed code files. Automatic commit requires a clean code working tree when implementation starts. With no Git repository, neither mode creates a commit. |
+| `phaseModels` | Object; `{}` | Model overrides by phase. Valid keys: `collect`, `research`, `roadmap`, `steps`, `implement`, `review`. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place. |
+| `reviewSkill` | Pi skill name or `null`; `task-review` | Asks the review model to use the named discovered skill when available and compatible with read-only review. Use a skill name such as `task-review`, not a path to `SKILL.md`. `null` disables this instruction; a missing skill does not block review. |
+| `reviewTools` | Array of tool names; `[]` | Adds tools to review's default set: `read`, `grep`, `find`, `ls`, and `task_write_artifact`. Add only tools you trust for read-only project work. This setting does not remove default tools. |
+| `allowTreeNavigation` | Boolean; `false` | Allows Pi's `/tree` command inside task sessions when `true`. Branches still share the same task state and artifacts. |
+| `hotkeys` | Object; `{ "next": "alt+n", "accept": "alt+a", "status": "alt+s", "show": "alt+w" }` | Maps `/task` command text to a key. Set a command to `null` to disable its default; omitted commands keep defaults. Each active key must be unique within this extension. The binding applies when Pi starts or reloads the extension. |
+| `snapshotMaxFiles` | Positive integer; `4000` | Maximum number of files included in the baseline before implementation. Without Git this covers all regular project files except the exclusions described below; with Git it covers existing changed files needing a copy. Exceeding the limit stops implementation before copying. |
+| `snapshotMaxMiB` | Integer from `1` to `1000000`; `100` | Maximum combined size, in MiB, of files copied into the baseline. Exceeding it stops implementation before copying. |
+
+### Model settings
+
+A model object has this shape:
 
 ```json
 {
-  "artifactDir": "{projectRoot}/.agents/projects/{taskId}",
-  "autoCommit": false,
-  "allowTreeNavigation": false,
-  "implementModel": {
-    "provider": "openrouter",
-    "model": "openai/gpt-6-luna",
-    "thinkingLevel": "medium"
-  }
+  "provider": "openrouter",
+  "model": "openai/gpt-6-luna",
+  "thinkingLevel": "medium"
 }
 ```
 
-`provider` and `model` are required in the override. `thinkingLevel` is optional; when omitted, it inherits the active Pi thinking level. The commit-message draft still uses the parent session's active model.
+`provider` and `model` are required nonempty strings and must identify a model Pi can find and authenticate. `thinkingLevel` is optional and accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. When omitted, Pi keeps the current thinking level. A missing or `null` override keeps Pi's current model.
 
-`reviewSkill` is a discovered Pi skill name, not a path to `SKILL.md`. It defaults to `"task-review"`; set another name to use a different skill, or `null` to disable skill instructions. If the named skill is unavailable, review continues without it. The review worker reads the selected skill only where its instructions fit read-only review.
+Add any phase to `phaseModels` using the same object shape. For example, `phaseModels.research` selects a model when context moves into research, while `phaseModels.review` selects one for each new review session.
 
-`snapshotMaxFiles` and `snapshotMaxMiB` limit the baseline copied before an implementation worker starts. Their defaults are 4,000 files and 100 MiB. The extension checks both limits before copying anything; if either is exceeded, it reports the limit and leaves the worker stopped. Raise the values in this config only if the project needs a larger snapshot. These limits apply to the initial baseline, including retries that create a new baseline.
+The context model is selected when its session opens. Research shares that session, so its model override is applied on the context → research transition. Other overrides apply when their new phase session opens. Reopening a session with an already applied override keeps its saved model; changing configuration does not retroactively replace it. You can also change a session's model with Pi's normal controls.
 
-The directory template accepts `{projectRoot}` and `{taskId}`. A relative path is resolved from the project root. `context.md`, `roadmap.md`, `step-N.md`, `implementation-N.diff`, `review-N.md`, and `state.json` are all stored in the selected directory. Task discovery scans the default location, the current `artifactDir` template when `{taskId}` is a whole path component, and a small index under `~/.pi/agent/task-workflow-index/`. Existing tasks created earlier with a one-off `--dir` become discoverable after you open one once using its ID and explicit directory.
+`context.md`, `roadmap.md`, `step-N.md`, `implementation-N.diff`, `review-N.md`, `state.json`, and `sessions/` live in `artifactDir`. Task discovery scans the default directory, the configured template when possible, and a small index under `~/.pi/agent/task-workflow-index/`.
 
 ## 🔧 Implementation notes
 
-The main Pi session stores a link to the task's `state.json`. The extension uses that file to track the current phase, approved steps, and pending transitions. `/task next` starts the work for the next phase; an artifact acceptance advances only after the requested file has actually been saved. The separate Pi process used for `implement` receives the approved artifacts and runs with its own context. Its diff is captured by the parent. A second Pi process reviews that diff and relevant code. Review findings are saved before the user accepts the step. Open findings start a new implementation process with the review discussion; acceptance waits for a subsequent review with no open findings.
+`task_write_artifact` replaces a complete task artifact atomically. The model supplies an artifact kind and optional step number, while the extension chooses the path. It refuses to replace a symbolic link. The extension writes task state and implementation diffs itself. The transition check uses the recent phase discussion and current review artifact to identify open questions or unapproved proposals; it is a model judgment, so important decisions should be explicit.
 
-The model writes task artifacts through `task_write_artifact`. This tool takes a complete replacement document and an artifact kind (`context`, `roadmap`, `step`, or `review`); the extension chooses the filename and writes it atomically. A `step` number can target a specific `step-N.md` or `review-N.md`; omitting it targets the current step. There is no phase-based write restriction on these artifacts. The model should update them only when the conversation establishes an agreed change. Code references require prior discussion with the user, and unresolved doubts stay out of the context artifact. A context change in roadmap also calls for a revised roadmap proposal in the same answer. `/task next` confirms the current transition by writing its target artifact; writing a different artifact does not count as accepting it. Review updates must keep exact diff excerpts beside findings and require the corresponding implementation diff. The extension itself writes `state.json`, implementation diff files, and the initial review artifact.
+The English-only artifact rule appears in each phase's system instructions, in the artifact tool description, and in the separate model request that finalizes an artifact. It guides generation; the extension does not try to classify the language of code, file names, or quoted diff lines.
+
+For review artifacts, the extension standardizes the first heading to `# Review: step N` and requires `## Summary` and `## Findings`. Each finding needs one exact fenced excerpt from `implementation-N.diff`. A failed validation leaves review pending and reports the specific missing section or invalid excerpt; `/task next` advances only after `review-N.md` is saved.
+
+The review phase also asks Pi to show each finding's severity, location, impact, and the same short fenced `diff` excerpt directly in its answer, so you can discuss the code without opening `review-N.md`. The artifact remains the durable record. The excerpt is limited to the relevant changed lines; the full implementation diff stays in `implementation-N.diff`.
 
 ### Safety mechanisms
 
-- In a task session, the main Pi exposes only `read`, `grep`, `find`, `ls`, and `task_write_artifact` to the model. The `tool_call` hook also blocks every other tool before execution, including `write`, `edit`, `bash`, and tools added by other extensions. This second check still applies if the visible tool list changes.
-- `task_write_artifact` does not accept a path. It maps the artifact kind and optional step number to a file in `artifactDir`, writes atomically, and refuses to replace a symbolic link. Phase does not limit which task artifact can be updated. The acceptance flag advances only when the artifact for the pending transition is saved. If task state cannot be read, the tool guard blocks all tool calls.
-- The implementation worker is a separate Pi process launched with `--no-extensions`. The main session's tool restrictions do not apply to that worker, so it can edit project files during `implement`.
-- The review worker is another Pi process launched with `--no-extensions`, `--no-mcp`, and `--tools read,grep,find,ls`. It cannot call write, edit, or shell tools. Pi discovers skills normally; the worker loads the configured `reviewSkill` if available and compatible with read-only review. No review skill is required. The parent validates that every finding has an exact excerpt from `implementation-N.diff`, then writes `review-N.md` and shows the same findings in the session. If review fails, the task remains in the review phase and `/task next` retries it. A repair worker uses the implementation model and receives the reviewed findings and discussion. It can edit project code; the review worker runs again afterward.
-
-These are controls over model tool calls, not operating-system file permissions. A user-run terminal command or another extension's own code can still write files with the account's permissions. The extension does not try to sandbox those actions.
+The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks calls to other tools. Context, research, roadmap, step design, and review allow reading project files and writing task artifacts. Implementation permits code editing only after its baseline is captured. Review uses only read tools by default. These are Pi tool controls, not operating system file permissions; a user command or another extension's own code can still write files.
 
 ### Tree navigation
 
-Pi's `/tree` changes the active conversation branch, but it does not restore `state.json`, task artifacts, or project code to the selected point. All branches would share the latest task files. Returning to an earlier discussion could therefore combine old chat context with newer task state and overwrite later decisions. Navigating to a point before the task link was attached could also remove the extension's tool guard from that branch.
-
-The extension blocks `/tree` while a task is attached to the active branch. It cancels navigation before Pi switches branches and shows a warning. This is the default even if `allowTreeNavigation` is omitted from the config. Set `"allowTreeNavigation": true` in `~/.pi/agent/task-workflow.json` to allow `/tree`; this removes only the block, not the shared-state risks. `/task status` shows the current setting. The option applies to `/tree` navigation, not to `/fork` or `/clone`.
+`/tree` changes the conversation branch but does not roll task artifacts or project code back. The extension blocks it in task sessions by default. Set `allowTreeNavigation: true` to remove this block; all branches still share the latest artifacts and state. `/task status` shows the setting.
 
 ### Implementation diff
 
-While an implementation, repair, or review worker runs in the terminal UI, a progress panel shows recent tool calls, short tool-output excerpts, elapsed time, and time since the last event. Implementation and repair also show streamed assistant text. Use `j` and `k` to scroll. `Enter` or `Esc` closes only the log window; the worker continues, and the status line stays visible. Use `/task log` in the main session to reopen the window, `/task status` for a summary, and `/task abort` to stop the worker. Other keys in the log window do not interrupt it. The task does not accept another transition while a worker is running. A cancelled or failed implementation saves its partial diff as `implementation-N-failed.diff` and leaves the step unaccepted. The original baseline is retained so a retry can include partial changes in the step's diff. A cancelled review remains pending and can be retried with `/task next`. Workers also have a 30-minute timeout; cancellation and timeout stop the process group before the parent continues. Leaving or reloading the Pi session also stops its worker so it cannot continue without a controllable parent session.
+Before editing begins, the extension captures a baseline. With Git, it copies existing changed files and later combines their before/after patches with Git's diff for newly changed files. Without Git, it snapshots all regular project files below the project root except the task artifact directory, `.git` directories, and symbolic links. It compares changed files using `git diff --no-index`, which requires the Git executable but not a repository. The baseline remains through repair and review rounds, then is removed when the step is accepted.
 
-Before the worker starts, the parent prepares a file baseline; afterward, it compares files to produce the diff. These stages show progress in the terminal instead of blocking its event loop. In a project without Git, the parent must scan and snapshot regular files, which can still take time in large directories. It records hashes in the baseline and runs `git diff --no-index` only for files whose contents changed.
-
-In a Git repository, the parent snapshots any existing code changes into a private directory inside the task artifacts before starting the implementation worker. It retains this baseline through repair and review rounds, then deletes it when the step is accepted. After each worker run, it uses Git to list currently changed tracked files and untracked, non-ignored files, excluding the task artifacts. For files present in the snapshot, it compares the snapshot with the current file using `git diff --no-index --binary`. For tracked files that were clean at the start, it uses `git diff --binary HEAD`; for newly created files, it compares against `/dev/null`.
-
-Without a Git repository, the directory where the task was started acts as the project root. The parent snapshots all regular files beneath it before implementation, excluding the task artifact directory, `.git` directories, and symbolic links. It keeps the baseline through review and repair rounds and compares the before and after file lists and contents using `git diff --no-ext-diff --no-index --binary`, which works outside a repository but still requires the Git executable. Disabling external diff tools keeps the artifact in standard patch format. This detects created, modified, and deleted regular files. Copying every project file can take longer and use more storage than the Git-based path; symbolic link changes are not included.
-
-Before copying, the extension checks the snapshot against `snapshotMaxFiles` and `snapshotMaxMiB`. In a Git repository, this covers existing changed files that need a baseline. Without Git, it covers all regular project files described above. The worker does not start when either limit is exceeded.
-
-After a successful run, the combined result is saved as `implementation-N.diff`. The session shows up to 60,000 characters of that diff; the artifact contains the full result.
-
-The Git-based method has a limitation: the final file list comes from Git after the worker runs. If the worker removes an untracked file that existed before it started, or restores a previously modified tracked file exactly to `HEAD`, that file may disappear from the list and its change will not appear in the diff.
+The defaults limit a snapshot to 4,000 files and 100 MiB. The extension checks those limits before copying and does not start implementation when either is exceeded. `implementation-N.diff` contains the full result; large diffs can still be expensive to review and to use for commit-message generation. This diff mechanism remains separate from the session workflow and can be revised later.

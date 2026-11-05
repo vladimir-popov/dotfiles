@@ -1,15 +1,15 @@
-import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { constants as fsConstants, promises as fsPromises, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, promises as fsPromises, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { getMarkdownTheme, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme, SessionManager, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { uuidv7, type Message } from "@earendil-works/pi-ai";
 import { Markdown, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
-type Phase = "collect" | "research" | "roadmap" | "steps" | "implement" | "review";
+type Phase = "collect" | "research" | "roadmap" | "steps" | "implement" | "review" | "complete";
+type SessionRefs = { collect?: string; research?: string; roadmap?: string; steps?: Record<string, string>; implement?: Record<string, string>; review?: Record<string, string[]> };
 type TaskState = {
 	version: 1;
 	id: string;
@@ -28,49 +28,53 @@ type TaskState = {
 	pendingBaselineDir?: string;
 	reviewRound?: number;
 	reviewPending?: boolean;
-	pendingAction?: "research" | "roadmap" | "step";
-	pendingStep?: number;
-	pendingArtifactWritten?: boolean;
+	implementationStarted?: boolean;
+	sessions?: SessionRefs;
 };
-type TaskLink = { id: string; statePath: string };
-type ImplementModel = { provider: string; model: string; thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" };
-type Config = { artifactDir?: string; autoCommit?: boolean; implementModel?: ImplementModel | null; reviewSkill?: string | null; allowTreeNavigation?: boolean; snapshotMaxFiles?: number; snapshotMaxMiB?: number };
+type TaskLink = { id: string; statePath: string; phase?: Phase; step?: number; round?: number };
+type PhaseModel = { provider: string; model: string; thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" };
+type Config = { artifactDir?: string; autoCommit?: boolean; phaseModels?: Partial<Record<"collect" | "research" | "roadmap" | "steps" | "implement" | "review", PhaseModel | null>>; reviewSkill?: string | null; reviewTools?: string[]; allowTreeNavigation?: boolean; snapshotMaxFiles?: number; snapshotMaxMiB?: number; hotkeys?: Record<string, string | null> };
 
 const ENTRY_TYPE = "task-workflow-link";
 const ARTIFACT_TOOL = "task_write_artifact";
+const ARTIFACT_LANGUAGE_RULE = "Use the user's language for normal conversation, including explanations, questions, and review discussion. Do not switch chat replies to English because the artifacts are English. Write only task artifact content in English, regardless of the language used in the conversation or source ticket. This includes artifact headings, summaries, decisions, roadmap items, step designs, and review findings. Translate or condense non-English discussion into English when writing an artifact rather than copying it. Preserve exact code, identifiers, paths, and required verbatim diff excerpts.";
+const KICKOFF_TYPE = "task-workflow-kickoff";
+const PHASE_WIDGET = "task-workflow-phase";
 const READ_TOOLS = ["read", "grep", "find", "ls"];
 const DEFAULT_SNAPSHOT_MAX_FILES = 4_000;
 const DEFAULT_SNAPSHOT_MAX_MIB = 100;
+const DEFAULT_HOTKEYS: Record<string, string> = { next: "alt+n", accept: "alt+a", status: "alt+s", show: "alt+w" };
 const HELP = `Task workflow
 
-/task TASK-ID [--dir PATH]                Start or continue a task after confirmation
-/task list                              Select a task to continue (or show tasks outside the TUI)
-/task status                            Show task, phase, and artifact paths
-/task log                               Reopen the running task's progress log
-/task abort                             Stop the running implementation or review worker
-/task next                              Advance if no questions or proposals are pending
-/task accept [NOTE]                     Accept a pending proposal, then advance if ready
-/task show PHASE                        View an artifact without adding it to the session
-/task help                              Show this help
+/task TASK-ID [--dir PATH]  Start or continue a task after confirmation
+/task or /task list         Select a task to continue
+/task delete [TASK-ID]      Permanently delete a task after confirmation
+/task status                Show task state, current session, and artifact paths
+/task next                  Advance when no questions or proposals are pending
+/task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
+/task show [FILE.md]        Select or view an existing Markdown artifact without adding it to the session
+/task help                  Show this help
+
+Default hotkeys: Alt+N = next, Alt+A = accept, Alt+S = status, Alt+W = show.
+Configure or disable them with hotkeys in task-workflow.json; use /hotkeys to inspect active bindings.
 
 Quote an ID containing spaces, for example: /task "TASK 100500".
-An explicit task ID is required.
-After starting a task, describe the problem and share any context you have.
-Add more details as they come to mind.
-Use /task next when the discussion is settled. Use /task accept when Pi has made
-a concrete proposal that you want to approve; it stops if questions remain.
-After implementation,
-a separate read-only review runs automatically and saves review-N.md.
-Enter or Esc closes the progress log without stopping the worker. Use /task log
-to reopen it; /task abort is the extension's command for stopping a worker.
-Discuss findings and update their status. After the discussion is settled,
-/task next repairs open findings or accepts a clear review.
-Use /task accept "I prefer option B" to add a specific approval note.
+Starting or opening a specific task requires an explicit ID.
+/task delete removes its artifact directory and saved sessions; code outside it remains.
+Context and research share one saved Pi session. Later phases use their own sessions.
+The implementation session stays open for the step and is reused for repairs.
+Each review round uses a fresh read-only session. Review findings live in review-N.md.
+After discussion, /task next returns open findings to implementation or accepts
+a clear review. A commit proposal (or automatic commit) follows accepted review.
+Use Pi's normal progress and cancellation controls during implementation and review.
+Use /task next when discussion is settled; use /task accept to agree to proposals and advance.
+Agreement is implied by /task accept; add a note only to clarify a choice or decision.
 Text ending in /task next is not parsed as a command.
 Task artifacts may be updated in any phase; project code changes run only in implement.
 The default artifact directory is <project>/.agents/projects/<task-id>/.
-Set artifactDir, autoCommit, implementModel, reviewSkill, snapshotMaxFiles,
-snapshotMaxMiB, or allowTreeNavigation in ~/.pi/agent/task-workflow.json.
+Set artifactDir, autoCommit, phaseModels, reviewSkill, reviewTools, hotkeys,
+snapshotMaxFiles, snapshotMaxMiB, or allowTreeNavigation in
+~/.pi/agent/task-workflow.json.
 You can also pass --dir PATH to /task.
 autoCommit defaults to false.
 The config path may contain {projectRoot} and {taskId}. Relative paths use the project root.`;
@@ -93,6 +97,20 @@ function defaultArtifactDir(root: string, id: string): string { return join(root
 function taskDir(state: TaskState): string { return state.artifactDir || defaultArtifactDir(state.projectRoot, state.id); }
 function statePath(dir: string): string { return join(dir, "state.json"); }
 
+function markdownArtifacts(state: TaskState): string[] {
+	return readdirSync(taskDir(state), { withFileTypes: true })
+		.filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
+		.map((entry) => entry.name)
+		.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+function completionArgument(value: string): string | undefined {
+	if (!/[\s'"]/.test(value)) return value;
+	if (!value.includes('"')) return `"${value}"`;
+	if (!value.includes("'")) return `'${value}'`;
+	return undefined;
+}
+
 function readConfig(): Config {
 	const path = join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"), "task-workflow.json");
 	if (!existsSync(path)) return {};
@@ -100,24 +118,48 @@ function readConfig(): Config {
 	if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error(`Invalid config: ${path}`);
 	const values = config as Record<string, unknown>;
 	if (values.contextPath !== undefined) throw new Error(`Replace contextPath with artifactDir in ${path}.`);
+	if (values.implementModel !== undefined || values.reviewModel !== undefined) throw new Error(`Move implementModel and reviewModel to phaseModels.implement and phaseModels.review in ${path}.`);
 	if (values.artifactDir !== undefined && (typeof values.artifactDir !== "string" || !values.artifactDir.trim())) throw new Error(`Invalid artifactDir: ${path}`);
 	if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean") throw new Error(`autoCommit must be a boolean: ${path}`);
 	if (values.allowTreeNavigation !== undefined && typeof values.allowTreeNavigation !== "boolean") throw new Error(`allowTreeNavigation must be a boolean: ${path}`);
 	if (values.reviewSkill !== undefined && values.reviewSkill !== null && (typeof values.reviewSkill !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(values.reviewSkill) || values.reviewSkill.length > 64)) throw new Error(`reviewSkill must be a skill name or null: ${path}`);
-	if (values.snapshotMaxFiles !== undefined && (typeof values.snapshotMaxFiles !== "number" || !Number.isSafeInteger(values.snapshotMaxFiles) || values.snapshotMaxFiles < 1)) throw new Error(`snapshotMaxFiles must be a positive integer: ${path}`);
-	if (values.snapshotMaxMiB !== undefined && (typeof values.snapshotMaxMiB !== "number" || !Number.isSafeInteger(values.snapshotMaxMiB) || values.snapshotMaxMiB < 1 || values.snapshotMaxMiB > 1_000_000)) throw new Error(`snapshotMaxMiB must be an integer from 1 to 1000000: ${path}`);
-	if (values.implementModel !== undefined && values.implementModel !== null) {
-		const model = values.implementModel;
-		if (!model || typeof model !== "object" || Array.isArray(model)) throw new Error(`Invalid implementModel: ${path}`);
-		const settings = model as Record<string, unknown>;
-		if (typeof settings.provider !== "string" || !settings.provider.trim() || typeof settings.model !== "string" || !settings.model.trim()) {
-			throw new Error(`implementModel requires non-empty provider and model: ${path}`);
-		}
-		if (settings.thinkingLevel !== undefined && (typeof settings.thinkingLevel !== "string" || !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(settings.thinkingLevel))) {
-			throw new Error(`Invalid implementModel.thinkingLevel: ${path}`);
+	if (values.reviewTools !== undefined && (!Array.isArray(values.reviewTools) || values.reviewTools.some((tool) => typeof tool !== "string" || !/^[A-Za-z0-9_:-]+$/.test(tool)))) throw new Error(`reviewTools must be an array of tool names: ${path}`);
+	if (values.hotkeys !== undefined) {
+		if (!values.hotkeys || typeof values.hotkeys !== "object" || Array.isArray(values.hotkeys)) throw new Error(`hotkeys must be an object: ${path}`);
+		for (const [command, key] of Object.entries(values.hotkeys)) {
+			if (!command.trim() || command !== command.trim() || command.startsWith("/")) throw new Error(`Invalid hotkeys command ${JSON.stringify(command)}: ${path}`);
+			parseArguments(command);
+			if (key !== null && (typeof key !== "string" || !key.trim() || key !== key.trim() || /\s/.test(key))) throw new Error(`Invalid hotkey for ${command}: ${path}`);
 		}
 	}
+	if (values.phaseModels !== undefined) {
+		if (!values.phaseModels || typeof values.phaseModels !== "object" || Array.isArray(values.phaseModels)) throw new Error(`phaseModels must be an object: ${path}`);
+		for (const [phase, model] of Object.entries(values.phaseModels)) {
+			if (!["collect", "research", "roadmap", "steps", "implement", "review"].includes(phase)) throw new Error(`Unknown phaseModels key ${phase}: ${path}`);
+			if (model === null) continue;
+			if (!model || typeof model !== "object" || Array.isArray(model)) throw new Error(`Invalid phaseModels.${phase}: ${path}`);
+			const settings = model as Record<string, unknown>;
+			if (typeof settings.provider !== "string" || !settings.provider.trim() || typeof settings.model !== "string" || !settings.model.trim()) throw new Error(`phaseModels.${phase} requires provider and model: ${path}`);
+			if (settings.thinkingLevel !== undefined && (typeof settings.thinkingLevel !== "string" || !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(settings.thinkingLevel))) throw new Error(`Invalid phaseModels.${phase}.thinkingLevel: ${path}`);
+		}
+	}
+	if (values.snapshotMaxFiles !== undefined && (typeof values.snapshotMaxFiles !== "number" || !Number.isSafeInteger(values.snapshotMaxFiles) || values.snapshotMaxFiles < 1)) throw new Error(`snapshotMaxFiles must be a positive integer: ${path}`);
+	if (values.snapshotMaxMiB !== undefined && (typeof values.snapshotMaxMiB !== "number" || !Number.isSafeInteger(values.snapshotMaxMiB) || values.snapshotMaxMiB < 1 || values.snapshotMaxMiB > 1_000_000)) throw new Error(`snapshotMaxMiB must be an integer from 1 to 1000000: ${path}`);
 	return values as Config;
+}
+
+function configuredHotkeys(): Array<{ command: string; key: string }> {
+	const configured = { ...DEFAULT_HOTKEYS, ...readConfig().hotkeys };
+	const keys = new Set<string>();
+	const hotkeys: Array<{ command: string; key: string }> = [];
+	for (const [command, key] of Object.entries(configured)) {
+		if (!key) continue;
+		const normalized = key.toLowerCase();
+		if (keys.has(normalized)) throw new Error(`Duplicate task hotkey: ${key}. Assign each key to only one /task command.`);
+		keys.add(normalized);
+		hotkeys.push({ command, key });
+	}
+	return hotkeys;
 }
 
 function parseArtifactDir(root: string, id: string, override?: string): string {
@@ -271,6 +313,7 @@ function taskProgress(state: TaskState): string {
 	if (state.phase === "steps") return `Designing step ${state.currentStep}${total ? `/${total}` : ""}`;
 	if (state.phase === "implement" && total && state.currentStep > total) return `Complete (${state.completedSteps.length}/${total} steps)`;
 	if (state.phase === "implement") return `Implementing step ${state.currentStep}${total ? `/${total}` : ""}`;
+	if (state.phase === "complete") return `Complete (${state.completedSteps.length}${total ? `/${total}` : ""} steps)`;
 	const step = state.awaitingReview || state.currentStep;
 	if (state.reviewPending) return `Reviewing step ${step}${total ? `/${total}` : ""} (review pending)`;
 	let findings = "";
@@ -289,7 +332,7 @@ function taskLink(ctx: ExtensionContext): TaskLink | undefined {
 		const entry = entries[i];
 		if (entry.type !== "custom" || entry.customType !== ENTRY_TYPE) continue;
 		const data = entry.data as Partial<TaskLink> | undefined;
-		return { id: data?.id || "", statePath: data?.statePath || "" };
+		return { id: data?.id || "", statePath: data?.statePath || "", phase: data?.phase, step: data?.step, round: data?.round };
 	}
 	return undefined;
 }
@@ -303,41 +346,6 @@ function requireTask(ctx: ExtensionContext): TaskState {
 	return linked;
 }
 
-function attachTask(pi: ExtensionAPI, ctx: ExtensionCommandContext, state: TaskState, path: string): void {
-	const current = taskLink(ctx);
-	if (current?.id === state.id && current.statePath === path) {
-		ctx.ui.notify(`Task ${state.id} is already attached to this session.`, "info");
-		return;
-	}
-	pi.appendEntry(ENTRY_TYPE, { id: state.id, statePath: path } satisfies TaskLink);
-	pi.setSessionName(`Task ${state.id}`);
-	try { rememberTask(state, path); } catch { ctx.ui.notify("Task attached, but its discovery index could not be updated.", "warning"); }
-	ctx.ui.notify(`Attached task ${state.id} (${state.phase}).`, "info");
-}
-
-async function continueTask(pi: ExtensionAPI, ctx: ExtensionCommandContext, state: TaskState, path: string): Promise<void> {
-	const current = taskLink(ctx);
-	if (current && (current.id !== state.id || current.statePath !== path)) {
-		const result = await ctx.newSession({
-			setup: async (session) => {
-				session.appendCustomEntry(ENTRY_TYPE, { id: state.id, statePath: path } satisfies TaskLink);
-				session.appendSessionInfo(`Task ${state.id}`);
-			},
-			withSession: async (fresh) => {
-				try { rememberTask(state, path); } catch { fresh.ui.notify("Task attached, but its discovery index could not be updated.", "warning"); }
-				fresh.ui.notify(`Attached task ${state.id} (${state.phase}) in a new session.`, "info");
-			},
-		});
-		if (result.cancelled) ctx.ui.notify("New session was cancelled.", "warning");
-		return;
-	}
-	attachTask(pi, ctx, state, path);
-}
-
-function send(pi: ExtensionAPI, action: string, instruction: string): void {
-	pi.sendUserMessage(`[task-workflow:${action}]\n${instruction}`);
-}
-
 function roadmapPath(state: TaskState): string { return join(taskDir(state), "roadmap.md"); }
 function stepPath(state: TaskState, n: number): string { return join(taskDir(state), `step-${n}.md`); }
 function reviewPath(state: TaskState, n: number): string { return join(taskDir(state), `review-${n}.md`); }
@@ -348,17 +356,22 @@ function artifactPath(state: TaskState, kind: ArtifactKind, step?: number): stri
 	if (kind === "context") return state.contextPath;
 	if (kind === "roadmap") return roadmapPath(state);
 	if (kind === "review") return reviewPath(state, step || state.awaitingReview || state.currentStep);
-	return stepPath(state, step || state.pendingStep || state.currentStep);
+	return stepPath(state, step || state.currentStep);
 }
 
 function writeArtifact(state: TaskState, kind: ArtifactKind, content: string, step?: number): string {
 	if (step !== undefined && (kind === "context" || kind === "roadmap")) throw new Error("The step argument is only valid for step and review artifacts.");
-	const targetStep = kind === "review" ? step || state.awaitingReview || state.currentStep : step || state.pendingStep || state.currentStep;
+	const targetStep = kind === "review" ? step || state.awaitingReview || state.currentStep : step || state.currentStep;
 	const path = artifactPath(state, kind, step);
 	if (kind === "context" && resolve(path) !== resolve(taskDir(state), "context.md")) {
 		throw new Error("This task uses a legacy context file outside artifactDir. Move it into the task directory before writing.");
 	}
-	if (kind === "review") validateReviewSnippets(state, targetStep, content);
+	if (kind === "review") {
+		const title = `# Review: step ${targetStep}`;
+		const trimmed = content.replace(/\r\n/g, "\n").trimStart();
+		content = /^# [^\n]*/.test(trimmed) ? trimmed.replace(/^# [^\n]*/, title) : `${title}\n\n${trimmed}`;
+		validateReviewSnippets(state, targetStep, content);
+	}
 	if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new Error(`Refusing to replace a symbolic link: ${path}`);
 	const temporary = join(taskDir(state), `.task-write-${randomUUID()}.tmp`);
 	try {
@@ -367,8 +380,8 @@ function writeArtifact(state: TaskState, kind: ArtifactKind, content: string, st
 	} finally {
 		if (existsSync(temporary)) rmSync(temporary);
 	}
-	if ((state.pendingAction === "research" && kind === "context") || (state.pendingAction === "roadmap" && kind === "roadmap") || (state.pendingAction === "step" && kind === "step" && targetStep === (state.pendingStep || state.currentStep))) {
-		state.pendingArtifactWritten = true;
+	if (kind === "review" && state.phase === "review" && targetStep === state.currentStep) {
+		state.reviewPending = false;
 		saveState(state);
 	}
 	return path;
@@ -376,9 +389,9 @@ function writeArtifact(state: TaskState, kind: ArtifactKind, content: string, st
 
 function stepCount(state: TaskState): number {
 	const text = readFileSync(roadmapPath(state), "utf8");
-	const numbers = [...text.matchAll(/^(\d+)\.\s+\*\*[^\n]+\*\*\s+[-–—]\s+/gm)].map((match) => Number(match[1]));
+	const numbers = [...text.matchAll(/^([1-9]\d*)\.[ \t]+(?=\S)/gm)].map((match) => Number(match[1]));
 	if (!numbers.length || numbers.some((number, index) => number !== index + 1)) {
-		throw new Error("roadmap.md must contain consecutive numbered steps in the required format.");
+		throw new Error("roadmap.md must contain a top-level numbered list with consecutive steps starting at 1.");
 	}
 	return numbers.length;
 }
@@ -523,7 +536,9 @@ function fileHash(root: string, file: string): string | null {
 }
 
 function validateReviewSnippets(state: TaskState, step: number, content: string): void {
-	if (!content.startsWith(`# Review: step ${step}\n`) || !content.includes("\n## Findings\n")) throw new Error("Keep the review title and Findings section in review-N.md.");
+	if (!content.startsWith(`# Review: step ${step}\n`)) throw new Error(`Review must start with "# Review: step ${step}".`);
+	if (!content.includes("\n## Summary\n")) throw new Error("Review needs a ## Summary section.");
+	if (!content.includes("\n## Findings\n")) throw new Error("Review needs a ## Findings section.");
 	const diff = readFileSync(join(taskDir(state), `implementation-${step}.diff`), "utf8");
 	const snippets = [...content.matchAll(/```diff\r?\n([\s\S]*?)\r?\n```/g)].map((match) => match[1]);
 	const findings = [...content.matchAll(/^### /gm)].length;
@@ -540,31 +555,6 @@ function openReviewFindings(state: TaskState, step: number): number {
 	const content = readFileSync(reviewPath(state, step), "utf8");
 	validateReviewSnippets(state, step, content);
 	return content.split(/^### /m).slice(1).filter((section) => !/^Status: (resolved|dismissed)$/m.test(section)).length;
-}
-
-type ReviewFinding = { severity: string; file: string; line: number; issue: string; snippet: string; recommendation: string };
-
-function formatReview(state: TaskState, step: number, answer: string): string {
-	const json = answer.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-	let value: unknown;
-	try { value = JSON.parse(json); } catch { throw new Error("The review agent did not return valid JSON. Use /task next to retry review."); }
-	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid review response.");
-	const review = value as { summary?: unknown; findings?: unknown };
-	if (typeof review.summary !== "string" || !Array.isArray(review.findings) || review.findings.length > 20) throw new Error("Invalid review summary or findings.");
-	const diff = readFileSync(join(taskDir(state), `implementation-${step}.diff`), "utf8");
-	const parts = [`# Review: step ${step}`, "", "## Summary", "", review.summary.trim(), "", "## Findings", ""];
-	if (!review.findings.length) parts.push("No findings.");
-	for (const item of review.findings) {
-		if (!item || typeof item !== "object") throw new Error("Invalid review finding.");
-		const finding = item as Partial<ReviewFinding>;
-		if (typeof finding.severity !== "string" || typeof finding.file !== "string" || typeof finding.line !== "number" || !Number.isInteger(finding.line) || finding.line < 1 || typeof finding.issue !== "string" || typeof finding.snippet !== "string" || typeof finding.recommendation !== "string" || !finding.snippet.trim() || finding.snippet.length > 3000 || !diff.includes(finding.snippet)) {
-			throw new Error("Review findings need valid locations and exact snippets from the implementation diff. Use /task next to retry review.");
-		}
-		parts.push(`### ${finding.severity}: ${finding.file}:${finding.line}`, "", "Status: open", "", finding.issue.trim(), "", "```diff", finding.snippet, "```", "", `Suggested change: ${finding.recommendation.trim()}`, "");
-	}
-	const content = parts.join("\n").trimEnd() + "\n";
-	validateReviewSnippets(state, step, content);
-	return content;
 }
 
 async function draftCommitMessage(ctx: ExtensionContext, state: TaskState, step: number): Promise<{ title: string; body: string }> {
@@ -595,6 +585,7 @@ async function assessTransition(ctx: ExtensionContext, state: TaskState, command
 	let boundary = 0;
 	for (let index = 0; index < branch.length; index++) {
 		const entry = branch[index];
+		if (entry.type === "custom_message" && entry.customType === KICKOFF_TYPE) { boundary = index + 1; continue; }
 		if (entry.type !== "message") continue;
 		if (entry.message.role === "custom" && ["task-review", "task-implementation", "task-commit"].includes((entry.message as { customType?: string }).customType || "")) boundary = index + 1;
 		if (entry.message.role === "user") {
@@ -618,7 +609,13 @@ async function assessTransition(ctx: ExtensionContext, state: TaskState, command
 	const timer = setInterval(update, 1000);
 	try {
 		const response = await ctx.modelRegistry.complete(ctx.model, {
-			systemPrompt: `You are a conservative gate for a task workflow. Analyze only the current phase's recent discussion and the current review artifact. Return only JSON with fields openQuestions (array of strings), pendingProposal (string), reason (string). An open question is a material question or uncertainty that the assistant still needs the user to answer before this phase can advance. Do not count optional invitations for more context. A routine request to approve one clear proposal (such as "Does this plan look good?") is not an open question; /task accept answers it. If the assistant offers several options without a clear recommendation and the command note does not select one, that choice is an open question. A pending proposal is a concrete assistant recommendation, option, plan, or decision awaiting the user's approval. Do not count a proposal already clearly accepted in a previous ordinary user message. Review findings and their suggested changes are handled by a separate repair workflow; do not treat the findings themselves as open questions or pending proposals. A later proposal by the parent assistant about how to handle a finding can be pending. For /task accept, consider the command note as the user's answer or choice, but still report any questions it does not settle. Summarize the exact proposal that /task accept would approve in pendingProposal. For /task next, do not treat the command as approval of a pending proposal. If evidence is ambiguous, report the uncertainty as an open question. Do not invent questions or proposals from earlier phases. Keep each field concise.`,
+			systemPrompt: `You decide whether a task phase can advance. Analyze only the current phase's recent discussion and current review artifact. Return only JSON with fields openQuestions (array of strings), pendingProposal (string), reason (string). Keep each field concise.
+
+/task accept is an explicit user decision: agree to the assistant's latest concrete proposal as stated, including its recommended/default choices. No agreement note is needed. If the assistant asks "Keep this proposed version, or add optional feature X?", accept chooses the proposed version and declines X. The question is resolved, so openQuestions must be empty unless another independent decision is still required. Summarize the accepted version in pendingProposal. If there is no pending proposal, accept behaves like /task next.
+
+Example: Assistant says "I propose a game that picks 1–100, gives higher/lower hints, and ends when guessed. Keep that, or add an attempt limit?" Command /task accept with no note -> {"openQuestions":[],"pendingProposal":"Game with a number from 1 to 100, higher/lower hints, and no attempt limit; ends when guessed.","reason":"The user accepted the proposed version and declined the optional limit."}. This rule applies regardless of the discussion language.
+
+An open question is a material uncertainty that still needs user input after applying the command's decision. If the assistant presents mutually exclusive alternatives without proposing or recommending one, /task accept alone cannot choose; report that choice as open unless the command note selects it. Missing information that cannot be inferred from an accepted proposal also stays open. Do not count optional invitations for more context, approval requests answered by /task accept, or optional alternatives to an accepted default. For /task next, do not treat the command as approval of a pending proposal. A pending proposal is an unapproved concrete assistant recommendation, plan, or decision; summarize all compatible proposals. Do not count proposals clearly accepted in an earlier ordinary user message. Review findings and suggested changes use a separate repair workflow; do not count the findings themselves as open questions or pending proposals. A later parent-assistant proposal about handling a finding can be pending. Do not invent questions or proposals from earlier phases.`,
 			messages: [user],
 		}, { cacheRetention: "none", sessionId: uuidv7() });
 		if (response.stopReason === "error" || response.stopReason === "aborted") throw new Error("Could not check whether the task is ready to advance. The phase is unchanged.");
@@ -693,360 +690,372 @@ async function showArtifact(ctx: ExtensionCommandContext, title: string, content
 	}, { overlay: true, overlayOptions: { anchor: "center", width: "85%" } });
 }
 
-function piInvocation(args: string[]): { command: string; args: string[] } {
-	const script = process.argv[1];
-	if (script && !script.startsWith("/$bunfs/root/") && existsSync(script)) return { command: process.execPath, args: [script, ...args] };
-	const executable = basename(process.execPath).toLowerCase();
-	if (!/^(node|bun)(\.exe)?$/.test(executable)) return { command: process.execPath, args };
-	return { command: "pi", args };
-}
+function sessionDirectory(state: TaskState): string { return join(taskDir(state), "sessions"); }
 
-async function runWorker(state: TaskState, step: number, ctx: ExtensionContext, onProgress: (message: string) => void, review?: string, approval?: string, signal?: AbortSignal, onText?: (text: string) => void): Promise<string> {
-	const count = stepCount(state);
-	const allSteps = Array.from({ length: count }, (_, index) => {
-		const n = index + 1;
-		return `## Step ${n} (${state.completedSteps.includes(n) ? "completed" : n === step ? "implement now" : "planned"})\n${readFileSync(stepPath(state, n), "utf8")}`;
-	}).join("\n\n");
-	const prompt = `${review ? "Repair" : "Implement"} step ${step} of task ${state.id} in the current working tree.\n\n# Task context\n${readFileSync(state.contextPath, "utf8")}\n\n# Approved roadmap\n${readFileSync(roadmapPath(state), "utf8")}\n\n# Approved step details\n${allSteps}${review ? `\n\n# Review discussion\n${review}\n\nAddress only findings marked Status: open. Respect resolved or dismissed decisions. Inspect the current code before changing it.` : ""}${approval ? `\n\n# User approval\n${approval}` : ""}\n\nWork only on step ${step}. Respect project instructions. Inspect existing code before editing. Run focused checks where useful. Do not commit. End with a concise summary of changes and checks; the parent will collect and display the diff.`;
-	const args = ["--mode", "json", "-p", "--no-session", "--no-extensions"];
-	const override = readConfig().implementModel;
-	if (override) {
-		args.push("--provider", override.provider, "--model", override.model);
-		const thinking = override.thinkingLevel ?? ctx.thinkingLevel;
-		if (thinking) args.push("--thinking", thinking);
-	} else {
-		if (ctx.model) args.push("--provider", ctx.model.provider, "--model", ctx.model.id);
-		if (ctx.thinkingLevel) args.push("--thinking", ctx.thinkingLevel);
-	}
-	args.push(prompt);
-	return runPiProcess(state, args, onProgress, "implementation", signal, onText);
-}
-
-async function runPiProcess(state: TaskState, args: string[], onProgress: (message: string) => void, label: string, signal?: AbortSignal, onText?: (text: string) => void): Promise<string> {
-	const invocation = piInvocation(args);
-	return await new Promise<string>((resolvePromise, reject) => {
-		const child = spawn(invocation.command, invocation.args, { cwd: state.projectRoot, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
-		let pending = "";
-		let stderr = "";
-		let answer = "";
-		let stopReason = "";
-		let lastToolUpdate = 0;
-		let stopped: Error | undefined;
-		let killTimer: ReturnType<typeof setTimeout> | undefined;
-		const killWorker = (force = false) => {
-			if (!child.pid) return;
-			try {
-				if (process.platform !== "win32") process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM");
-				else child.kill(force ? "SIGKILL" : "SIGTERM");
-			} catch { /* The process may already have exited. */ }
-		};
-		const stop = (reason: Error) => {
-			if (stopped) return;
-			stopped = reason;
-			onProgress("Stopping worker");
-			killWorker();
-			killTimer = setTimeout(() => { killWorker(true); child.stdout.destroy(); child.stderr.destroy(); }, 3000);
-		};
-		const timeout = setTimeout(() => stop(new Error(`The ${label} agent exceeded 30 minutes.`)), 30 * 60_000);
-		const abort = () => stop(new Error(`The ${label} agent was cancelled.`));
-		if (signal?.aborted) abort();
-		else signal?.addEventListener("abort", abort, { once: true });
-		const cleanup = () => { clearTimeout(timeout); if (killTimer) clearTimeout(killTimer); signal?.removeEventListener("abort", abort); };
-		child.stdout.setEncoding("utf8");
-		child.stdout.on("data", (chunk: string) => {
-			pending += chunk;
-			if (pending.length > 16 * 1024 * 1024) { stop(new Error(`The ${label} agent produced an oversized event.`)); return; }
-			let index = pending.indexOf("\n");
-			while (index >= 0) {
-				const line = pending.slice(0, index);
-				pending = pending.slice(index + 1);
-				try {
-					if (line.length > 8 * 1024 * 1024) { onProgress("Skipped a large worker event"); index = pending.indexOf("\n"); continue; }
-					const event = JSON.parse(line) as { type?: string; toolName?: string; args?: Record<string, unknown>; isError?: boolean; result?: { content?: Array<{ type?: string; text?: string }> }; partialResult?: { content?: Array<{ type?: string; text?: string }> }; assistantMessageEvent?: { type?: string; delta?: string }; message?: { role?: string; stopReason?: string; content?: Array<{ type?: string; text?: string }> } };
-					if (event.type === "agent_start") onProgress("Thinking");
-					if (event.type === "auto_retry_start") onProgress("Retrying request");
-					if (event.type === "tool_execution_start") {
-						const detail = event.args ? JSON.stringify(event.args).replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 140) : "";
-						onProgress(`Using ${event.toolName || "a tool"}${detail ? `: ${detail}` : ""}`);
-					}
-					if (event.type === "tool_execution_update" && Date.now() - lastToolUpdate > 1000) {
-						const output = (event.partialResult?.content || []).filter((part) => part.type === "text").map((part) => part.text || "").join(" ").replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").slice(-180);
-						if (output) { onProgress(`${event.toolName || "Tool"}: ${output}`); lastToolUpdate = Date.now(); }
-					}
-					if (event.type === "tool_execution_end") {
-						const output = (event.result?.content || []).filter((part) => part.type === "text").map((part) => part.text || "").join(" ").replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").slice(-180);
-						onProgress(`${event.toolName || "Tool"} ${event.isError ? "failed" : "finished"}${output ? `: ${output}` : ""}`);
-					}
-					if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta" && event.assistantMessageEvent.delta) onText?.(event.assistantMessageEvent.delta);
-					if (event.type === "message_end" && event.message?.role === "assistant") {
-						answer = (event.message.content || []).filter((part) => part.type === "text").map((part) => part.text || "").join("\n");
-						stopReason = event.message.stopReason || "";
-					}
-				} catch { /* Ignore malformed progress records; process exit still determines success. */ }
-				index = pending.indexOf("\n");
-			}
-		});
-		child.stderr.setEncoding("utf8");
-		child.stderr.on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-64_000); });
-		child.on("error", (error) => { cleanup(); reject(error); });
-		child.on("close", (code) => {
-			cleanup();
-			if (stopped) reject(stopped);
-			else if (code !== 0 || stopReason === "error" || stopReason === "aborted") reject(new Error(stderr.trim() || `${label} agent failed (exit ${code}, ${stopReason || "no stop reason"}).`));
-			else resolvePromise(answer.trim() || `The ${label} agent finished without a text response.`);
-		});
-	});
-}
-
-type LiveTaskWorker = {
-	statePath: string;
-	id: string;
-	step: number;
-	phase: "implement" | "repair" | "review";
-	controller: AbortController;
-	started: number;
-	lastActivity: number;
-	activity: string[];
-	response: string;
-	logOpen: boolean;
-	render?: () => void;
-	closeLog?: () => void;
-	worker?: Promise<string>;
-};
-
-let activeTaskWorker: LiveTaskWorker | undefined;
-let activeTaskOperation: string | undefined;
-
-function launchTaskOperation(ctx: ExtensionContext, state: TaskState, work: () => Promise<void>): void {
-	const path = statePath(taskDir(state));
-	if (activeTaskOperation) throw new Error("A task process is already running. Use /task status, /task log, or /task abort.");
-	activeTaskOperation = path;
-	void Promise.resolve().then(work)
-		.catch((error) => ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"))
-		.finally(() => { if (activeTaskOperation === path) activeTaskOperation = undefined; });
-}
-
-function recordWorkerActivity(run: LiveTaskWorker, message: string): void {
-	run.lastActivity = Date.now();
-	run.activity.push(message);
-	if (run.activity.length > 200) run.activity.shift();
-	run.render?.();
-}
-
-async function showWorkerLog(ctx: ExtensionContext, run: LiveTaskWorker): Promise<void> {
-	if (ctx.mode !== "tui" || run.logOpen) return;
-	run.logOpen = true;
-	const ticker = setInterval(() => run.render?.(), 1000);
+function stepTitle(state: TaskState, step = state.currentStep): string | undefined {
 	try {
-		await ctx.ui.custom<void>((tui, theme, _keys, done) => {
-			let scroll = 0;
-			let follow = true;
-			let maxScroll = 0;
-			let closed = false;
-			const close = () => { if (!closed) { closed = true; done(); } };
-			run.render = () => tui.requestRender();
-			run.closeLog = close;
-			run.worker?.then(close, close);
-			return {
-				render(width: number): string[] {
-					const inner = Math.max(1, width - 4);
-					const height = Math.max(5, Math.floor(tui.terminal.rows * 0.7) - 5);
-					const responseLines = run.response.trim() ? ["", "Assistant output:", ...run.response.split(/\r?\n/).slice(-12)] : [];
-					const lines = [...run.activity, ...responseLines];
-					maxScroll = Math.max(0, lines.length - height);
-					if (follow) scroll = maxScroll;
-					else scroll = Math.min(scroll, maxScroll);
-					const row = (value: string) => {
-						const shown = truncateToWidth(value, inner);
-						return `${theme.fg("accent", "│")} ${shown}${" ".repeat(Math.max(0, inner - visibleWidth(shown)))} ${theme.fg("accent", "│")}`;
-					};
-					return [
-						theme.fg("accent", `┌${"─".repeat(Math.max(0, width - 2))}┐`),
-						row(theme.bold(`${run.phase} step ${run.step} · ${Math.floor((Date.now() - run.started) / 1000)}s · idle ${Math.floor((Date.now() - run.lastActivity) / 1000)}s`)),
-						...lines.slice(scroll, scroll + height).map(row),
-						row("Enter/Esc close log · j/k scroll"),
-						row("/task log reopen · /task abort stop worker"),
-						theme.fg("accent", `└${"─".repeat(Math.max(0, width - 2))}┘`),
-					];
-				},
-				handleInput(data: string): void {
-					if (matchesKey(data, "enter") || matchesKey(data, "escape")) close();
-					else if (data === "k" || matchesKey(data, "up")) { follow = false; scroll = Math.max(0, scroll - 1); }
-					else if (data === "j" || matchesKey(data, "down")) { scroll = Math.min(maxScroll, scroll + 1); follow = scroll >= maxScroll; }
-					tui.requestRender();
-				},
-				invalidate(): void {},
-			};
-		}, { overlay: true, overlayOptions: { anchor: "center", width: "85%" } });
-	} finally {
-		clearInterval(ticker);
-		run.render = undefined;
-		run.closeLog = undefined;
-		run.logOpen = false;
-	}
+		const roadmap = readFileSync(roadmapPath(state), "utf8");
+		const line = roadmap.split(/\r?\n/).find((value) => value.startsWith(`${step}. `));
+		const title = (line?.match(/^\d+\.\s+\*\*(.+?)\*\*(?:\s+[-–—])?/)?.[1] || line?.replace(/^\d+\.\s+/, ""))?.replace(/\s+/g, " ").trim();
+		return title ? truncateToWidth(title, 28) : undefined;
+	} catch { return undefined; }
 }
 
-async function runImplementationWithProgress(state: TaskState, step: number, ctx: ExtensionContext, onProgress: (message: string) => void, run: LiveTaskWorker, review?: string, approval?: string): Promise<string> {
-	if (run.controller.signal.aborted) throw new Error("The implementation was cancelled before the worker started.");
-	let lastRender = 0;
-	const worker = runWorker(state, step, ctx, onProgress, review, approval, run.controller.signal, (text) => {
-		run.lastActivity = Date.now();
-		run.response = (run.response + text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, " ")).slice(-4000);
-		const now = Date.now();
-		if (now - lastRender > 150) { lastRender = now; run.render?.(); }
-	});
-	run.worker = worker;
-	if (run.closeLog) worker.then(run.closeLog, run.closeLog);
-	return worker;
+function phaseLabel(state: TaskState): string {
+	const phase = state.phase === "collect" ? "Context" : state.phase === "research" ? "Research" : state.phase === "roadmap" ? "Roadmap" : state.phase === "steps" ? "Step design" : state.phase === "implement" ? "Implementation" : state.phase === "review" ? "Review" : "Complete";
+	if (!["steps", "implement", "review"].includes(state.phase)) return phase;
+	let total: number | undefined;
+	try { total = stepCount(state); } catch { /* The roadmap may still be a draft. */ }
+	const title = stepTitle(state);
+	return `${phase} ${state.currentStep}${total ? `/${total}` : ""}${title ? ` · ${title}` : ""}`;
 }
 
-async function runReviewWorker(state: TaskState, step: number, ctx: ExtensionContext, onProgress: (message: string) => void, signal?: AbortSignal): Promise<string> {
-	const diffPath = join(taskDir(state), `implementation-${step}.diff`);
-	const configuredSkill = readConfig().reviewSkill;
-	const skill = configuredSkill === undefined ? "task-review" : configuredSkill;
-	const skillInstruction = skill ? `If a skill named ${skill} is available in your discovered skills, read its SKILL.md and follow instructions compatible with this read-only review.` : "No review skill is configured.";
-	const previousReview = existsSync(reviewPath(state, step)) ? ` Read ${reviewPath(state, step)} for the previous review discussion. Recheck earlier findings against the current code; do not repeat dismissed findings unless new evidence changes the conclusion.` : "";
-	const prompt = `Review step ${step} of task ${state.id}. Read these files first: ${state.contextPath}, ${roadmapPath(state)}, ${stepPath(state, step)}, and ${diffPath}.${previousReview} Inspect relevant project code as needed. ${skillInstruction} Do not modify files or run commands. Review the current implementation against the approved task and look for concrete defects or missing checks. Return only a JSON object with "summary" (string) and "findings" (array). Each finding must have "severity", "file" (repository-relative), "line" (positive line number in the current file), "issue", "snippet", and "recommendation". Copy each snippet as exact contiguous lines from the implementation diff, including diff markers; keep it short and near the reported issue. Include only actionable findings. Use an empty findings array when there are none. Do not wrap the JSON in commentary.`;
-	const args = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--no-mcp", "--tools", READ_TOOLS.join(",")];
-	if (ctx.model) args.push("--provider", ctx.model.provider, "--model", ctx.model.id);
-	if (ctx.thinkingLevel) args.push("--thinking", ctx.thinkingLevel);
-	args.push(prompt);
-	return runPiProcess(state, args, onProgress, "review", signal);
+function sessionDisplayName(state: TaskState, phase = state.phase, step = state.currentStep): string {
+	const title = ["steps", "implement", "review"].includes(phase) ? stepTitle(state, step) : undefined;
+	const part = phase === "collect" ? "context" : phase === "research" ? "context + research" : phase === "steps" || phase === "implement" || phase === "review" ? `${phase} ${step}` : phase;
+	return `${state.id} · ${part}${phase === "review" ? ` · r${state.reviewRound || 1}` : ""}${title ? ` · ${title}` : ""}`;
 }
 
-async function startReview(pi: ExtensionAPI, ctx: ExtensionContext, state: TaskState): Promise<void> {
-	const step = state.awaitingReview;
-	if (!step) throw new Error("No implementation is awaiting review.");
-	const run: LiveTaskWorker = {
-		statePath: statePath(taskDir(state)), id: state.id, step, phase: "review", controller: new AbortController(),
-		started: Date.now(), lastActivity: Date.now(), activity: ["Starting review Pi..."], response: "", logOpen: false,
-	};
-	activeTaskWorker = run;
-	state.reviewPending = true;
+function phaseHint(state: TaskState): string {
+	if (state.phase === "collect") return "Add context; when ready, use /task next.";
+	if (state.phase === "research") return "Discuss findings; when ready, use /task next.";
+	if (state.phase === "roadmap" || state.phase === "steps") return "When agreed, use /task next (or /task accept for a proposal).";
+	if (state.phase === "implement") return state.implementationStarted ? "Ready for review? Use /task next." : "Start implementation with /task next.";
+	if (state.phase === "review") return state.reviewPending ? "Save the review before /task next." : "Discuss findings; when ready, use /task next.";
+	return "Task complete.";
+}
+
+function updatePhaseUi(pi: ExtensionAPI, ctx: ExtensionContext, state: TaskState, waiting: boolean): void {
+	const name = sessionDisplayName(state);
+	if (pi.getSessionName() !== name) pi.setSessionName(name);
+	ctx.ui.setWidget(PHASE_WIDGET, [`Task ${state.id} · ${phaseLabel(state)}`, waiting ? phaseHint(state) : "Pi is working…"], { placement: "aboveEditor" });
+}
+
+function visibleTask(ctx: ExtensionContext): TaskState | undefined {
+	try {
+		const state = requireTask(ctx);
+		if (sessionMatches(ctx, state)) return state;
+		const link = taskLink(ctx);
+		const current = ctx.sessionManager.getSessionFile();
+		if (state.phase === "complete" && link?.phase === "review" && current && sessionFor(state) && resolve(current) === resolve(sessionFor(state)!)) return state;
+	} catch { /* This is not an active task session. */ }
+	return undefined;
+}
+
+function sessionFor(state: TaskState, phase = state.phase, step = state.currentStep): string | undefined {
+	const sessions = state.sessions;
+	if (!sessions) return undefined;
+	if (phase === "collect") return sessions.collect;
+	if (phase === "research") return sessions.research;
+	if (phase === "roadmap") return sessions.roadmap;
+	if (phase === "steps") return sessions.steps?.[String(step)];
+	if (phase === "implement") return sessions.implement?.[String(step)];
+	if (phase === "review" || phase === "complete") return sessions.review?.[String(step)]?.at(-1);
+}
+
+function setSessionFor(state: TaskState, phase: Phase, file: string, step = state.currentStep): void {
+	const sessions = state.sessions ??= {};
+	if (phase === "collect") sessions.collect = file;
+	else if (phase === "research") sessions.research = file;
+	else if (phase === "roadmap") sessions.roadmap = file;
+	else if (phase === "steps") (sessions.steps ??= {})[String(step)] = file;
+	else if (phase === "implement") (sessions.implement ??= {})[String(step)] = file;
+	else if (phase === "review") (sessions.review ??= {})[String(step)] = [...(sessions.review?.[String(step)] || []), file];
+}
+
+function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
+	const link = taskLink(ctx);
+	const current = ctx.sessionManager.getSessionFile();
+	const expected = sessionFor(state);
+	return !!link && !!current && !!expected && link.id === state.id && link.statePath === statePath(taskDir(state)) &&
+		link.phase === state.phase && (link.step || 1) === state.currentStep && resolve(current) === resolve(expected);
+}
+
+function configuredModel(phase: Phase): PhaseModel | null | undefined {
+	const config = readConfig();
+	if (phase === "complete") return undefined;
+	return config.phaseModels?.[phase];
+}
+
+async function selectPhaseModel(pi: ExtensionAPI, ctx: ExtensionContext, phase: Phase, step: number): Promise<void> {
+	const model = configuredModel(phase);
+	if (!model) return;
+	const ready = ctx.sessionManager.getBranch().some((entry) => entry.type === "custom" && entry.customType === "task-workflow-model-ready" &&
+		(entry.data as { phase?: Phase; step?: number } | undefined)?.phase === phase && (entry.data as { step?: number } | undefined)?.step === step);
+	if (ready) return;
+	const selected = ctx.modelRegistry.find(model.provider, model.model);
+	if (!selected) throw new Error(`Task model not found: ${model.provider}/${model.model}`);
+	if (!await pi.setModel(selected)) throw new Error(`Task model has no configured authentication: ${model.provider}/${model.model}`);
+	if (model.thinkingLevel) pi.setThinkingLevel(model.thinkingLevel);
+	ctx.sessionManager.appendCustomEntry("task-workflow-model-ready", { phase, step });
+}
+
+function createPhaseSession(state: TaskState, phase: Phase, step: number, parent?: string): string {
+	mkdirSync(sessionDirectory(state), { recursive: true });
+	const session = SessionManager.create(state.projectRoot, sessionDirectory(state), parent ? { parentSession: parent } : undefined);
+	const round = phase === "review" ? state.reviewRound || 1 : undefined;
+	session.appendCustomEntry(ENTRY_TYPE, { id: state.id, statePath: statePath(taskDir(state)), phase, step, round } satisfies TaskLink);
+	const infoId = session.appendSessionInfo(sessionDisplayName(state, phase, step));
+	// Pi persists a new session only after a user/assistant message. Keep that empty
+	// persistence trigger off the active branch so it never enters editor history.
+	session.appendMessage({ role: "user", content: [], timestamp: Date.now() });
+	session.branch(infoId);
+	session.appendCustomMessageEntry("task-workflow-seed", `Task ${state.id}, ${phase} phase${step ? `, step ${step}` : ""}. The approved task artifacts are in ${taskDir(state)}. This is a fresh Pi session. Wait for the next message before taking action.`, false);
+	const file = session.getSessionFile();
+	if (!file || !existsSync(file)) throw new Error("Pi did not save the new task session.");
+	return file;
+}
+
+function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
+	if (phase === "collect") return `Describe the task and add context. Keep ${state.contextPath} compact and current after each answer.`;
+	if (phase === "research") return `Read ${state.contextPath}, inspect the project, discuss feasibility and questions, and update agreed findings in the context artifact.`;
+	if (phase === "roadmap") return `Read ${state.contextPath}. Propose a numbered roadmap with a short bold title and brief explanation for each step. Discuss additions and update context when we agree on them.`;
+	if (phase === "steps") return `Read ${state.contextPath} and ${roadmapPath(state)}. Discuss the design and verification of step ${step}; update agreed task artifacts.`;
+	if (phase === "implement") return `Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, step)}. Wait for /task next before editing code so the implementation baseline can be captured.`;
+	return `Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review step ${step} independently and record findings in ${reviewPath(state, step)}. Each finding must include a short exact diff excerpt. In your response to me, place the same fenced diff excerpt directly beside each finding so I can see the changed code without opening the artifact. Discuss findings with me.`;
+}
+
+async function enterResearch(pi: ExtensionAPI, ctx: ExtensionCommandContext, state: TaskState): Promise<void> {
+	const file = ctx.sessionManager.getSessionFile();
+	if (!file || !sessionMatches(ctx, state)) throw new Error("Open the task's context session before starting research.");
+	await selectPhaseModel(pi, ctx, "research", 1);
+	state.phase = "research";
+	setSessionFor(state, "research", file, 1);
+	ctx.sessionManager.appendCustomEntry(ENTRY_TYPE, { id: state.id, statePath: statePath(taskDir(state)), phase: "research", step: 1 } satisfies TaskLink);
+	pi.setSessionName(sessionDisplayName(state));
 	saveState(state);
-	const started = Date.now();
-	let progress = "Starting";
-	const update = () => ctx.ui.setStatus("task-review", `Task ${state.id} · review ${step} · ${progress} · ${Math.floor((Date.now() - started) / 1000)}s`);
-	update();
-	const timer = setInterval(update, 1000);
+	updatePhaseUi(pi, ctx, state, false);
+	pi.sendMessage({ customType: KICKOFF_TYPE, content: phaseKickoff(state, "research", 1), display: false }, { triggerTurn: true });
+}
+
+async function switchPhase(ctx: ExtensionCommandContext, state: TaskState, phase: Phase, step: number, kickoff: string, existing?: string): Promise<void> {
+	const previous = JSON.parse(JSON.stringify(state)) as TaskState;
+	const parent = ctx.sessionManager.getSessionFile();
+	const file = existing || createPhaseSession(state, phase, step, parent);
+	state.phase = phase;
+	state.currentStep = step;
+	if (!existing) setSessionFor(state, phase, file, step);
+	saveState(state);
 	try {
-		const worker = runReviewWorker(state, step, ctx, (message) => { progress = message; recordWorkerActivity(run, message); update(); }, run.controller.signal);
-		run.worker = worker;
-		if (ctx.mode === "tui") void showWorkerLog(ctx, run).catch((error) => ctx.ui.notify(`Task log closed: ${error instanceof Error ? error.message : String(error)}`, "warning"));
-		const answer = await worker;
-		const content = formatReview(state, step, answer);
-		const path = reviewPath(state, step);
-		if (existsSync(path)) {
-			const round = state.reviewRound || 1;
-			writeFileSync(join(taskDir(state), `review-${step}-round-${round}.md`), readFileSync(path, "utf8"), "utf8");
-			state.reviewRound = round + 1;
-			saveState(state);
-		} else { state.reviewRound = 1; saveState(state); }
-		writeFileSync(path, content, "utf8");
-		state.reviewPending = false;
-		saveState(state);
-		pi.sendMessage({ customType: "task-review", content: `${content}\nReview saved to ${path}. Discuss findings and update each Status. Use /task accept to approve a pending proposal, or /task next after the discussion is settled. Open findings start a repair run; otherwise the step is accepted.`, display: true });
-	} finally {
-		run.closeLog?.();
-		clearInterval(timer);
-		ctx.ui.setStatus("task-review", undefined);
-		if (activeTaskWorker === run) activeTaskWorker = undefined;
+		const result = await ctx.switchSession(file, {
+			withSession: async (fresh) => {
+				if (kickoff) await fresh.sendMessage({ customType: KICKOFF_TYPE, content: kickoff, display: false }, { triggerTurn: true });
+			},
+		});
+		if (result.cancelled) {
+			saveState(previous);
+			ctx.ui.notify("Session switch was cancelled; the task stayed in its previous phase.", "warning");
+		}
+	} catch (error) {
+		saveState(previous);
+		throw error;
 	}
 }
 
-async function startImplementation(pi: ExtensionAPI, ctx: ExtensionContext, state: TaskState, review?: string, approval?: string): Promise<void> {
-	const step = state.currentStep;
-	const count = stepCount(state);
-	if (step > count) throw new Error("All implementation steps are complete.");
-	for (let n = 1; n <= count; n++) if (!existsSync(stepPath(state, n))) throw new Error(`Approved design for step ${n} is missing.`);
+async function continueTaskSession(ctx: ExtensionCommandContext, state: TaskState): Promise<void> {
+	let phase = state.phase;
+	let step = state.currentStep;
+	if (phase === "complete") { phase = "review"; step = state.completedSteps.at(-1) || step; }
+	let file = sessionFor(state, phase, step);
+	if (!file || !existsSync(file)) {
+		// Tasks created by the previous extension have artifacts and state but no saved phase sessions.
+		file = createPhaseSession(state, phase, step, ctx.sessionManager.getSessionFile());
+		setSessionFor(state, phase, file, step);
+		if (phase === "implement") state.implementationStarted = !!state.pendingBaselineDir;
+		saveState(state);
+	}
+	if (ctx.sessionManager.getSessionFile() === file) { ctx.ui.notify(`Task ${state.id} is already in its ${phase} session.`, "info"); return; }
+	const result = await ctx.switchSession(file);
+	if (result.cancelled) ctx.ui.notify("Session switch was cancelled.", "warning");
+}
+
+function lastAssistantSummary(ctx: ExtensionContext): string {
+	const last = [...ctx.sessionManager.getBranch()].reverse().find((entry) => entry.type === "message" && entry.message.role === "assistant");
+	if (!last || last.type !== "message" || last.message.role !== "assistant") return "";
+	const content = last.message.content;
+	return content.filter((part) => part.type === "text").map((part) => part.text).join("\n").slice(0, 4000);
+}
+
+async function finalizeArtifact(ctx: ExtensionContext, state: TaskState, kind: "context" | "roadmap" | "step", approval = ""): Promise<void> {
+	if (!ctx.model) throw new Error("Select a model before finalizing an artifact.");
+	const path = artifactPath(state, kind);
+	const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+	const discussion = ctx.sessionManager.getBranch().flatMap((entry) => {
+		if (entry.type !== "message" || (entry.message.role !== "user" && entry.message.role !== "assistant")) return [];
+		const content = entry.message.content;
+		const body = typeof content === "string" ? content : content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+		return body.trim() ? [`${entry.message.role}: ${body.slice(0, 4000)}`] : [];
+	}).slice(-20).join("\n\n").slice(-30_000);
+	const user: Message = { role: "user", content: [{ type: "text", text: `Task: ${state.id}\nArtifact: ${kind}${kind === "step" ? ` ${state.currentStep}` : ""}\nApproved proposal: ${approval || "The discussion is settled."}\n\nExisting artifact:\n${existing || "(none)"}\n\nRecent phase discussion:\n${discussion || "(none)"}` }], timestamp: Date.now() };
+	const instructions = kind === "context"
+		? "Write the complete compact task context, including only agreed facts and decisions. Exclude open doubts. Preserve important constraints and code references discussed with the user."
+		: kind === "roadmap"
+			? "Write the complete agreed roadmap as a consecutive numbered list. Begin every item with a short bold title, then a dash and brief explanation."
+			: `Write the complete agreed implementation and verification design for step ${state.currentStep}. Do not include unresolved questions or unapproved alternatives.`;
+	const response = await ctx.modelRegistry.complete(ctx.model, { systemPrompt: `${ARTIFACT_LANGUAGE_RULE} ${instructions} Return only the complete English Markdown document, without fences or commentary. Rewrite any non-English prose in the existing artifact into English.`, messages: [user] }, { cacheRetention: "none", sessionId: uuidv7() });
+	if (response.stopReason === "error" || response.stopReason === "aborted") throw new Error("Artifact finalization failed; the phase is unchanged.");
+	const content = response.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
+	if (!content || content.startsWith("```")) throw new Error("Artifact finalization returned invalid Markdown; the phase is unchanged.");
+	writeArtifact(state, kind, content);
+}
+
+async function beginImplementation(pi: ExtensionAPI, ctx: ExtensionCommandContext, state: TaskState): Promise<void> {
+	if (state.implementationStarted) throw new Error("Implementation is already active. Use /task next when this step is ready for review.");
+	for (let n = 1; n <= stepCount(state); n++) if (!existsSync(stepPath(state, n))) throw new Error(`Approved design for step ${n} is missing.`);
 	const gitRepository = hasGitRepository(state);
-	const run: LiveTaskWorker = {
-		statePath: statePath(taskDir(state)), id: state.id, step, phase: review ? "repair" : "implement", controller: new AbortController(),
-		started: Date.now(), lastActivity: Date.now(), activity: ["Preparing project baseline..."], response: "", logOpen: false,
-	};
-	const baselineClean = review || state.pendingBaselineDir ? state.pendingAutoCommitEligible === true : gitRepository && changedPaths(state).length === 0;
-	if (!review && !state.pendingBaselineDir && gitRepository && readConfig().autoCommit && !baselineClean) {
-		throw new Error("autoCommit requires a clean working tree before each implementation run. Commit or resolve existing code changes first.");
+	const baselineClean = gitRepository && changedPaths(state).length === 0;
+	if (gitRepository && readConfig().autoCommit && !baselineClean) throw new Error("autoCommit requires a clean code working tree before implementation.");
+	ctx.ui.setStatus("task-baseline", "Preparing task baseline");
+	let baseline: Baseline;
+	try { baseline = state.pendingBaselineDir ? loadBaseline(state.pendingBaselineDir) : await captureBaseline(state, gitRepository, (message) => ctx.ui.setStatus("task-baseline", message)); }
+	finally { ctx.ui.setStatus("task-baseline", undefined); }
+	state.pendingBaselineDir = baseline.directory;
+	state.pendingGitRepository = gitRepository;
+	state.pendingAutoCommitEligible = baselineClean;
+	state.implementationStarted = true;
+	saveState(state);
+	pi.sendMessage({ customType: KICKOFF_TYPE, content: `Implement step ${state.currentStep} in this Pi session. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)}. Inspect the current code, make only the agreed changes, run focused checks, and do not commit. When finished, summarize the changes and checks. I will use /task next to start review.`, display: false }, { triggerTurn: true });
+}
+
+async function beginReview(ctx: ExtensionCommandContext, state: TaskState): Promise<void> {
+	if (!state.pendingBaselineDir) throw new Error("The implementation baseline is missing. Restart the step before review.");
+	const n = state.currentStep;
+	ctx.ui.setStatus("task-diff", "Comparing project files");
+	let changes: { diff: string; files: string[] };
+	try { changes = await implementationDiff(state, loadBaseline(state.pendingBaselineDir), (message) => ctx.ui.setStatus("task-diff", message)); }
+	finally { ctx.ui.setStatus("task-diff", undefined); }
+	const previousReview = reviewPath(state, n);
+	if (existsSync(previousReview)) {
+		const round = state.reviewRound || 1;
+		writeFileSync(join(taskDir(state), `review-${n}-round-${round}.md`), readFileSync(previousReview, "utf8"), "utf8");
 	}
-	activeTaskWorker = run;
-	const started = Date.now();
-	let progress = state.pendingBaselineDir ? "Loading baseline" : "Scanning project files";
-	let preparing = true;
-	const update = () => {
-		ctx.ui.setStatus("task-worker", `Task ${state.id} · step ${step} · ${progress} · ${Math.floor((Date.now() - started) / 1000)}s`);
-		if (preparing) ctx.ui.setWidget("task-worker-preparing", [`Task ${state.id} · step ${step}: ${progress}`]);
-	};
-	const setProgress = (message: string) => { progress = message.slice(0, 100); recordWorkerActivity(run, progress); update(); };
-	update();
-	const timer = setInterval(update, 1000);
-	let baseline: Baseline | undefined;
-	let legacyRepair = false;
-	let reviewReady = false;
+	writeFileSync(join(taskDir(state), `implementation-${n}.diff`), changes.diff ? `${changes.diff}\n` : "", "utf8");
+	state.pendingFiles = changes.files;
+	state.pendingHashes = Object.fromEntries(changes.files.map((file) => [file, fileHash(state.projectRoot, file)]));
+	state.pendingSummary = lastAssistantSummary(ctx);
+	state.awaitingReview = n;
+	state.reviewPending = true;
+	state.reviewRound = (state.reviewRound || 0) + 1;
+	await switchPhase(ctx, state, "review", n, phaseKickoff(state, "review", n));
+}
+
+async function acceptReviewedStep(pi: ExtensionAPI, ctx: ExtensionCommandContext, state: TaskState, approval: string): Promise<void> {
+	const n = state.awaitingReview || state.currentStep;
+	if (state.reviewPending || !existsSync(reviewPath(state, n))) throw new Error("The current review has not been saved yet.");
+	const diffPath = join(taskDir(state), `implementation-${n}.diff`);
+	if (state.pendingBaselineDir) {
+		const current = await implementationDiff(state, loadBaseline(state.pendingBaselineDir));
+		if (current.diff.trimEnd() !== readFileSync(diffPath, "utf8").trimEnd()) {
+			state.implementationStarted = true;
+			await switchPhase(ctx, state, "implement", n, `Project files changed since review began. Inspect the changes and use /task next to start another review.`, state.sessions?.implement?.[String(n)]);
+			return;
+		}
+	}
+	if (approval) writeArtifact(state, "review", `${readFileSync(reviewPath(state, n), "utf8").trimEnd()}\n\n## Accepted proposal\n\n${approval}\n`, n);
+	const open = openReviewFindings(state, n);
+	if (open) {
+		state.implementationStarted = true;
+		const implement = state.sessions?.implement?.[String(n)];
+		if (!implement || !existsSync(implement)) {
+			const file = createPhaseSession(state, "implement", n, ctx.sessionManager.getSessionFile());
+			setSessionFor(state, "implement", file, n);
+		}
+		await switchPhase(ctx, state, "implement", n, `Read the agreed review findings in ${reviewPath(state, n)}. Fix only findings still marked Status: open. Preserve the existing implementation context in this session. Run focused checks; do not commit. Use /task next when ready for another review.`, state.sessions!.implement![String(n)]);
+		return;
+	}
+	let result: string;
+	if (state.pendingGitRepository === false || !hasGitRepository(state)) result = `Step ${n} accepted. No Git repository; commit skipped.`;
+	else if (!state.pendingFiles?.length) result = "No code changes were produced, so there is no commit message to propose.";
+	else {
+		const message = await draftCommitMessage(ctx, state, n);
+		if (readConfig().autoCommit) {
+			if (!state.pendingAutoCommitEligible) throw new Error("This step began with existing changes, so it cannot be committed automatically.");
+			const sha = commitStep(state, message.title, message.body);
+			result = `Committed step ${n} as ${sha}:\n\n${message.title}\n\n${message.body}`;
+		} else result = `Suggested commit for step ${n}:\n\n${message.title}\n\n${message.body}`;
+	}
+	if (!state.completedSteps.includes(n)) state.completedSteps.push(n);
+	state.completedSteps.sort((a, b) => a - b);
+	if (state.pendingBaselineDir) rmSync(state.pendingBaselineDir, { recursive: true, force: true });
+	state.pendingBaselineDir = undefined;
+	state.pendingFiles = undefined;
+	state.pendingHashes = undefined;
+	state.pendingSummary = undefined;
+	state.pendingAutoCommitEligible = undefined;
+	state.pendingGitRepository = undefined;
+	state.awaitingReview = undefined;
+	state.reviewPending = undefined;
+	state.reviewRound = undefined;
+	state.implementationStarted = false;
+	const more = n < stepCount(state);
+	if (more) {
+		state.phase = "implement";
+		state.currentStep = n + 1;
+		saveState(state);
+		await switchPhase(ctx, state, "implement", n + 1, `Step ${n} accepted. ${result}\n\nStep ${n + 1} is ready. Use /task next when you want to start implementation; that command captures its baseline first.`);
+	} else {
+		state.phase = "complete";
+		saveState(state);
+		updatePhaseUi(pi, ctx, state, true);
+		pi.sendMessage({ customType: "task-commit", content: `${result}\n\nAll planned steps are complete.`, display: true });
+	}
+}
+
+function pathWithin(parent: string, child: string): boolean {
+	const path = relative(parent, child);
+	return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+}
+
+function taskDirectoryForDeletion(state: TaskState, path: string): string {
+	const directory = resolve(taskDir(state));
+	if (resolve(path) !== resolve(statePath(directory))) throw new Error(`Task state is outside its artifact directory: ${path}`);
+	if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) throw new Error(`Refusing to delete a linked task directory: ${directory}`);
+	if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink()) throw new Error(`Refusing to delete a linked task state: ${path}`);
+	const actual = realpathSync(directory);
+	if (realpathSync(path) !== join(actual, "state.json")) throw new Error(`Task state does not belong to ${directory}.`);
+	const root = realpathSync(state.projectRoot);
+	if (pathWithin(actual, root)) throw new Error(`Refusing to delete the project root or one of its parents: ${directory}`);
+	const agentRoot = resolve(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"));
+	if (pathWithin(actual, agentRoot) || actual === resolve(agentRoot, "sessions") || actual === resolve(taskIndexDir())) throw new Error(`Refusing to delete a Pi configuration or sessions directory: ${directory}`);
+	return directory;
+}
+
+function deleteTaskFiles(state: TaskState, path: string): void {
+	const directory = taskDirectoryForDeletion(state, path);
+	rmSync(directory, { recursive: true });
+	const index = join(taskIndexDir(), createHash("sha256").update(`${state.projectRoot}\0${state.id}`).digest("hex") + ".json");
 	try {
-		baseline = state.pendingBaselineDir ? loadBaseline(state.pendingBaselineDir) : await captureBaseline(state, gitRepository, setProgress);
-		if (run.controller.signal.aborted) {
-			if (!state.pendingBaselineDir) rmSync(baseline.directory, { recursive: true, force: true });
-			throw new Error("The implementation was cancelled before the worker started.");
-		}
-		legacyRepair = !!review && !state.pendingBaselineDir;
-		const priorDiff = legacyRepair ? readFileSync(join(taskDir(state), `implementation-${step}.diff`), "utf8").trimEnd() : "";
-		if (!legacyRepair && !state.pendingBaselineDir) {
-			state.pendingBaselineDir = baseline.directory;
-			state.pendingAutoCommitEligible = baselineClean;
-			state.pendingGitRepository = gitRepository;
-			saveState(state);
-		}
-		preparing = false;
-		ctx.ui.setWidget("task-worker-preparing", undefined);
-		let summary: string;
-		let succeeded = true;
-		try {
-			const worker = runImplementationWithProgress(state, step, ctx, setProgress, run, review, approval);
-			if (ctx.mode === "tui") void showWorkerLog(ctx, run).catch((error) => ctx.ui.notify(`Task log closed: ${error instanceof Error ? error.message : String(error)}`, "warning"));
-			summary = await worker;
-		}
-		catch (error) { succeeded = false; summary = error instanceof Error ? error.message : String(error); }
-		run.closeLog?.();
-		if (activeTaskWorker === run) activeTaskWorker = undefined;
-		preparing = true;
-		setProgress("Comparing project files");
-		const changes = await implementationDiff(state, baseline, setProgress);
-		const diff = priorDiff ? `${priorDiff}\n\n${changes.diff}` : changes.diff;
-		const files = priorDiff ? [...new Set([...(state.pendingFiles || []), ...changes.files])] : changes.files;
-		const path = join(taskDir(state), succeeded ? `implementation-${step}.diff` : `implementation-${step}-failed.diff`);
-		writeFileSync(path, diff ? `${diff}\n` : "", "utf8");
-		if (!succeeded && legacyRepair && changes.diff) writeFileSync(join(taskDir(state), `implementation-${step}.diff`), `${diff}\n`, "utf8");
-		if (succeeded) {
-			state.phase = "review";
-			state.reviewPending = true;
-			state.awaitingReview = step;
-			state.pendingFiles = files;
-			state.pendingHashes = Object.fromEntries(files.map((file) => [file, fileHash(state.projectRoot, file)]));
-			state.pendingSummary = summary;
-			state.pendingAutoCommitEligible = baselineClean;
-			state.pendingGitRepository = gitRepository;
-			state.pendingBaselineDir = legacyRepair ? undefined : baseline.directory;
-			saveState(state);
-			reviewReady = true;
-		}
-		const shown = diff.length > 60_000 ? `${diff.slice(0, 60_000)}\n... [truncated; full diff in ${path}]` : diff || "(No code changes were produced.)";
-		pi.sendMessage({ customType: "task-implementation", content: `Step ${step} ${review ? "repair" : "implementation"} ${succeeded ? "finished" : "failed"}.\n\n${summary}\n\nDiff saved to ${path}. ${succeeded ? "A separate read-only review is starting." : "Review any partial changes before retrying /task next."}\n\n\`\`\`diff\n${shown}\n\`\`\``, display: true });
-	} finally {
-		run.closeLog?.();
-		if (activeTaskWorker === run) activeTaskWorker = undefined;
-		if (legacyRepair && baseline) rmSync(baseline.directory, { recursive: true, force: true });
-		clearInterval(timer);
-		ctx.ui.setStatus("task-worker", undefined);
-		ctx.ui.setWidget("task-worker-preparing", undefined);
-	}
-	if (reviewReady && !run.controller.signal.aborted) await startReview(pi, ctx, state);
+		const record = JSON.parse(readFileSync(index, "utf8")) as { id?: string; projectRoot?: string; statePath?: string };
+		if (record.id === state.id && record.projectRoot === state.projectRoot && record.statePath === path) rmSync(index);
+	} catch { /* Task discovery ignores stale index entries. */ }
+}
+
+function createNeutralSession(root: string): string {
+	const session = SessionManager.create(root);
+	const anchor = session.appendCustomEntry("task-workflow-neutral", {});
+	session.appendMessage({ role: "user", content: [], timestamp: Date.now() });
+	session.branch(anchor);
+	session.appendCustomEntry("task-workflow-neutral-ready", {});
+	const file = session.getSessionFile();
+	if (!file || !existsSync(file)) throw new Error("Pi did not save the session needed to leave the deleted task.");
+	return file;
 }
 
 export default function taskExtension(pi: ExtensionAPI): void {
+	for (const { command, key } of configuredHotkeys()) {
+		pi.registerShortcut(key, {
+			description: `/task ${command}`,
+			handler: (ctx) => {
+				if (!ctx.isIdle()) { ctx.ui.notify(`Wait for Pi to finish before using /task ${command}.`, "warning"); return; }
+				if (ctx.ui.getEditorText().trim()) { ctx.ui.notify(`The editor has unsent text. Submit or clear it before /task ${command}.`, "warning"); return; }
+				pi.sendUserMessage(`/task ${command}`, { expandPromptTemplates: true });
+			},
+		});
+	}
 	pi.registerTool({
 		name: ARTIFACT_TOOL,
 		label: "Write Task Artifact",
-		description: "Replace a task artifact in the task directory, regardless of the current phase. The extension chooses the file path.",
+		description: "Replace a task artifact in the task directory. Write prose and headings in English, regardless of the conversation language; preserve exact code, paths, and required diff excerpts. The extension chooses the file path.",
 		defaultActive: false,
 		parameters: Type.Object({
 			artifact: Type.Union([Type.Literal("context"), Type.Literal("roadmap"), Type.Literal("step"), Type.Literal("review")]),
@@ -1055,138 +1064,110 @@ export default function taskExtension(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const state = requireTask(ctx);
+			if (!sessionMatches(ctx, state)) throw new Error("This is an old task session. Use /task TASK-ID to open the current phase before changing artifacts.");
 			const path = writeArtifact(state, params.artifact, params.content, params.step);
-			const next = state.phase === "roadmap" && params.artifact === "context" ? " Present the complete revised roadmap in your final response." : "";
-			return { content: [{ type: "text", text: `Saved ${path}.${next}` }], details: { artifact: params.artifact, path } };
+			const reminder = params.artifact === "review" ? " In your response to the user, include each finding's exact fenced diff excerpt beside its explanation; do not only report that the review was saved." : "";
+			return { content: [{ type: "text", text: `Saved ${path}.${reminder}` }], details: { artifact: params.artifact, path } };
 		},
 	});
+
 	pi.on("tool_call", (event, ctx) => {
 		if (!taskLink(ctx)) return;
-		try { requireTask(ctx); }
-		catch { return { block: true, reason: "Task state is unavailable; all tools are blocked until it is restored." }; }
-		if (READ_TOOLS.includes(event.toolName) || event.toolName === ARTIFACT_TOOL) return;
-		return { block: true, reason: `The main task session allows only read tools and ${ARTIFACT_TOOL}. Code changes run in the implementation agent.` };
+		let state: TaskState;
+		try { state = requireTask(ctx); }
+		catch { return { block: true, reason: "Task state is unavailable; tools are blocked until it is restored." }; }
+		if (!sessionMatches(ctx, state)) return { block: true, reason: "This task session is not the active phase. Use /task TASK-ID to continue the current session." };
+		if (state.phase === "implement" && state.implementationStarted) return;
+		const allowed = new Set([...READ_TOOLS, ARTIFACT_TOOL, ...(state.phase === "review" ? readConfig().reviewTools || [] : [])]);
+		if (allowed.has(event.toolName)) return;
+		return { block: true, reason: state.phase === "implement" ? "Use /task next to capture the baseline before editing code." : `The ${state.phase} phase cannot change project files. Code edits belong to implementation.` };
 	});
+
 	pi.on("session_before_tree", (_event, ctx) => {
 		if (!taskLink(ctx)) return;
-		try {
-			if (readConfig().allowTreeNavigation === true) return;
-		} catch (error) {
-			ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-			return { cancel: true };
-		}
-		ctx.ui.notify("/tree is blocked in task sessions because task artifacts and state are shared across conversation branches. Set allowTreeNavigation to true in task-workflow.json to allow it.", "warning");
+		if (readConfig().allowTreeNavigation === true) return;
+		ctx.ui.notify("/tree is blocked in task sessions because artifacts are shared across branches. Set allowTreeNavigation to true to allow it.", "warning");
 		return { cancel: true };
 	});
+
 	let completionContext: ExtensionContext | undefined;
-	pi.on("session_start", (_event, ctx) => { completionContext = ctx; });
-	pi.on("session_shutdown", () => { activeTaskWorker?.controller.abort(); });
-	pi.on("agent_settled", (event, ctx) => {
-		let state: TaskState;
-		try { state = requireTask(ctx); } catch { return; }
-		const action = state.pendingAction;
-		if (!action) return;
-		const artifactWritten = state.pendingArtifactWritten === true;
-		state.pendingAction = undefined;
-		state.pendingArtifactWritten = undefined;
-		const lastAssistant = [...ctx.sessionManager.getBranch()].reverse().find((entry) => entry.type === "message" && entry.message.role === "assistant");
-		const stopReason = lastAssistant?.type === "message" && lastAssistant.message.role === "assistant" ? lastAssistant.message.stopReason : undefined;
-		if (event.aborted || stopReason === "error" || stopReason === "aborted") {
-			state.pendingStep = undefined;
-			saveState(state);
-			ctx.ui.notify("Transition did not finish; the current phase is unchanged.", "warning");
-			return;
-		}
-		if (!artifactWritten) {
-			state.pendingStep = undefined;
-			saveState(state);
-			ctx.ui.notify("The agreed artifact was not saved. The current phase is unchanged; retry the transition after clarifying the discussion.", "error");
-			return;
-		}
-		try {
-			if (action === "research") {
-				if (!existsSync(state.contextPath)) throw new Error("The context file is missing.");
-				state.phase = "roadmap";
-				saveState(state);
-				send(pi, "roadmap", `Read ${state.contextPath}. Propose the implementation roadmap. Use a numbered list. Start every item with a concise bold title, followed by a dash and a brief explanation. Discuss it with me. If we establish new task facts or decisions, update context.md and propose a revised roadmap. You may maintain a draft ${roadmapPath(state)}; /task accept approves a pending proposal, while /task next advances after approval is already settled.`);
-			} else if (action === "roadmap") {
-				stepCount(state);
-				state.phase = "steps";
-				state.currentStep = 1;
-				saveState(state);
-				send(pi, "step", `Read ${state.contextPath} and ${roadmapPath(state)}. Discuss step 1 in detail with me. Explain behavior, implementation points, and meaningful checks. Keep relevant task artifacts current when we agree on changes; /task accept approves a pending proposal, while /task next advances after approval is already settled.`);
-			} else {
-				const n = state.pendingStep || state.currentStep;
-				state.pendingStep = undefined;
-				if (!existsSync(stepPath(state, n))) throw new Error(`Approved design for step ${n} was not saved.`);
-				const count = stepCount(state);
-				if (n < count) {
-					state.currentStep = n + 1;
-					saveState(state);
-					send(pi, "step", `Read ${state.contextPath}, ${roadmapPath(state)}, and the approved prior steps. Discuss step ${n + 1} in detail with me. Keep relevant task artifacts current when we agree on changes; /task accept approves a pending proposal, while /task next advances after approval is already settled.`);
-				} else {
-					state.phase = "implement";
-					state.currentStep = 1;
-					saveState(state);
-					ctx.ui.notify("All step designs are approved. Use /task next to start implementation of step 1.", "info");
-				}
-			}
-		} catch (error) {
-			state.pendingStep = undefined;
-			saveState(state);
-			ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-		}
+	pi.on("session_start", async (_event, ctx) => {
+		completionContext = ctx;
+		const state = visibleTask(ctx);
+		if (!state) { ctx.ui.setWidget(PHASE_WIDGET, undefined); return; }
+		updatePhaseUi(pi, ctx, state, true);
+		if (!sessionMatches(ctx, state)) return;
+		try { await selectPhaseModel(pi, ctx, state.phase, state.currentStep); }
+		catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
 	});
+
+	pi.on("session_shutdown", (_event, ctx) => { ctx.ui.setWidget(PHASE_WIDGET, undefined); });
+	pi.on("agent_start", (_event, ctx) => {
+		const state = visibleTask(ctx);
+		if (state) updatePhaseUi(pi, ctx, state, false);
+	});
+	pi.on("agent_settled", (_event, ctx) => {
+		const state = visibleTask(ctx);
+		if (state) updatePhaseUi(pi, ctx, state, true);
+	});
+
 	pi.on("before_agent_start", (event, ctx) => {
 		if (!taskLink(ctx)) return;
 		let state: TaskState;
 		try { state = requireTask(ctx); }
 		catch {
 			event.systemPromptOptions.selectedTools = [];
-			event.systemPromptOptions.sections.task_write_policy = "Task state is unavailable. Do not call tools until it is restored.";
+			event.systemPromptOptions.sections.task_workflow = "Task state is unavailable. Do not call tools.";
 			return;
 		}
-		event.systemPromptOptions.selectedTools = [...READ_TOOLS, ARTIFACT_TOOL];
-		event.systemPromptOptions.sections.task_write_policy = `This main task session may only read project code. Do not use shell, edit, write, or other tools that can modify project files. Use ${ARTIFACT_TOOL} to update context, roadmap, step, or review artifacts in the task directory whenever agreed changes require it, regardless of the current phase. Pass the complete replacement content, not a file path. For a non-current step or review, pass its number as step. Do not edit state.json or implementation diffs.`;
-		if (event.messageType !== "user" || event.prompt?.startsWith("[task-workflow:")) return;
-		const common = `Task ${state.id}. Canonical context: ${state.contextPath}. Current phase: ${state.phase}. Do not infer phase transitions from casual wording; use /task commands.`;
-		const phaseRule = state.phase === "collect"
-			? `Treat the user's message as task input. Read the context file, incorporate confirmed facts and decisions in a compact form, and use ${ARTIFACT_TOOL} with artifact=context to save the complete updated content before responding. Preserve important requirements and explicitly proposed options from the user's description or ticket text; label unchosen options as provisional. Do not add guesses, open questions, or unsupported code claims to the file.`
+		if (!sessionMatches(ctx, state)) {
+			event.systemPromptOptions.selectedTools = [];
+			event.systemPromptOptions.sections.task_workflow = `This is an archived task session. The active phase is ${state.phase}. Do not edit files. Use /task ${state.id} to continue.`;
+			return;
+		}
+		const writable = state.phase === "implement" && state.implementationStarted;
+		event.systemPromptOptions.selectedTools = writable
+			? [...new Set([...pi.getActiveTools(), "read", "bash", "edit", "write", ...READ_TOOLS, ARTIFACT_TOOL])]
+			: [...READ_TOOLS, ARTIFACT_TOOL, ...(state.phase === "review" ? readConfig().reviewTools || [] : [])];
+		const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`;
+		const rule = state.phase === "collect"
+			? "After each user message, keep context.md concise and current with confirmed facts and important provisional options. Do not invent code findings."
 			: state.phase === "research"
-				? `Read the current context before responding. Discuss research findings and open questions. If this turn establishes new facts or decisions that the user has confirmed, update context.md using ${ARTIFACT_TOOL} with artifact=context before your final response. Keep it compact and self-contained. Add code references only after discussing them with the user. Do not record unresolved doubts or unapproved conclusions. If there is nothing newly agreed, leave the artifact unchanged.`
+				? "Inspect code and discuss feasibility. Add agreed findings and code references to context.md; leave unresolved doubts out."
 				: state.phase === "roadmap"
-					? `Read the current context before responding. Discuss the roadmap and any questions or additions. When the user confirms new task facts, constraints, or decisions, update context.md using ${ARTIFACT_TOOL} with artifact=context before your final response, then present a complete revised numbered roadmap in that same response. Each item begins with a short bold title, a dash, and a brief explanation. Maintain roadmap.md as a draft when agreed changes call for it; /task accept approves a pending proposal and /task next advances after prior approval. If nothing new is agreed, leave context.md unchanged; revise the proposal in chat when the user asks. Add code references only after discussing them with the user. Keep unresolved doubts out of context.md.`
+					? "Discuss the roadmap. Update context.md when agreed facts change, then present a complete revised numbered roadmap. Draft roadmap.md as decisions settle."
 					: state.phase === "steps"
-						? `Discuss step ${state.currentStep}. When the user approves a change to context, roadmap, or any step design, update the corresponding task artifact immediately using ${ARTIFACT_TOOL}. In particular, if a new roadmap item emerges, revise roadmap.md and explain how it affects the remaining step designs. Do not change project code. /task accept approves a pending proposal and /task next advances after prior approval.`
-						: state.phase === "review"
-							? existsSync(reviewPath(state, state.awaitingReview || state.currentStep))
-								? `Read ${reviewPath(state, state.awaitingReview || state.currentStep)} and the implementation diff before responding. Discuss the review findings and the user's decisions. Update any task artifact when the user agrees to a change. For review-N.md, preserve its title and Findings section, use ### headings only for findings, keep one exact diff snippet beside each finding, and put discussion notes under a ## Discussion heading. Each finding has Status: open, resolved, or dismissed. Change a status only after the user and you have agreed on the outcome; resolved means the code is verified fixed, dismissed means the finding is rejected with a reason. Keep open until then. /task accept approves a pending proposal; /task next acts only after questions and proposals are settled. A successful command launches repair while findings remain open, otherwise it accepts the step and prepares the commit.`
-								: "The review worker has not produced its artifact. Tell the user to use /task next to retry review; do not accept the step yet. Agreed changes to other task artifacts may still be recorded."
-							: "Discuss implementation results. Do not mark a step complete until the user uses /task next or /task accept.";
-		event.systemPromptOptions.sections.task_workflow = `${common}\n${phaseRule}`;
+						? `Discuss step ${state.currentStep}. Update agreed context, roadmap, and step artifacts. Do not edit project code.`
+						: state.phase === "implement"
+							? writable
+								? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
+								: "Implementation has not started. Read the approved artifacts, but do not edit project code until /task next captures the baseline."
+							: state.phase === "review"
+								? `Review step ${state.currentStep} independently with read-only project tools. Read the approved artifacts and ${join(taskDir(state), `implementation-${state.currentStep}.diff`)}. If a skill named ${readConfig().reviewSkill === undefined ? "task-review" : readConfig().reviewSkill || "(disabled)"} is available, follow its compatible read-only instructions. Save ${reviewPath(state, state.currentStep)} with a Summary and Findings section. Each finding needs a ### heading, Status: open, a precise code location, and one short exact fenced diff excerpt. Write "No findings." when clear. In your final response, show every actionable finding with its severity, code location, concrete impact, and a short fenced diff excerpt copied exactly from implementation-${state.currentStep}.diff beside the explanation. Do not replace the excerpt with only a path, line number, or link to the review artifact. If there are no findings, say so plainly. Discuss findings with the user; update their statuses only after agreement. Do not edit project code.`
+								: "The task is complete. Do not edit project files through this task session.";
+		event.systemPromptOptions.sections.task_workflow = `${common}\n${rule}`;
 	});
 
 	pi.registerCommand("task", {
 		description: "Guided task workflow; use /task help for commands",
 		getArgumentCompletions: (prefix) => {
-			const commands = ["list", "status", "log", "abort", "next", "accept", "show", "help"];
+			const commands = ["list", "delete", "status", "next", "accept", "show", "help"];
 			let items = commands.map((value) => ({ value, label: value }));
 			if (prefix.startsWith("show ")) {
-				const values = ["show context", "show research"];
 				try {
 					if (completionContext) {
 						const state = requireTask(completionContext);
-						if (existsSync(roadmapPath(state))) {
-							values.push("show roadmap");
-							for (let n = 1; n <= stepCount(state); n++) {
-								if (existsSync(stepPath(state, n))) values.push(`show step-${n}`);
-								if (existsSync(join(taskDir(state), `implementation-${n}.diff`))) values.push(`show implementation-${n}`);
-								if (existsSync(reviewPath(state, n))) values.push(`show review-${n}`);
-							}
-						}
+						items = markdownArtifacts(state).flatMap((name) => {
+							const argument = completionArgument(name);
+							return argument ? [{ value: `show ${argument}`, label: name }] : [];
+						});
 					}
-				} catch { /* Keep the basic completions if task state is unavailable. */ }
-				items = values.map((value) => ({ value, label: value }));
+				} catch { items = []; }
+			} else if (prefix.startsWith("delete ")) {
+				try {
+					const root = projectRoot(completionContext?.cwd || process.cwd());
+					items = listTasks(root).map(({ state }) => ({ value: `delete ${state.id.includes(" ") ? `"${state.id}"` : state.id}`, label: `${state.id} · ${taskProgress(state)}` }));
+				} catch { items = []; }
 			} else if (!prefix.includes(" ") || prefix.startsWith("\"") || prefix.startsWith("'")) {
 				try {
 					const root = projectRoot(completionContext?.cwd || process.cwd());
@@ -1195,7 +1176,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
 						const value = id.includes(" ") || commands.includes(id) || prefix.startsWith("'") || prefix.startsWith("\"") ? `${prefix.startsWith("'") ? "'" : "\""}${id}${prefix.startsWith("'") ? "'" : "\""}` : id;
 						items.push({ value, label: `${id} · ${taskProgress(task.state)}` });
 					}
-				} catch { /* Keep command completions if task discovery fails. */ }
+				} catch { /* Keep command completions. */ }
 			}
 			const filtered = items.filter((item) => item.value.startsWith(prefix));
 			return filtered.length ? filtered : null;
@@ -1203,10 +1184,10 @@ export default function taskExtension(pi: ExtensionAPI): void {
 		handler: async (rawArgs, ctx) => {
 			try {
 				const parsed = parseArguments(rawArgs);
-				const command = parsed[0] && !parsed[0].quoted && ["help", "list", "status", "log", "abort", "next", "accept", "show", "start", "continue"].includes(parsed[0].value) ? parsed[0].value : undefined;
+				const command = parsed.length === 0 ? "list" : parsed[0] && !parsed[0].quoted && ["help", "list", "delete", "status", "next", "accept", "show", "start", "continue", "log", "abort"].includes(parsed[0].value) ? parsed[0].value : undefined;
 				const args = parsed.slice(command ? 1 : 0).map((arg) => arg.value);
-				if (activeTaskOperation && !["help", "status", "log", "abort", "show"].includes(command || "")) throw new Error("A task process is running. Use /task log to view it, /task status for its state, or /task abort to stop it.");
 				if (command === "start" || command === "continue") throw new Error(`Use /task TASK-ID instead of /task ${command}.`);
+				if (command === "log" || command === "abort") throw new Error("The task now uses normal Pi sessions. Use Pi's native progress and cancellation controls.");
 				if (command === "help") {
 					if (args.length) throw new Error("Usage: /task help");
 					await showArtifact(ctx, "Task help", HELP);
@@ -1221,21 +1202,60 @@ export default function taskExtension(pi: ExtensionAPI): void {
 						const selected = await ctx.ui.select("Continue task:", options);
 						if (selected === undefined) return;
 						const task = tasks[options.indexOf(selected)];
-						if (!task) return;
-						const state = loadState(task.path);
-						if (state.id !== task.state.id || state.projectRoot !== root) throw new Error("The selected task changed while the selector was open. Run /task list again.");
-						await continueTask(pi, ctx, state, task.path);
+						if (task) await continueTaskSession(ctx, loadState(task.path));
 						return;
 					}
 					const rows = tasks.map(({ state }) => `| \`${state.id}\` | ${taskProgress(state)} | ${taskDescription(state).replaceAll("|", "\\|")} |`);
-					const content = tasks.length
-						? `# Tasks in ${root}\n\n| Task ID | State | Context |\n| --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue a task.`
-						: `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.`;
-					await showArtifact(ctx, "Task list", content);
+					await showArtifact(ctx, "Task list", tasks.length ? `# Tasks in ${root}\n\n| Task ID | State | Context |\n| --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.` : `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.`);
+					return;
+				}
+				if (command === "delete") {
+					if (args.length > 1) throw new Error("Usage: /task delete [TASK-ID]");
+					if (!ctx.isIdle()) throw new Error("Wait for Pi to finish or cancel its current run before deleting a task.");
+					const root = projectRoot(ctx.cwd);
+					const tasks = listTasks(root);
+					let target: DiscoveredTask | undefined;
+					if (args.length) {
+						validateTaskId(args[0]);
+						target = tasks.find(({ state }) => state.id === args[0]);
+						if (!target) throw new Error(`Task ${args[0]} was not found in ${root}. Use /task list to see available tasks.`);
+					} else {
+						if (!tasks.length) { await showArtifact(ctx, "Task delete", `No tasks found in ${root}.`); return; }
+						if (ctx.mode !== "tui") throw new Error("Choose a task in the terminal UI or specify /task delete TASK-ID.");
+						const options = tasks.map(({ state }) => `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}`);
+						const selected = await ctx.ui.select("Delete task:", options);
+						if (selected === undefined) return;
+						target = tasks[options.indexOf(selected)];
+					}
+					if (!target) return;
+					const targetPath = target.path;
+					const state = loadState(targetPath);
+					if (state.id !== target.state.id || state.projectRoot !== root) throw new Error("Task changed while choosing it; run /task delete again.");
+					const directory = taskDirectoryForDeletion(state, targetPath);
+					const confirmed = await ctx.ui.confirm(`Permanently delete task ${state.id}?`, `Delete ${directory} and all its artifacts and saved sessions? This cannot be undone.`);
+					if (!confirmed) return;
+					const latest = loadState(targetPath);
+					if (latest.id !== state.id || latest.projectRoot !== root || resolve(taskDir(latest)) !== directory) throw new Error("Task changed before deletion; run /task delete again.");
+					const current = ctx.sessionManager.getSessionFile();
+					const link = taskLink(ctx);
+					const active = (current && pathWithin(directory, resolve(current))) || (link?.id === state.id && link.statePath === targetPath);
+					if (active) {
+						const neutral = createNeutralSession(root);
+						if (pathWithin(directory, resolve(neutral))) throw new Error("The replacement session would be inside the task directory; deletion was cancelled.");
+						const result = await ctx.switchSession(neutral, {
+							withSession: async (fresh) => {
+								try { deleteTaskFiles(loadState(targetPath), targetPath); fresh.ui.notify(`Task ${state.id} was permanently deleted.`, "info"); }
+								catch (error) { fresh.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
+							},
+						});
+						if (result.cancelled) ctx.ui.notify("Deletion was cancelled; the task is unchanged.", "warning");
+					} else {
+						deleteTaskFiles(latest, targetPath);
+						ctx.ui.notify(`Task ${state.id} was permanently deleted.`, "info");
+					}
 					return;
 				}
 				if (!command) {
-					if (ctx.mode !== "tui") throw new Error("Starting or continuing a task requires interactive Pi.");
 					const optionAt = args.indexOf("--dir");
 					let override: string | undefined;
 					if (optionAt >= 0) {
@@ -1256,184 +1276,76 @@ export default function taskExtension(pi: ExtensionAPI): void {
 					}
 					if (existsSync(path)) {
 						const state = loadState(path);
-						if (state.id !== id) throw new Error(`Task ID mismatch in ${path}: requested ${id}, but state.json contains ${state.id}. Open the task using its saved ID or correct the state file.`);
+						if (state.id !== id) throw new Error(`Task ID mismatch in ${path}: requested ${id}, but state.json contains ${state.id}.`);
 						if (state.projectRoot !== root) throw new Error(projectMismatchMessage(state, root, path));
-						const current = taskLink(ctx);
-						const destination = current && (current.id !== id || current.statePath !== path) ? "Open it in a new Pi session?" : "Attach it to this Pi session?";
-						if (!await ctx.ui.confirm(`Continue task ${id}?`, `Existing task (${state.phase}). ${destination}`)) return;
-						await continueTask(pi, ctx, state, path);
+						if (ctx.mode === "tui" && !await ctx.ui.confirm(`Continue task ${id}?`, `Open its current ${state.phase} session?`)) return;
+						await continueTaskSession(ctx, state);
 						return;
 					}
 					if (existsSync(artifactDir)) throw new Error(`Artifact directory already exists without task state: ${artifactDir}`);
-					if (!await ctx.ui.confirm(`Start task ${id}?`, `Create ${artifactDir} and open a new Pi session?`)) return;
+					if (ctx.mode === "tui" && !await ctx.ui.confirm(`Start task ${id}?`, `Create ${artifactDir} and a context session?`)) return;
+					mkdirSync(artifactDir, { recursive: true });
 					const contextPath = join(artifactDir, "context.md");
-					const state: TaskState = { version: 1, id, projectRoot: root, artifactDir, contextPath, phase: "collect", currentStep: 1, completedSteps: [] };
-					const result = await ctx.newSession({
-						setup: async (session) => {
-							session.appendCustomEntry(ENTRY_TYPE, { id, statePath: path } satisfies TaskLink);
-							session.appendSessionInfo(`Task ${id}`);
-						},
-						withSession: async (fresh) => {
-							mkdirSync(artifactDir, { recursive: true });
-							if (!existsSync(contextPath)) writeFileSync(contextPath, `# ${id}\n`, "utf8");
-							saveState(state);
-							try { rememberTask(state, path); } catch { fresh.ui.notify("Task started, but its discovery index could not be updated.", "warning"); }
-							fresh.ui.notify(`Task ${id} started. Describe the problem or task and share any context you have. Add details as you go.`, "info");
-						},
-					});
-					if (result.cancelled) ctx.ui.notify("New session was cancelled.", "warning");
+					writeFileSync(contextPath, `# ${id}\n`, "utf8");
+					const state: TaskState = { version: 1, id, projectRoot: root, artifactDir, contextPath, phase: "collect", currentStep: 1, completedSteps: [], sessions: {} };
+					const file = createPhaseSession(state, "collect", 1, ctx.sessionManager.getSessionFile());
+					setSessionFor(state, "collect", file);
+					saveState(state);
+					try { rememberTask(state, statePath(artifactDir)); } catch { ctx.ui.notify("Task started, but its discovery index could not be updated.", "warning"); }
+					const result = await ctx.switchSession(file, { withSession: async (fresh) => { fresh.ui.notify(`Task ${id} started. Describe the problem and add context.`, "info"); } });
+					if (result.cancelled) ctx.ui.notify(`Task created at ${artifactDir}; use /task ${id} to open it.`, "warning");
 					return;
 				}
 				const state = requireTask(ctx);
-				if (command === "log" || command === "abort") {
-					if (args.length) throw new Error(`Usage: /task ${command}`);
-					const run = activeTaskWorker;
-					if (!run || run.statePath !== statePath(taskDir(state))) throw new Error("No worker is running for this task.");
-					if (command === "log") {
-						if (run.logOpen) { ctx.ui.notify("The task log is already open.", "info"); return; }
-						await showWorkerLog(ctx, run);
-					} else {
-						if (run.controller.signal.aborted) { ctx.ui.notify("The worker is already stopping.", "info"); return; }
-						recordWorkerActivity(run, "Abort requested with /task abort...");
-						run.controller.abort();
-						ctx.ui.notify(`Stopping ${run.phase} step ${run.step}.`, "warning");
-					}
-					return;
-				}
 				if (command === "status") {
+					if (args.length) throw new Error("Usage: /task status");
 					const config = readConfig();
-					const model = config.implementModel;
-					const implementationModel = model ? `${model.provider}/${model.model} (thinking: ${model.thinkingLevel || "inherited"})` : "inherit active Pi model and thinking level";
-					const run = activeTaskWorker?.statePath === statePath(taskDir(state)) ? activeTaskWorker : undefined;
-					await showArtifact(ctx, "Task status", `Task: ${state.id}\nPhase: ${state.phase}\nRunning worker: ${run ? `${run.phase} step ${run.step} · ${run.activity.at(-1) || "starting"} · /task log to view · /task abort to stop` : activeTaskOperation === statePath(taskDir(state)) ? "preparing or finishing" : "none"}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCurrent step: ${state.currentStep}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.reviewPending ? "review pending" : state.awaitingReview && existsSync(reviewPath(state, state.awaitingReview)) ? openReviewFindings(state, state.awaitingReview) : "none"}\nReview skill: ${config.reviewSkill === null ? "disabled" : config.reviewSkill || "task-review"}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB\nImplementation model: ${implementationModel}`);
+					const model = configuredModel(state.phase);
+					await showArtifact(ctx, "Task status", `Task: ${state.id}\nPhase: ${state.phase}\nCurrent step: ${state.currentStep}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nReview skill: ${config.reviewSkill === null ? "disabled" : config.reviewSkill || "task-review"}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`);
 					return;
 				}
 				if (command === "show") {
-					if (ctx.mode !== "tui") throw new Error("/task show requires interactive Pi.");
-					if (args.length !== 1) throw new Error("Usage: /task show context|research|roadmap|step-N|implementation-N|review-N");
-					const name = args[0];
-					let path: string;
-					if (name === "context" || name === "collect" || name === "research") path = state.contextPath;
-					else if (name === "roadmap") path = roadmapPath(state);
-					else if (/^step-[1-9]\d*$/.test(name)) path = stepPath(state, Number(name.slice(5)));
-					else if (/^implementation-[1-9]\d*$/.test(name)) path = join(taskDir(state), `${name}.diff`);
-					else if (/^review-[1-9]\d*$/.test(name)) path = reviewPath(state, Number(name.slice(7)));
-					else throw new Error("Unknown artifact. Use /task show context|research|roadmap|step-N|implementation-N|review-N.");
-					if (!existsSync(path)) throw new Error(`Artifact does not exist yet: ${path}`);
-					const content = readFileSync(path, "utf8");
-					await showArtifact(ctx, name, name.startsWith("implementation-") ? `\`\`\`diff\n${content}\n\`\`\`` : content);
+					if (args.length > 1) throw new Error("Usage: /task show [FILE.md]");
+					const files = markdownArtifacts(state);
+					if (!files.length) { await showArtifact(ctx, "Task artifacts", "No Markdown artifacts found."); return; }
+					const name = args[0] || (ctx.mode === "tui" ? await ctx.ui.select("Show task artifact:", files) : undefined);
+					if (!name) {
+						if (ctx.mode !== "tui") await showArtifact(ctx, "Task artifacts", files.map((file) => `- ${file}`).join("\n"));
+						return;
+					}
+					if (!files.includes(name)) throw new Error(`Markdown artifact ${name} was not found. Use /task show to choose an available file.`);
+					const path = join(taskDir(state), name);
+					if (!lstatSync(path).isFile()) throw new Error(`Artifact is no longer a regular file: ${path}`);
+					await showArtifact(ctx, name, readFileSync(path, "utf8"));
 					return;
 				}
 				if (command === "next" || command === "accept") {
-					if (command === "next" && args.length) throw new Error("/task next does not accept approval text. Use /task accept [NOTE] to approve a proposal.");
+					if (!sessionMatches(ctx, state)) throw new Error(`This is not the active task session. Use /task ${state.id} to continue ${state.phase}.`);
+					if (state.phase === "complete") throw new Error("All planned steps are complete.");
+					if (command === "next" && args.length) throw new Error("/task next does not accept approval text. Use /task accept [NOTE].");
 					const note = args.join(" ").trim();
 					if (note.length > 4000) throw new Error("Approval note is too long; keep it under 4000 characters.");
-					if (state.pendingAction) throw new Error("A phase transition is still running. Wait for it to finish.");
-					if (command === "accept" && state.reviewPending) throw new Error("Review is still pending. Use /task next to retry it before accepting a proposal.");
+					if (state.phase === "implement" && !state.implementationStarted) {
+						await beginImplementation(pi, ctx, state);
+						return;
+					}
+					if (state.phase === "review" && (state.reviewPending || !existsSync(reviewPath(state, state.currentStep)))) throw new Error("The current review artifact has not been saved. Discuss review findings and save review-N.md first.");
 					const assessment = await assessTransition(ctx, state, command, note);
 					if (assessment.openQuestions.length) throw new Error(`The phase is unchanged. Resolve these open questions first: ${assessment.openQuestions.join("; ")}`);
 					if (command === "next" && assessment.pendingProposal.trim()) throw new Error(`The phase is unchanged. A proposal still needs approval: ${assessment.pendingProposal}. Use /task accept if you agree.`);
-					if (command === "accept" && !assessment.pendingProposal.trim()) throw new Error(`The phase is unchanged. There is no pending proposal to accept.${assessment.reason ? ` ${assessment.reason}` : ""}`);
-					const approval = command === "accept" ? `${assessment.pendingProposal.trim()}${note ? `; user clarification: ${note.replace(/\s+/g, " ")}` : ""}` : "";
-					const approvalNote = approval ? `\n\nUser-approved proposal: ${approval}` : "";
-					if (state.phase === "collect") {
-						state.phase = "research";
-						saveState(state);
-						send(pi, "research", `Read ${state.contextPath} and inspect the current project. Check feasibility against the code. Present verified findings, conflicting assumptions, relevant code locations, and focused questions. Discuss conclusions with me. Update the context artifact during research when we establish new facts or decisions; add code locations only after discussing them with me. Do not record unresolved doubts or unapproved conclusions.${approvalNote}`);
-						return;
-					}
-					if (state.phase === "research") {
-						state.pendingAction = "research";
-						state.pendingArtifactWritten = false;
-						saveState(state);
-						send(pi, "accept-research", `Consolidate only the research findings and decisions that I accepted into the task context. Keep it compact and self-contained. Exclude unresolved doubts; briefly record only rejected dead-end approaches that matter. Add code references only where discussed with me. Save the complete content using ${ARTIFACT_TOOL} with artifact=context. The next phase will discuss the roadmap.${approvalNote}`);
-						return;
-					}
-					if (state.phase === "roadmap") {
-						state.pendingAction = "roadmap";
-						state.pendingArtifactWritten = false;
-						saveState(state);
-						send(pi, "accept-roadmap", `Read the latest ${state.contextPath}. Save only the roadmap we agreed on using ${ARTIFACT_TOOL} with artifact=roadmap. If the agreed roadmap conflicts with the latest context, explain the conflict instead of saving. Use a consecutive numbered list; each item must begin with a short bold title, followed by a dash and a brief explanation. Do not add unapproved steps. Do not start step design in this turn.${approvalNote}`);
-						return;
-					}
+					const approval = command === "accept" ? [assessment.pendingProposal.trim(), note ? `User clarification: ${note.replace(/\s+/g, " ")}` : ""].filter(Boolean).join("; ") : "";
+					if (state.phase === "collect") { await enterResearch(pi, ctx, state); return; }
+					if (state.phase === "research") { await finalizeArtifact(ctx, state, "context", approval); await switchPhase(ctx, state, "roadmap", 1, phaseKickoff(state, "roadmap", 1)); return; }
+					if (state.phase === "roadmap") { await finalizeArtifact(ctx, state, "roadmap", approval); stepCount(state); await switchPhase(ctx, state, "steps", 1, phaseKickoff(state, "steps", 1)); return; }
 					if (state.phase === "steps") {
+						await finalizeArtifact(ctx, state, "step", approval);
 						const n = state.currentStep;
-						state.pendingAction = "step";
-						state.pendingStep = n;
-						state.pendingArtifactWritten = false;
-						saveState(state);
-						send(pi, "accept-step", `Save only our agreed design for step ${n} using ${ARTIFACT_TOOL} with artifact=step. Keep the file self-contained, focused on implementation and verification. Do not include open doubts or unapproved choices. Do not start another step in this turn.${approvalNote}`);
+						if (n < stepCount(state)) await switchPhase(ctx, state, "steps", n + 1, phaseKickoff(state, "steps", n + 1));
+						else { state.implementationStarted = false; await switchPhase(ctx, state, "implement", 1, phaseKickoff(state, "implement", 1)); }
 						return;
 					}
-					if (state.awaitingReview && state.phase === "implement") {
-						state.phase = "review";
-						saveState(state);
-					}
-					if (state.phase === "review" && (state.reviewPending || !existsSync(reviewPath(state, state.awaitingReview || state.currentStep)))) {
-						launchTaskOperation(ctx, state, () => startReview(pi, ctx, state));
-						return;
-					}
-					if (state.awaitingReview) {
-						const n = state.awaitingReview;
-						if (state.pendingBaselineDir) {
-							let currentProgress = "Checking project files";
-							ctx.ui.setStatus("task-diff", currentProgress);
-							let current: { diff: string; files: string[] };
-							try { current = await implementationDiff(state, loadBaseline(state.pendingBaselineDir), (message) => { currentProgress = message; ctx.ui.setStatus("task-diff", currentProgress); }); }
-							finally { ctx.ui.setStatus("task-diff", undefined); }
-							const diffPath = join(taskDir(state), `implementation-${n}.diff`);
-							if (current.diff.trimEnd() !== readFileSync(diffPath, "utf8").trimEnd()) {
-								writeFileSync(diffPath, current.diff ? `${current.diff}\n` : "", "utf8");
-								state.pendingFiles = current.files;
-								state.pendingHashes = Object.fromEntries(current.files.map((file) => [file, fileHash(state.projectRoot, file)]));
-								state.reviewPending = true;
-								saveState(state);
-							launchTaskOperation(ctx, state, () => startReview(pi, ctx, state));
-								return;
-							}
-						}
-						if (command === "accept") {
-							const path = reviewPath(state, n);
-							const content = readFileSync(path, "utf8").trimEnd();
-							writeArtifact(state, "review", `${content}\n\n## Accepted proposal\n\n${approval}\n`, n);
-						}
-						const open = openReviewFindings(state, n);
-						if (open) {
-							launchTaskOperation(ctx, state, () => startImplementation(pi, ctx, state, readFileSync(reviewPath(state, n), "utf8"), approval));
-							return;
-						}
-						let result: string;
-						if (state.pendingGitRepository === false || !hasGitRepository(state)) result = `Step ${n} accepted. This project has no Git repository, so the commit step was skipped.`;
-						else if (!state.pendingFiles?.length) result = "No code changes were produced, so there is no commit message to propose.";
-						else {
-							const message = await draftCommitMessage(ctx, state, n);
-							if (readConfig().autoCommit) {
-								if (!state.pendingAutoCommitEligible) throw new Error("This step began with existing changes, so it cannot be committed automatically. Set autoCommit to false to get a commit proposal.");
-								const sha = commitStep(state, message.title, message.body);
-								result = `Committed step ${n} as ${sha}:\n\n${message.title}\n\n${message.body}`;
-							} else result = `Suggested commit for step ${n}:\n\n${message.title}\n\n${message.body}`;
-						}
-						if (!state.completedSteps.includes(n)) state.completedSteps.push(n);
-						state.completedSteps.sort((a, b) => a - b);
-						state.awaitingReview = undefined;
-						state.pendingFiles = undefined;
-						state.pendingHashes = undefined;
-						state.pendingSummary = undefined;
-						state.pendingAutoCommitEligible = undefined;
-						state.pendingGitRepository = undefined;
-						if (state.pendingBaselineDir) rmSync(state.pendingBaselineDir, { recursive: true, force: true });
-						state.pendingBaselineDir = undefined;
-						state.reviewRound = undefined;
-						state.reviewPending = undefined;
-						state.phase = "implement";
-						state.currentStep = n + 1;
-						saveState(state);
-						const more = n < stepCount(state) ? `\n\nUse /task next to implement step ${n + 1}.` : "\n\nAll planned implementation steps are complete.";
-						pi.sendMessage({ customType: "task-commit", content: result + more, display: true });
-						return;
-					}
-					launchTaskOperation(ctx, state, () => startImplementation(pi, ctx, state, undefined, approval));
-					return;
+					if (state.phase === "implement") { await beginReview(ctx, state); return; }
+					if (state.phase === "review") { await acceptReviewedStep(pi, ctx, state, approval); return; }
 				}
 				throw new Error(`Unknown subcommand: ${command}. Use /task help.`);
 			} catch (error) {
