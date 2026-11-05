@@ -9,6 +9,7 @@ quit-after-last-window-closed = true
 title = "Terminal"
 
 mouse-scroll-multiplier = precision:1,discrete:1
+macos-option-as-alt = true
 
 font-family = "JetBrainsMono Nerd Font" 
 font-size = 16
@@ -23,8 +24,6 @@ window-padding-x = 4
 window-padding-y = 4
 
 copy-on-select = true
-
-macos-option-as-alt = true
 
 keybind = alt+f=esc:f
 keybind = alt+b=esc:b
