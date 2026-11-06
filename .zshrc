@@ -227,11 +227,11 @@ export DOCKER_HOST="unix://${HOME}/.colima/docker.sock"
 #                                       Pi configuration
 # ==================================================================================================
 if [[ -n ${PROJECTS:-} && -d "$PROJECTS/dash" ]]; then
-  LLM_PROVIDER=openrouter
-  LLM_MODEL=openai/gpt-6-luna
+  export LLM_PROVIDER=openrouter
+  export LLM_MODEL=openai/gpt-6-luna
 else
-  LLM_PROVIDER=домашний_провайдер
-  LLM_MODEL=модель_доступная_у_него
+  export LLM_PROVIDER=домашний_провайдер
+  export LLM_MODEL=модель_доступная_у_него
 fi
 
 alias p='pi --provider "$LLM_PROVIDER" --model "$LLM_MODEL"'

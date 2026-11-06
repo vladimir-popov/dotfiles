@@ -1,0 +1,15 @@
+{
+  "name": "pi-nvim",
+  "pi": {
+    "extensions": [
+      "./pi/index.ts"
+    ]
+  },
+  "scripts": {
+    "format": "stylua lua && prettier --write pi/index.ts package.json package-lock.json",
+    "format:check": "stylua --check lua && prettier --check pi/index.ts package.json package-lock.json"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  }
+}

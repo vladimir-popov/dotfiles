@@ -28,6 +28,23 @@ return {
         ft = 'html',
         cmd = { 'BloggerPreview', 'BloggerCopy' },
     },
+    {
+        dir = '~/.pi/agent/extensions/nvim',
+        name = 'pi-nvim',
+        lazy = false,
+        keys = {
+            { "<F10>",      "<cmd>Pi<cr>",            desc = "Open or focus Pi" },
+            { "<F10>",      "<C-\\><C-n><cmd>Pi<cr>", mode = "t",                 desc = "Return from Pi" },
+            { "<F10>",      ":<C-U>'<,'>Pi<CR>",      mode = "x",                 desc = "Send selection to Pi" },
+            { "<leader>pr", "<cmd>PiReferences<cr>",  desc = "Open Pi references" },
+        },
+        config = function()
+            require('pi_nvim').setup({
+                provider = vim.env.LLM_PROVIDER,
+                model = vim.env.LLM_MODEL,
+            })
+        end,
+    },
     -- show marks in the signcolumn
     {
         'chentoast/marks.nvim',

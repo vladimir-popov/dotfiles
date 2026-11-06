@@ -22,7 +22,6 @@
 	tool = codediff
 	conflictStyle = zdiff3
 [diff]
-	external = difft
 	tool = difftastic
 	colorMoved = default
 
