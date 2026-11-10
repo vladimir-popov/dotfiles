@@ -15,7 +15,15 @@ import {
 } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import {
   getMarkdownTheme,
   SessionManager,
@@ -474,11 +482,11 @@ function projectMismatchMessage(
     `State file: ${path}`,
     `Saved project root: ${state.projectRoot}`,
     `Current project root: ${currentRoot}`,
-    `To continue the original task, start Pi from the saved project root. If you moved the task intentionally, update projectRoot, artifactDir, and contextPath in state.json to their new locations. You can also start a fresh task with a different ID.`,
+    "After moving project-local task artifacts, close and restart Pi from the new project path. In the terminal UI, /task can offer a confirmed relocation if the saved root no longer exists. External artifact directories and cases where the old root still exists are not auto-relocated. Do not update only projectRoot manually; saved session paths and the task index also need migration.",
   ];
   if (state.pendingBaselineDir)
     lines.push(
-      "This task has an unfinished implementation or review. Its pendingBaselineDir snapshot and pendingFiles/pendingHashes paths still refer to the original project layout. Reconcile them before continuing; changing projectRoot alone is unsafe.",
+      "This task has an unfinished implementation or review. The relocation confirmation rebases its baseline and session paths together; if the task is not offered for relocation, do not edit projectRoot manually because those paths may no longer be valid.",
     );
   return lines.join("\n");
 }
@@ -490,7 +498,11 @@ type ReplacedContext = Parameters<
   NonNullable<SessionSwitchOptions["withSession"]>
 >[0];
 
-type DiscoveredTask = { state: TaskState; path: string };
+type DiscoveredTask = {
+  state: TaskState;
+  path: string;
+  relocatedFrom?: string;
+};
 
 function taskIndexDir(): string {
   return join(
@@ -539,6 +551,40 @@ function indexedStatePaths(root: string): string[] {
   return paths;
 }
 
+function relocatedIndexedStatePaths(root: string): string[] {
+  const directory = taskIndexDir();
+  if (!existsSync(directory)) return [];
+  const paths: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    try {
+      const record = JSON.parse(
+        readFileSync(join(directory, entry.name), "utf8"),
+      ) as { projectRoot?: unknown; statePath?: unknown };
+      if (
+        typeof record.projectRoot !== "string" ||
+        typeof record.statePath !== "string"
+      )
+        continue;
+      const oldRoot = resolve(record.projectRoot);
+      if (
+        oldRoot === resolve(root) ||
+        existsSync(oldRoot) ||
+        !pathWithin(oldRoot, resolve(record.statePath))
+      )
+        continue;
+      const movedPath = resolve(
+        root,
+        relative(oldRoot, resolve(record.statePath)),
+      );
+      if (existsSync(movedPath)) paths.push(movedPath);
+    } catch {
+      /* Ignore stale or malformed index entries. */
+    }
+  }
+  return paths;
+}
+
 function templateStatePaths(root: string, template: string): string[] {
   const expanded = template.replaceAll("{projectRoot}", root);
   const absolute = isAbsolute(expanded)
@@ -563,24 +609,54 @@ function templateStatePaths(root: string, template: string): string[] {
     .map((entry) => statePath(join(parent, entry.name, suffix)));
 }
 
+function relocatedProjectRoot(
+  state: TaskState,
+  path: string,
+  currentRoot: string,
+): string | undefined {
+  const previousRoot = resolve(state.projectRoot);
+  const root = resolve(currentRoot);
+  if (
+    previousRoot === root ||
+    existsSync(previousRoot) ||
+    !pathWithin(previousRoot, resolve(taskDir(state)))
+  )
+    return undefined;
+  const movedArtifactDir = resolve(
+    root,
+    relative(previousRoot, resolve(taskDir(state))),
+  );
+  if (
+    resolve(path) !== resolve(statePath(movedArtifactDir)) ||
+    !pathWithin(root, resolve(path))
+  )
+    return undefined;
+  return previousRoot;
+}
+
 function listTasks(root: string): DiscoveredTask[] {
   const configured = readConfig().artifactDir || ".agents/projects/{taskId}";
   const candidates = [
     ...templateStatePaths(root, configured),
     ...templateStatePaths(root, ".agents/projects/{taskId}"),
     ...indexedStatePaths(root),
+    ...relocatedIndexedStatePaths(root),
   ];
   const tasks = new Map<string, DiscoveredTask>();
   for (const path of candidates) {
     try {
       if (!lstatSync(path).isFile()) continue;
       const state = loadState(path);
-      if (
-        state.projectRoot !== root ||
-        resolve(statePath(taskDir(state))) !== resolve(path)
-      )
+      const task: DiscoveredTask = { state, path };
+      if (resolve(state.projectRoot) !== resolve(root)) {
+        const previousRoot = relocatedProjectRoot(state, path, root);
+        if (!previousRoot) continue;
+        task.relocatedFrom = previousRoot;
+      } else if (resolve(statePath(taskDir(state))) !== resolve(path)) {
         continue;
-      if (!tasks.has(state.id)) tasks.set(state.id, { state, path });
+      }
+      const existing = tasks.get(state.id);
+      if (!existing || existing.relocatedFrom) tasks.set(state.id, task);
     } catch {
       /* Ignore missing or invalid state files. */
     }
@@ -588,6 +664,430 @@ function listTasks(root: string): DiscoveredTask[] {
   return [...tasks.values()].sort((a, b) =>
     a.state.id.localeCompare(b.state.id),
   );
+}
+
+function rebaseMovedPath(
+  path: string,
+  oldRoot: string,
+  newRoot: string,
+): string {
+  if (!isAbsolute(path)) return path;
+  const absolute = resolve(path);
+  return pathWithin(oldRoot, absolute)
+    ? resolve(newRoot, relative(oldRoot, absolute))
+    : path;
+}
+
+function rebaseSessionRefs(
+  sessions: SessionRefs | undefined,
+  oldRoot: string,
+  newRoot: string,
+): SessionRefs | undefined {
+  if (!sessions) return undefined;
+  const rebaseMap = (paths?: Record<string, string>) =>
+    paths
+      ? Object.fromEntries(
+          Object.entries(paths).map(([key, path]) => [
+            key,
+            rebaseMovedPath(path, oldRoot, newRoot),
+          ]),
+        )
+      : undefined;
+  return {
+    collect: sessions.collect
+      ? rebaseMovedPath(sessions.collect, oldRoot, newRoot)
+      : undefined,
+    research: sessions.research
+      ? rebaseMovedPath(sessions.research, oldRoot, newRoot)
+      : undefined,
+    roadmap: sessions.roadmap
+      ? rebaseMovedPath(sessions.roadmap, oldRoot, newRoot)
+      : undefined,
+    steps: rebaseMap(sessions.steps),
+    implement: rebaseMap(sessions.implement),
+    review: sessions.review
+      ? Object.fromEntries(
+          Object.entries(sessions.review).map(([key, paths]) => [
+            key,
+            paths.map((path) => rebaseMovedPath(path, oldRoot, newRoot)),
+          ]),
+        )
+      : undefined,
+    commit: rebaseMap(sessions.commit),
+  };
+}
+
+function relocateSessionFile(
+  file: string,
+  taskId: string,
+  oldRoot: string,
+  newRoot: string,
+  newStatePath: string,
+  relocationNote: string,
+): string {
+  const original = readFileSync(file, "utf8");
+  const lines = original.split("\n");
+  let hasHeader = false;
+  let hasTaskLink = false;
+  let lastEntryId = "";
+  const ids = new Set<string>();
+  const rewritten = lines.map((line) => {
+    if (!line) return line;
+    let entry: Record<string, any>;
+    try {
+      entry = JSON.parse(line) as Record<string, any>;
+    } catch {
+      throw new Error(`Cannot safely relocate malformed Pi session: ${file}`);
+    }
+    if (typeof entry.id === "string") {
+      ids.add(entry.id);
+      lastEntryId = entry.id;
+    }
+    if (entry.type === "session") {
+      hasHeader = true;
+      if (typeof entry.cwd === "string")
+        entry.cwd = rebaseMovedPath(entry.cwd, oldRoot, newRoot);
+      if (typeof entry.parentSession === "string")
+        entry.parentSession = rebaseMovedPath(
+          entry.parentSession,
+          oldRoot,
+          newRoot,
+        );
+    } else if (
+      entry.type === "custom" &&
+      entry.customType === ENTRY_TYPE &&
+      entry.data?.id === taskId
+    ) {
+      hasTaskLink = true;
+      entry.data.statePath = newStatePath;
+    }
+    return JSON.stringify(entry);
+  });
+  if (!hasHeader)
+    throw new Error(
+      `Cannot safely relocate Pi session without a header: ${file}`,
+    );
+  const hadTrailingNewline = original.endsWith("\n");
+  if (hadTrailingNewline && rewritten.at(-1) === "") rewritten.pop();
+  if (hasTaskLink) {
+    let id = randomUUID().slice(0, 8);
+    while (ids.has(id)) id = randomUUID().slice(0, 8);
+    rewritten.push(
+      JSON.stringify({
+        type: "custom_message",
+        customType: KICKOFF_TYPE,
+        content: relocationNote,
+        display: false,
+        id,
+        parentId: lastEntryId || undefined,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+  }
+  if (hadTrailingNewline) rewritten.push("");
+  return rewritten.join("\n");
+}
+
+function atomicWriteTextFiles(updates: Map<string, string>): void {
+  const staged: Array<{
+    path: string;
+    temporary: string;
+    original: string | undefined;
+    mode: number;
+  }> = [];
+  const committed: typeof staged = [];
+  try {
+    for (const [path, content] of updates) {
+      let original: string | undefined;
+      let mode = 0o600;
+      if (existsSync(path)) {
+        const info = lstatSync(path);
+        if (!info.isFile() || info.isSymbolicLink())
+          throw new Error(
+            `Refusing to replace a non-regular relocation target: ${path}`,
+          );
+        original = readFileSync(path, "utf8");
+        mode = info.mode & 0o777;
+      }
+      const temporary = join(
+        dirname(path),
+        `.task-relocate-${randomUUID()}.tmp`,
+      );
+      writeFileSync(temporary, content, {
+        encoding: "utf8",
+        flag: "wx",
+        mode,
+      });
+      staged.push({ path, temporary, original, mode });
+    }
+    for (const item of staged) {
+      renameSync(item.temporary, item.path);
+      committed.push(item);
+    }
+  } catch (error) {
+    let rollbackError: unknown;
+    for (const item of committed.reverse()) {
+      try {
+        if (item.original === undefined) {
+          rmSync(item.path, { force: true });
+        } else {
+          const restore = join(
+            dirname(item.path),
+            `.task-relocate-rollback-${randomUUID()}.tmp`,
+          );
+          writeFileSync(restore, item.original, {
+            encoding: "utf8",
+            flag: "wx",
+            mode: item.mode,
+          });
+          renameSync(restore, item.path);
+        }
+      } catch (failure) {
+        rollbackError ??= failure;
+      }
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      rollbackError
+        ? `Task relocation failed (${detail}) and rollback was incomplete (${String(rollbackError)}). Do not continue this task until its files are checked.`
+        : `Task relocation failed and was rolled back: ${detail}`,
+    );
+  } finally {
+    for (const item of staged)
+      if (existsSync(item.temporary)) rmSync(item.temporary, { force: true });
+  }
+}
+
+function taskIndexPath(root: string, id: string): string {
+  return join(
+    taskIndexDir(),
+    `${createHash("sha256").update(`${root}\0${id}`).digest("hex")}.json`,
+  );
+}
+
+function relocateTask(
+  discovered: DiscoveredTask,
+  currentRoot: string,
+  relocationNote: string,
+): TaskState {
+  const state = loadState(discovered.path);
+  const oldRoot = resolve(discovered.relocatedFrom || state.projectRoot);
+  const newRoot = resolve(currentRoot);
+  if (
+    !discovered.relocatedFrom ||
+    oldRoot !== resolve(state.projectRoot) ||
+    existsSync(oldRoot) ||
+    !pathWithin(oldRoot, resolve(taskDir(state)))
+  )
+    throw new Error(
+      "The task no longer matches the detected project relocation.",
+    );
+  const artifactDir = resolve(
+    newRoot,
+    relative(oldRoot, resolve(taskDir(state))),
+  );
+  const targetStatePath = statePath(artifactDir);
+  if (
+    resolve(discovered.path) !== resolve(targetStatePath) ||
+    !pathWithin(newRoot, resolve(discovered.path))
+  )
+    throw new Error(
+      "The task artifact directory is not inside the renamed project.",
+    );
+  const artifactInfo = lstatSync(artifactDir);
+  if (!artifactInfo.isDirectory() || artifactInfo.isSymbolicLink())
+    throw new Error(
+      `Cannot safely relocate linked task artifacts: ${artifactDir}`,
+    );
+  if (
+    !pathWithin(realpathSync(newRoot), realpathSync(artifactDir)) ||
+    !lstatSync(discovered.path).isFile() ||
+    lstatSync(discovered.path).isSymbolicLink()
+  )
+    throw new Error(
+      "The task state is not a regular file inside the renamed project.",
+    );
+
+  const relocated: TaskState = {
+    ...state,
+    projectRoot: newRoot,
+    artifactDir,
+    contextPath: rebaseMovedPath(state.contextPath, oldRoot, newRoot),
+    sessions: rebaseSessionRefs(state.sessions, oldRoot, newRoot),
+    pendingBaselineDir: state.pendingBaselineDir
+      ? rebaseMovedPath(state.pendingBaselineDir, oldRoot, newRoot)
+      : undefined,
+    interruptedSession: state.interruptedSession
+      ? rebaseMovedPath(state.interruptedSession, oldRoot, newRoot)
+      : undefined,
+  };
+  if (!existsSync(relocated.contextPath))
+    throw new Error(
+      `Task context file is missing after relocation: ${relocated.contextPath}`,
+    );
+  if (relocated.pendingBaselineDir && !existsSync(relocated.pendingBaselineDir))
+    throw new Error(
+      `The task baseline is missing after relocation: ${relocated.pendingBaselineDir}`,
+    );
+
+  const sessionsDir = join(artifactDir, "sessions");
+  const referencedSessions = new Set<string>();
+  const addPath = (path?: string) => {
+    if (path) referencedSessions.add(path);
+  };
+  addPath(relocated.sessions?.collect);
+  addPath(relocated.sessions?.research);
+  addPath(relocated.sessions?.roadmap);
+  for (const sessions of [
+    relocated.sessions?.steps,
+    relocated.sessions?.implement,
+    relocated.sessions?.commit,
+  ])
+    for (const path of Object.values(sessions || {})) addPath(path);
+  for (const paths of Object.values(relocated.sessions?.review || {}))
+    for (const path of paths) addPath(path);
+  addPath(relocated.interruptedSession);
+  for (const session of referencedSessions) {
+    if (!pathWithin(resolve(sessionsDir), resolve(session)))
+      throw new Error(
+        `A saved task session is outside the project-local sessions directory and cannot be relocated safely: ${session}`,
+      );
+    if (!existsSync(session))
+      throw new Error(
+        `A saved task session is missing after relocation: ${session}`,
+      );
+  }
+
+  const updates = new Map<string, string>();
+  if (existsSync(sessionsDir)) {
+    const info = lstatSync(sessionsDir);
+    if (!info.isDirectory() || info.isSymbolicLink())
+      throw new Error(`Cannot safely relocate task sessions: ${sessionsDir}`);
+    for (const entry of readdirSync(sessionsDir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink())
+        throw new Error(
+          `Cannot safely relocate linked session: ${join(sessionsDir, entry.name)}`,
+        );
+      if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+      const file = join(sessionsDir, entry.name);
+      const content = relocateSessionFile(
+        file,
+        state.id,
+        oldRoot,
+        newRoot,
+        targetStatePath,
+        relocationNote,
+      );
+      updates.set(file, content);
+    }
+  }
+  const oldIndex = taskIndexPath(state.projectRoot, state.id);
+  const newIndex = taskIndexPath(newRoot, state.id);
+  mkdirSync(taskIndexDir(), { recursive: true });
+  if (existsSync(newIndex)) {
+    const existing = JSON.parse(readFileSync(newIndex, "utf8")) as {
+      projectRoot?: string;
+      id?: string;
+      statePath?: string;
+    };
+    if (
+      existing.projectRoot !== newRoot ||
+      existing.id !== state.id ||
+      resolve(existing.statePath || "") !== resolve(targetStatePath)
+    )
+      throw new Error(
+        `A conflicting task index entry already exists: ${newIndex}`,
+      );
+  }
+  updates.set(
+    newIndex,
+    `${JSON.stringify({ projectRoot: newRoot, id: state.id, statePath: targetStatePath })}\n`,
+  );
+  updates.set(targetStatePath, `${JSON.stringify(relocated, null, 2)}\n`);
+  atomicWriteTextFiles(updates);
+  try {
+    if (existsSync(oldIndex) && !lstatSync(oldIndex).isSymbolicLink())
+      rmSync(oldIndex, { force: true });
+  } catch {
+    /* A stale old-root index entry is ignored by discovery after relocation. */
+  }
+  return relocated;
+}
+
+async function confirmTaskRelocation(
+  ctx: ExtensionCommandContext,
+  task: DiscoveredTask,
+  currentRoot: string,
+): Promise<TaskState | undefined> {
+  if (!task.relocatedFrom) return task.state;
+  if (!ctx.isIdle()) {
+    ctx.ui.notify(
+      "Wait for Pi to finish or cancel its current run before relocating a task.",
+      "warning",
+    );
+    return undefined;
+  }
+  const currentSession = ctx.sessionManager.getSessionFile();
+  if (
+    taskLink(ctx) ||
+    (currentSession &&
+      pathWithin(resolve(taskDir(task.state)), resolve(currentSession)))
+  ) {
+    ctx.ui.notify(
+      "Start a fresh Pi session in the renamed project before relocating this task; do not migrate an open task session.",
+      "warning",
+    );
+    return undefined;
+  }
+  if (ctx.mode !== "tui") {
+    ctx.ui.notify(
+      `Task ${task.state.id} appears to have moved from ${task.relocatedFrom} to ${currentRoot}. Open it in Pi's terminal UI to confirm relocation.`,
+      "warning",
+    );
+    return undefined;
+  }
+  const confirmed = await ctx.ui.confirm(
+    `Relocate task ${task.state.id}?`,
+    `This task moved from ${task.relocatedFrom} to ${currentRoot}. Update saved task and session paths, then continue its current phase?`,
+  );
+  if (!confirmed) {
+    ctx.ui.notify(
+      `Task ${task.state.id} was not changed; continuation was cancelled.`,
+      "warning",
+    );
+    return undefined;
+  }
+  const latest = loadState(task.path);
+  if (
+    latest.id !== task.state.id ||
+    relocatedProjectRoot(latest, task.path, currentRoot) !== task.relocatedFrom
+  )
+    throw new Error(
+      "Task paths changed while confirming relocation; no files were modified.",
+    );
+  const relocationNote = `The project directory was moved from ${task.relocatedFrom} to ${currentRoot}. Use current project paths; old absolute paths in saved messages or artifacts are historical.`;
+  const relocated = relocateTask(
+    { ...task, state: latest },
+    currentRoot,
+    relocationNote,
+  );
+  ctx.ui.notify(
+    `Task ${relocated.id} was relocated. Opening its ${relocated.phase} session.`,
+    "info",
+  );
+  return relocated;
+}
+
+function taskDisplayState(task: DiscoveredTask, root: string): TaskState {
+  if (!task.relocatedFrom) return task.state;
+  const oldRoot = resolve(task.relocatedFrom);
+  const newRoot = resolve(root);
+  return {
+    ...task.state,
+    projectRoot: newRoot,
+    artifactDir: rebaseMovedPath(taskDir(task.state), oldRoot, newRoot),
+    contextPath: rebaseMovedPath(task.state.contextPath, oldRoot, newRoot),
+  };
 }
 
 function taskDescription(state: TaskState): string {
@@ -2041,18 +2541,18 @@ async function resumeFromCurrentProject(
   if (tasks.length === 1) {
     selected = tasks[0];
   } else if (ctx.mode === "tui") {
-    const options = tasks.map(
-      ({ state }) =>
-        `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}`,
-    );
+    const options = tasks.map((task) => {
+      const state = taskDisplayState(task, root);
+      return `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}${task.relocatedFrom ? ` · moved from ${task.relocatedFrom}` : ""}`;
+    });
     const choice = await ctx.ui.select("Resume task:", options);
     if (choice === undefined) return;
     selected = tasks[options.indexOf(choice)];
   } else {
-    const rows = tasks.map(
-      ({ state }) =>
-        `- ${state.id} · ${taskProgress(state)} · ${taskDescription(state)}`,
-    );
+    const rows = tasks.map((task) => {
+      const state = taskDisplayState(task, root);
+      return `- ${state.id} · ${taskProgress(state)} · ${taskDescription(state)}${task.relocatedFrom ? ` · moved from ${task.relocatedFrom}` : ""}`;
+    });
     await showArtifact(
       ctx,
       "Choose a task to resume",
@@ -2061,7 +2561,10 @@ async function resumeFromCurrentProject(
     return;
   }
 
-  if (selected) await resumeOrOpenTask(pi, ctx, selected.state);
+  if (selected) {
+    const state = await confirmTaskRelocation(ctx, selected, root);
+    if (state) await resumeOrOpenTask(pi, ctx, state);
+  }
 }
 
 async function resumeTaskSession(
@@ -2915,20 +3418,23 @@ export default function taskExtension(pi: ExtensionAPI): void {
           const root = projectRoot(ctx.cwd);
           const tasks = listTasks(root);
           if (ctx.mode === "tui" && tasks.length) {
-            const options = tasks.map(
-              ({ state }) =>
-                `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}`,
-            );
+            const options = tasks.map((task) => {
+              const state = taskDisplayState(task, root);
+              return `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}${task.relocatedFrom ? ` · moved from ${task.relocatedFrom}` : ""}`;
+            });
             const selected = await ctx.ui.select("Continue task:", options);
             if (selected === undefined) return;
             const task = tasks[options.indexOf(selected)];
-            if (task) await continueTaskSession(ctx, loadState(task.path));
+            if (task) {
+              const state = await confirmTaskRelocation(ctx, task, root);
+              if (state) await continueTaskSession(ctx, state);
+            }
             return;
           }
-          const rows = tasks.map(
-            ({ state }) =>
-              `| \`${state.id}\` | ${taskProgress(state)} | ${taskDescription(state).replaceAll("|", "\\|")} |`,
-          );
+          const rows = tasks.map((task) => {
+            const state = taskDisplayState(task, root);
+            return `| \`${state.id}\` | ${taskProgress(state)}${task.relocatedFrom ? ` (moved from ${task.relocatedFrom})` : ""} | ${taskDescription(state).replaceAll("|", "\\|")} |`;
+          });
           await showArtifact(
             ctx,
             "Task list",
@@ -2945,11 +3451,19 @@ export default function taskExtension(pi: ExtensionAPI): void {
               "Wait for Pi to finish or cancel its current run before deleting a task.",
             );
           const root = projectRoot(ctx.cwd);
-          const tasks = listTasks(root);
+          const discovered = listTasks(root);
+          const tasks = discovered.filter((task) => !task.relocatedFrom);
           let target: DiscoveredTask | undefined;
           if (args.length) {
             validateTaskId(args[0]);
-            target = tasks.find(({ state }) => state.id === args[0]);
+            const candidate = discovered.find(
+              ({ state }) => state.id === args[0],
+            );
+            if (candidate?.relocatedFrom)
+              throw new Error(
+                `Task ${args[0]} was moved from ${candidate.relocatedFrom}. Open it with /task ${args[0]} and confirm relocation before deleting it.`,
+              );
+            target = candidate;
             if (!target)
               throw new Error(
                 `Task ${args[0]} was not found in ${root}. Use /task list to see available tasks.`,
@@ -3067,8 +3581,18 @@ export default function taskExtension(pi: ExtensionAPI): void {
               throw new Error(
                 `Task ID mismatch in ${path}: requested ${id}, but state.json contains ${state.id}.`,
               );
-            if (state.projectRoot !== root)
-              throw new Error(projectMismatchMessage(state, root, path));
+            if (resolve(state.projectRoot) !== resolve(root)) {
+              const relocatedFrom = relocatedProjectRoot(state, path, root);
+              if (!relocatedFrom)
+                throw new Error(projectMismatchMessage(state, root, path));
+              const relocated = await confirmTaskRelocation(
+                ctx,
+                { state, path, relocatedFrom },
+                root,
+              );
+              if (relocated) await continueTaskSession(ctx, relocated);
+              return;
+            }
             if (
               ctx.mode === "tui" &&
               !(await ctx.ui.confirm(
