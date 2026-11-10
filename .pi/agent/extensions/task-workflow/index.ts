@@ -40,6 +40,7 @@ type Phase =
   | "steps"
   | "implement"
   | "review"
+  | "commit"
   | "complete";
 type SessionRefs = {
   collect?: string;
@@ -48,6 +49,7 @@ type SessionRefs = {
   steps?: Record<string, string>;
   implement?: Record<string, string>;
   review?: Record<string, string[]>;
+  commit?: Record<string, string>;
 };
 type TaskState = {
   version: 1;
@@ -65,6 +67,10 @@ type TaskState = {
   pendingAutoCommitEligible?: boolean;
   pendingGitRepository?: boolean;
   pendingBaselineDir?: string;
+  commitPendingFiles?: string[];
+  commitPendingHashes?: Record<string, string | null>;
+  commitReady?: boolean;
+  commitResult?: string;
   reviewRound?: number;
   reviewPending?: boolean;
   interruptedSession?: string;
@@ -125,8 +131,8 @@ const HELP = `Task workflow
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
-/task resume                Resume an interrupted run in the current task session
-/task next                  Advance when no questions or proposals are pending
+/task resume                Return to an active task; resume an interrupted run
+/task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
 /task show [FILE.md]        Select or view an existing Markdown artifact without adding it to the session
 /task help                  Show this help
@@ -140,9 +146,12 @@ Starting or opening a specific task requires an explicit ID.
 Context and research share one saved Pi session. Later phases use their own sessions.
 The implementation session stays open for the step and is reused for repairs.
 Each review round uses a fresh read-only session. Review findings live in review-N.md.
-Use /task resume after interrupting a task run to continue its saved session.
+An accepted review enters a separate commit phase before the next implementation step.
+Commit-message generation failures stay in that phase; /task next retries them.
+With manual commits, /task next verifies the reviewed files were committed.
+Use /task resume to return to the active task in this project. It resumes an interrupted run or pending review; otherwise it just opens the saved session.
 After discussion, /task next returns open findings to implementation or accepts
-a clear review. A commit proposal (or automatic commit) follows accepted review.
+a clear review. Accepted reviews enter a separate commit phase; /task next leaves it.
 Use Pi's normal progress and cancellation controls during implementation and review.
 Use /task next when discussion is settled; use /task accept to agree to proposals and advance.
 Agreement is implied by /task accept; add a note only to clarify a choice or decision.
@@ -474,6 +483,13 @@ function projectMismatchMessage(
   return lines.join("\n");
 }
 
+type SessionSwitchOptions = NonNullable<
+  Parameters<ExtensionCommandContext["switchSession"]>[1]
+>;
+type ReplacedContext = Parameters<
+  NonNullable<SessionSwitchOptions["withSession"]>
+>[0];
+
 type DiscoveredTask = { state: TaskState; path: string };
 
 function taskIndexDir(): string {
@@ -609,6 +625,8 @@ function taskProgress(state: TaskState): string {
     return `Complete (${state.completedSteps.length}/${total} steps)`;
   if (state.phase === "implement")
     return `Implementing step ${state.currentStep}${total ? `/${total}` : ""}`;
+  if (state.phase === "commit")
+    return `Commit step ${state.currentStep}${total ? `/${total}` : ""}`;
   if (state.phase === "complete")
     return `Complete (${state.completedSteps.length}${total ? `/${total}` : ""} steps)`;
   const step = state.awaitingReview || state.currentStep;
@@ -1106,11 +1124,146 @@ function openReviewFindings(state: TaskState, step: number): number {
     .length;
 }
 
+type DraftedCommitMessage = { title: string; body: string; fallback?: boolean };
+
+function fallbackCommitMessage(
+  state: TaskState,
+  step: number,
+): DraftedCommitMessage {
+  const files = state.pendingFiles || [];
+  const title =
+    files.length === 1
+      ? `Update ${basename(files[0])}`
+      : `Update reviewed changes for step ${step}`;
+  return {
+    title: title.slice(0, 72),
+    body:
+      state.pendingSummary?.trim().slice(0, 4000) ||
+      `Apply the reviewed changes for step ${step}.`,
+    fallback: true,
+  };
+}
+
+function parseCommitMessage(
+  text: string,
+  state: TaskState,
+  step: number,
+): DraftedCommitMessage {
+  const fallbackBody =
+    state.pendingSummary?.trim().slice(0, 4000) ||
+    `Apply the reviewed changes for step ${step}.`;
+  const accept = (
+    title: unknown,
+    body: unknown,
+  ): DraftedCommitMessage | null => {
+    if (typeof title !== "string" || !title.trim()) return null;
+    const cleanTitle = title
+      .trim()
+      .split(/\r?\n/, 1)[0]
+      .replace(/^(?:title|subject)\s*:\s*/i, "")
+      .trim()
+      .slice(0, 72);
+    if (!cleanTitle) return null;
+    return {
+      title: cleanTitle,
+      body:
+        typeof body === "string" && body.trim()
+          ? body.trim().slice(0, 4000)
+          : fallbackBody,
+    };
+  };
+  const value = text
+    .replace(/^```(?:json|text|markdown)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  const parsedMessage = (candidate: string): DraftedCommitMessage | null => {
+    try {
+      const parsed = JSON.parse(candidate) as {
+        title?: unknown;
+        subject?: unknown;
+        body?: unknown;
+        description?: unknown;
+      };
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        return null;
+      return accept(
+        parsed.title ?? parsed.subject,
+        parsed.body ?? parsed.description,
+      );
+    } catch {
+      return null;
+    }
+  };
+  const whole = parsedMessage(value);
+  if (whole) return whole;
+
+  for (
+    let start = value.indexOf("{");
+    start >= 0;
+    start = value.indexOf("{", start + 1)
+  ) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < value.length; index++) {
+      const char = value[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') quoted = false;
+      } else if (char === '"') quoted = true;
+      else if (char === "{") depth++;
+      else if (char === "}" && --depth === 0) {
+        const extracted = parsedMessage(value.slice(start, index + 1));
+        if (extracted) return extracted;
+        break;
+      }
+    }
+  }
+
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^\*\*|\*\*$/g, ""));
+  const titleLine = lines.findIndex((line) =>
+    /^(?:title|subject)\s*:/i.test(line),
+  );
+  if (titleLine >= 0) {
+    const title = lines[titleLine].replace(/^(?:title|subject)\s*:\s*/i, "");
+    const bodyLine = lines.findIndex(
+      (line, index) =>
+        index > titleLine && /^(?:body|description)\s*:/i.test(line),
+    );
+    const body =
+      bodyLine >= 0
+        ? [
+            lines[bodyLine].replace(/^(?:body|description)\s*:\s*/i, ""),
+            ...lines.slice(bodyLine + 1),
+          ].join("\n")
+        : lines.slice(titleLine + 1).join("\n");
+    const labeled = accept(title || lines[titleLine + 1], body);
+    if (labeled) return { ...labeled, fallback: true };
+  }
+
+  const content = lines
+    .filter(Boolean)
+    .filter(
+      (line) =>
+        !/^(?:here(?:'s| is)\s+(?:the\s+)?(?:commit\s+)?message:?|commit message:?)$/i.test(
+          line,
+        ),
+    );
+  if (content.length) {
+    const plain = accept(content[0], content.slice(1).join("\n"));
+    if (plain) return { ...plain, fallback: true };
+  }
+  return fallbackCommitMessage(state, step);
+}
+
 async function draftCommitMessage(
   ctx: ExtensionContext,
   state: TaskState,
   step: number,
-): Promise<{ title: string; body: string }> {
+): Promise<DraftedCommitMessage> {
   if (!ctx.model)
     throw new Error("Select a model before drafting the commit message.");
   const diff = readFileSync(
@@ -1137,33 +1290,16 @@ async function draftCommitMessage(
     { cacheRetention: "none", sessionId: uuidv7() },
   );
   if (response.stopReason === "error" || response.stopReason === "aborted")
-    throw new Error("Commit-message generation failed.");
+    throw new Error(
+      "Commit-message generation failed. The commit phase remains open; use /task next to retry.",
+    );
   const text = response.content
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("\n")
     .trim();
-  const json = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  let message: { title?: unknown; body?: unknown };
-  try {
-    message = JSON.parse(json) as { title?: unknown; body?: unknown };
-  } catch {
-    throw new Error(
-      "The model did not return a valid commit message. Use /task next to retry.",
-    );
-  }
-  if (
-    typeof message.title !== "string" ||
-    !message.title.trim() ||
-    message.title.includes("\n") ||
-    typeof message.body !== "string" ||
-    !message.body.trim()
-  ) {
-    throw new Error(
-      "The model returned an incomplete commit message. Use /task next to retry.",
-    );
-  }
-  return { title: message.title.trim(), body: message.body.trim() };
+  const parsed = parseCommitMessage(text, state, step);
+  return parsed.fallback ? { ...parsed, fallback: true } : parsed;
 }
 
 type TransitionAssessment = {
@@ -1459,8 +1595,11 @@ function phaseLabel(state: TaskState): string {
               ? "Implementation"
               : state.phase === "review"
                 ? "Review"
-                : "Complete";
-  if (!["steps", "implement", "review"].includes(state.phase)) return phase;
+                : state.phase === "commit"
+                  ? "Commit"
+                  : "Complete";
+  if (!["steps", "implement", "review", "commit"].includes(state.phase))
+    return phase;
   let total: number | undefined;
   try {
     total = stepCount(state);
@@ -1476,7 +1615,7 @@ function sessionDisplayName(
   phase = state.phase,
   step = state.currentStep,
 ): string {
-  const title = ["steps", "implement", "review"].includes(phase)
+  const title = ["steps", "implement", "review", "commit"].includes(phase)
     ? stepTitle(state, step)
     : undefined;
   const part =
@@ -1484,7 +1623,10 @@ function sessionDisplayName(
       ? "context"
       : phase === "research"
         ? "context + research"
-        : phase === "steps" || phase === "implement" || phase === "review"
+        : phase === "steps" ||
+            phase === "implement" ||
+            phase === "review" ||
+            phase === "commit"
           ? `${phase} ${step}`
           : phase;
   return `${state.id} · ${part}${phase === "review" ? ` · r${state.reviewRound || 1}` : ""}${title ? ` · ${title}` : ""}`;
@@ -1507,6 +1649,12 @@ function phaseHint(state: TaskState): string {
     return state.reviewPending
       ? "Review is pending; use /task resume or save the review before /task next."
       : "Discuss findings; when ready, use /task next.";
+  if (state.phase === "commit")
+    return !state.commitReady
+      ? "Commit proposal pending; use /task next to generate or retry it."
+      : state.commitPendingFiles?.length
+        ? "Commit the reviewed files; /task next verifies the commit before continuing."
+        : "Commit action complete or skipped; use /task next to continue.";
   return "Task complete.";
 }
 
@@ -1534,12 +1682,15 @@ function visibleTask(ctx: ExtensionContext): TaskState | undefined {
     if (sessionMatches(ctx, state)) return state;
     const link = taskLink(ctx);
     const current = ctx.sessionManager.getSessionFile();
+    const completedPhaseSession =
+      link?.phase === "review" || link?.phase === "commit"
+        ? sessionFor(state, link.phase, state.currentStep)
+        : undefined;
     if (
       state.phase === "complete" &&
-      link?.phase === "review" &&
+      completedPhaseSession &&
       current &&
-      sessionFor(state) &&
-      resolve(current) === resolve(sessionFor(state)!)
+      resolve(current) === resolve(completedPhaseSession)
     )
       return state;
   } catch {
@@ -1560,8 +1711,13 @@ function sessionFor(
   if (phase === "roadmap") return sessions.roadmap;
   if (phase === "steps") return sessions.steps?.[String(step)];
   if (phase === "implement") return sessions.implement?.[String(step)];
-  if (phase === "review" || phase === "complete")
-    return sessions.review?.[String(step)]?.at(-1);
+  if (phase === "commit") return sessions.commit?.[String(step)];
+  if (phase === "complete")
+    return (
+      sessions.commit?.[String(state.completedSteps.at(-1) || step)] ||
+      sessions.review?.[String(state.completedSteps.at(-1) || step)]?.at(-1)
+    );
+  if (phase === "review") return sessions.review?.[String(step)]?.at(-1);
 }
 
 function setSessionFor(
@@ -1582,6 +1738,7 @@ function setSessionFor(
       ...(sessions.review?.[String(step)] || []),
       file,
     ];
+  else if (phase === "commit") (sessions.commit ??= {})[String(step)] = file;
 }
 
 function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
@@ -1602,7 +1759,7 @@ function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
 
 function configuredModel(phase: Phase): PhaseModel | null | undefined {
   const config = readConfig();
-  if (phase === "complete") return undefined;
+  if (phase === "complete" || phase === "commit") return undefined;
   return config.phaseModels?.[phase];
 }
 
@@ -1644,6 +1801,7 @@ function createPhaseSession(
   phase: Phase,
   step: number,
   parent?: string,
+  visibleMessage?: string,
 ): string {
   mkdirSync(sessionDirectory(state), { recursive: true });
   const session = SessionManager.create(
@@ -1671,6 +1829,8 @@ function createPhaseSession(
     `Task ${state.id}, ${phase} phase${step ? `, step ${step}` : ""}. The approved task artifacts are in ${taskDir(state)}. This is a fresh Pi session. Wait for the next message before taking action.`,
     false,
   );
+  if (visibleMessage)
+    session.appendCustomMessageEntry("task-commit", visibleMessage, true);
   const file = session.getSessionFile();
   if (!file || !existsSync(file))
     throw new Error("Pi did not save the new task session.");
@@ -1688,6 +1848,8 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
     return `Read ${state.contextPath} and ${roadmapPath(state)}. Discuss the design and verification of step ${step}; update agreed task artifacts.`;
   if (phase === "implement")
     return `Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, step)}. Wait for /task next before editing code so the implementation baseline can be captured.`;
+  if (phase === "commit")
+    return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue.`;
   return `Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review step ${step} independently and record findings in ${reviewPath(state, step)}. Each finding must include a short exact diff excerpt. In your response to me, place the same fenced diff excerpt directly beside each finding so I can see the changed code without opening the artifact. Discuss findings with me.`;
 }
 
@@ -1731,7 +1893,8 @@ async function switchPhase(
   step: number,
   kickoff: string,
   existing?: string,
-): Promise<void> {
+  afterSwitch?: (fresh: ReplacedContext) => Promise<void>,
+): Promise<boolean> {
   const previous = JSON.parse(JSON.stringify(state)) as TaskState;
   const parent = ctx.sessionManager.getSessionFile();
   const file = existing || createPhaseSession(state, phase, step, parent);
@@ -1748,15 +1911,18 @@ async function switchPhase(
             { customType: KICKOFF_TYPE, content: kickoff, display: false },
             { triggerTurn: true },
           );
+        if (afterSwitch) await afterSwitch(fresh);
       },
     });
     if (result.cancelled) {
       saveState(previous);
       ctx.ui.notify(
-        "Session switch was cancelled; the task stayed in its previous phase.",
+        `Session switch was cancelled. Use /task ${state.id} to open its saved ${state.phase} phase.`,
         "warning",
       );
+      return false;
     }
+    return true;
   } catch (error) {
     saveState(previous);
     throw error;
@@ -1793,8 +1959,8 @@ async function continueTaskSession(
   let phase = state.phase;
   let step = state.currentStep;
   if (phase === "complete") {
-    phase = "review";
     step = state.completedSteps.at(-1) || step;
+    phase = state.sessions?.commit?.[String(step)] ? "commit" : "review";
   }
   const file = ensurePhaseSession(ctx, state, phase, step);
   if (ctx.sessionManager.getSessionFile() === file) {
@@ -1810,6 +1976,10 @@ async function continueTaskSession(
 }
 
 function resumeKickoff(state: TaskState): string {
+  if (state.phase === "commit")
+    return state.commitReady
+      ? `Resume the separate commit phase for step ${state.currentStep}. Revisit the saved commit result, do not change project code or task artifacts, and wait for /task next before continuing.`
+      : `Resume the separate commit phase for step ${state.currentStep}. The commit result is not ready; use /task next to generate or retry it.`;
   const step = state.awaitingReview || state.currentStep;
   const reviewReport = reviewPath(state, step);
   const reviewReminder =
@@ -1818,6 +1988,80 @@ function resumeKickoff(state: TaskState): string {
       ? ` The review is still pending; finish reviewing step ${step} and save ${reviewReport} before advancing.`
       : "";
   return `Resume task ${state.id} in its current ${state.phase} phase from the saved conversation. Review recent messages and the current project state, continue unfinished work, and update the artifacts required by this phase. Do not repeat completed work or advance phases.${reviewReminder}`;
+}
+
+function hasPendingResume(state: TaskState): boolean {
+  const phaseSession = sessionFor(state);
+  const interrupted =
+    !!state.interruptedSession &&
+    !!phaseSession &&
+    resolve(state.interruptedSession) === resolve(phaseSession);
+  const reviewStep = state.awaitingReview || state.currentStep;
+  const pendingReview =
+    state.phase === "review" &&
+    (state.reviewPending || !existsSync(reviewPath(state, reviewStep)));
+  return interrupted || pendingReview;
+}
+
+async function resumeOrOpenTask(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  state: TaskState,
+): Promise<void> {
+  if (state.phase === "complete" || hasPendingResume(state)) {
+    await resumeTaskSession(pi, ctx, state);
+    return;
+  }
+  await continueTaskSession(ctx, state);
+}
+
+async function resumeFromCurrentProject(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+): Promise<void> {
+  if (!ctx.isIdle())
+    throw new Error(
+      "Wait for Pi to finish or cancel its current run before resuming a task.",
+    );
+  if (taskLink(ctx)) {
+    await resumeOrOpenTask(pi, ctx, requireTask(ctx));
+    return;
+  }
+
+  const root = projectRoot(ctx.cwd);
+  const tasks = listTasks(root).filter(
+    ({ state }) => state.phase !== "complete",
+  );
+  if (!tasks.length)
+    throw new Error(
+      `No active tasks found in ${root}. Use /task TASK-ID to start one.`,
+    );
+
+  let selected: DiscoveredTask | undefined;
+  if (tasks.length === 1) {
+    selected = tasks[0];
+  } else if (ctx.mode === "tui") {
+    const options = tasks.map(
+      ({ state }) =>
+        `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}`,
+    );
+    const choice = await ctx.ui.select("Resume task:", options);
+    if (choice === undefined) return;
+    selected = tasks[options.indexOf(choice)];
+  } else {
+    const rows = tasks.map(
+      ({ state }) =>
+        `- ${state.id} · ${taskProgress(state)} · ${taskDescription(state)}`,
+    );
+    await showArtifact(
+      ctx,
+      "Choose a task to resume",
+      `${rows.join("\n")}\n\nUse /task TASK-ID to open one, then /task resume.`,
+    );
+    return;
+  }
+
+  if (selected) await resumeOrOpenTask(pi, ctx, selected.state);
 }
 
 async function resumeTaskSession(
@@ -1833,16 +2077,7 @@ async function resumeTaskSession(
     throw new Error(
       "Wait for Pi to finish or cancel its current run before resuming a task.",
     );
-  const phaseSession = sessionFor(state);
-  const interrupted =
-    !!state.interruptedSession &&
-    !!phaseSession &&
-    resolve(state.interruptedSession) === resolve(phaseSession);
-  const reviewStep = state.awaitingReview || state.currentStep;
-  const pendingReview =
-    state.phase === "review" &&
-    (state.reviewPending || !existsSync(reviewPath(state, reviewStep)));
-  if (!interrupted && !pendingReview)
+  if (!hasPendingResume(state))
     throw new Error(
       "There is no interrupted run in this task session. Send a normal message to continue the phase.",
     );
@@ -2047,7 +2282,6 @@ async function beginReview(
 }
 
 async function acceptReviewedStep(
-  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   state: TaskState,
   approval: string,
@@ -2106,29 +2340,83 @@ async function acceptReviewedStep(
     );
     return;
   }
+  if (!state.completedSteps.includes(n)) state.completedSteps.push(n);
+  state.completedSteps.sort((a, b) => a - b);
+  state.awaitingReview = undefined;
+  state.reviewPending = undefined;
+  state.reviewRound = undefined;
+  delete state.interruptedSession;
+  state.implementationStarted = false;
+  delete state.commitPendingFiles;
+  delete state.commitPendingHashes;
+  delete state.commitResult;
+  state.commitReady = false;
+  state.phase = "commit";
+  state.currentStep = n;
+  const file = createPhaseSession(
+    state,
+    "commit",
+    n,
+    ctx.sessionManager.getSessionFile(),
+    `Review accepted for step ${n}. This is the separate commit phase. The commit result will appear here; use /task next to generate or retry it if needed.`,
+  );
+  setSessionFor(state, "commit", file, n);
+  saveState(state);
+  await switchPhase(ctx, state, "commit", n, "", file, async (fresh) => {
+    try {
+      await prepareCommitPhase(fresh, state, (content) =>
+        fresh.sendMessage(
+          { customType: "task-commit", content, display: true },
+          { triggerTurn: false },
+        ),
+      );
+    } catch (error) {
+      fresh.ui.notify(
+        error instanceof Error ? error.message : String(error),
+        "error",
+      );
+    }
+  });
+}
+
+async function prepareCommitPhase(
+  ctx: ExtensionContext,
+  state: TaskState,
+  sendResult: (content: string) => Promise<void> | void,
+): Promise<void> {
+  if (state.phase !== "commit" || state.commitReady) return;
+  const n = state.currentStep;
   let result: string;
-  let manualCommitReminder = false;
-  if (state.pendingGitRepository === false || !hasGitRepository(state))
+  let commitPendingFiles: string[] | undefined;
+  let commitPendingHashes: Record<string, string | null> | undefined;
+  if (state.pendingGitRepository === false || !hasGitRepository(state)) {
     result = `Step ${n} accepted. No Git repository; commit skipped.`;
-  else if (!state.pendingFiles?.length)
+  } else if (!state.pendingFiles?.length) {
     result =
       "No code changes were produced, so there is no commit message to propose.";
-  else {
+  } else {
     const message = await draftCommitMessage(ctx, state, n);
     if (readConfig().autoCommit) {
+      if (message.fallback)
+        throw new Error(
+          "The model response was unstructured, so auto-commit was skipped. Use /task next to retry.",
+        );
       if (!state.pendingAutoCommitEligible)
         throw new Error(
           "This step began with existing changes, so it cannot be committed automatically.",
         );
       const sha = commitStep(state, message.title, message.body);
-      result = `Committed step ${n} as ${sha}:\n\n${message.title}\n\n${message.body}`;
+      result = `Committed step ${n} as ${sha}:\n\n${message.title}\n\n${message.body}${message.fallback ? "\n\nNote: Used a fallback message because the model response was unavailable or unstructured." : ""}`;
     } else {
-      result = `Suggested commit for step ${n}:\n\n${message.title}\n\n${message.body}`;
-      manualCommitReminder = true;
+      result = `${message.fallback ? "Fallback commit proposal" : `Suggested commit for step ${n}`}:\n\n${message.title}\n\n${message.body}`;
+      commitPendingFiles = [...state.pendingFiles];
+      commitPendingHashes = { ...(state.pendingHashes || {}) };
     }
   }
-  if (!state.completedSteps.includes(n)) state.completedSteps.push(n);
-  state.completedSteps.sort((a, b) => a - b);
+  state.commitPendingFiles = commitPendingFiles;
+  state.commitPendingHashes = commitPendingHashes;
+  state.commitResult = result;
+  state.commitReady = true;
   if (state.pendingBaselineDir)
     rmSync(state.pendingBaselineDir, { recursive: true, force: true });
   state.pendingBaselineDir = undefined;
@@ -2137,11 +2425,47 @@ async function acceptReviewedStep(
   state.pendingSummary = undefined;
   state.pendingAutoCommitEligible = undefined;
   state.pendingGitRepository = undefined;
-  state.awaitingReview = undefined;
-  state.reviewPending = undefined;
-  state.reviewRound = undefined;
-  delete state.interruptedSession;
-  state.implementationStarted = false;
+  saveState(state);
+  ctx.ui.setWidget(
+    PHASE_WIDGET,
+    [`Task ${state.id} · ${phaseLabel(state)}`, phaseHint(state)],
+    { placement: "aboveEditor" },
+  );
+  await sendResult(result);
+}
+
+async function finishCommitPhase(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  state: TaskState,
+): Promise<void> {
+  if (!state.commitReady) {
+    await prepareCommitPhase(ctx, state, (content) =>
+      pi.sendMessage({ customType: "task-commit", content, display: true }),
+    );
+    return;
+  }
+  const n = state.currentStep;
+  if (state.commitPendingFiles?.length) {
+    const expected = new Set(state.commitPendingFiles);
+    const stillChanged = changedPaths(state).filter((file) =>
+      expected.has(file),
+    );
+    const mismatched = state.commitPendingFiles.filter(
+      (file) =>
+        fileHash(state.projectRoot, file) !== state.commitPendingHashes?.[file],
+    );
+    if (stillChanged.length || mismatched.length) {
+      const files = [...new Set([...stillChanged, ...mismatched])];
+      throw new Error(
+        `Commit phase is not complete. Commit the reviewed versions of these files before /task next: ${files.join(", ")}`,
+      );
+    }
+  }
+  delete state.commitPendingFiles;
+  delete state.commitPendingHashes;
+  delete state.commitReady;
+  delete state.commitResult;
   const more = n < stepCount(state);
   if (more) {
     state.phase = "implement";
@@ -2152,7 +2476,7 @@ async function acceptReviewedStep(
       state,
       "implement",
       n + 1,
-      `Step ${n} accepted. ${result}${manualCommitReminder ? `\n\nIMPORTANT: autoCommit is disabled, so step ${n} has not been committed. In your visible response, explicitly remind the user to commit these changes manually and include the suggested commit title and body above.` : ""}\n\nStep ${n + 1} is ready. Use /task next when you want to start implementation; that command captures its baseline first.`,
+      `The commit phase for step ${n} is complete. Step ${n + 1} is ready. Use /task next when you want to start implementation; that command captures its baseline first.`,
     );
   } else {
     state.phase = "complete";
@@ -2160,7 +2484,7 @@ async function acceptReviewedStep(
     updatePhaseUi(pi, ctx, state, true);
     pi.sendMessage({
       customType: "task-commit",
-      content: `${result}\n\nAll planned steps are complete.`,
+      content: `The commit phase for step ${n} is complete. All planned steps are complete.`,
       display: true,
     });
   }
@@ -2328,11 +2652,15 @@ export default function taskExtension(pi: ExtensionAPI): void {
           "This task session is not the active phase. Use /task TASK-ID to continue the current session.",
       };
     if (state.phase === "implement" && state.implementationStarted) return;
-    const allowed = new Set([
-      ...READ_TOOLS,
-      ARTIFACT_TOOL,
-      ...(state.phase === "review" ? readConfig().reviewTools || [] : []),
-    ]);
+    const allowed = new Set(
+      state.phase === "commit"
+        ? READ_TOOLS
+        : [
+            ...READ_TOOLS,
+            ARTIFACT_TOOL,
+            ...(state.phase === "review" ? readConfig().reviewTools || [] : []),
+          ],
+    );
     if (allowed.has(event.toolName)) return;
     return {
       block: true,
@@ -2422,24 +2750,27 @@ export default function taskExtension(pi: ExtensionAPI): void {
     }
     const writable = state.phase === "implement" && state.implementationStarted;
     const config = readConfig();
-    event.systemPromptOptions.selectedTools = writable
-      ? [
-          ...new Set([
-            ...pi.getActiveTools(),
-            "read",
-            "bash",
-            "edit",
-            "write",
-            ...READ_TOOLS,
-            ARTIFACT_TOOL,
-          ]),
-        ]
-      : [
-          ...READ_TOOLS,
-          ARTIFACT_TOOL,
-          ...(state.phase === "review" ? config.reviewTools || [] : []),
-        ];
-    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`;
+    event.systemPromptOptions.selectedTools =
+      state.phase === "commit"
+        ? [...READ_TOOLS]
+        : writable
+          ? [
+              ...new Set([
+                ...pi.getActiveTools(),
+                "read",
+                "bash",
+                "edit",
+                "write",
+                ...READ_TOOLS,
+                ARTIFACT_TOOL,
+              ]),
+            ]
+          : [
+              ...READ_TOOLS,
+              ARTIFACT_TOOL,
+              ...(state.phase === "review" ? config.reviewTools || [] : []),
+            ];
+    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
       state.phase === "collect"
         ? "After each user message, keep context.md concise and current with confirmed facts and important provisional options. Do not invent code findings."
@@ -2455,7 +2786,11 @@ export default function taskExtension(pi: ExtensionAPI): void {
                   : "Implementation has not started. Read the approved artifacts, but do not edit project code until /task next captures the baseline."
                 : state.phase === "review"
                   ? `Review step ${state.currentStep} independently with read-only project tools. Read the approved artifacts and ${join(taskDir(state), `implementation-${state.currentStep}.diff`)}. If a skill named ${reviewSkillName(config)} is available, follow its compatible read-only instructions. Save ${reviewPath(state, state.currentStep)} with a Summary and Findings section. Each finding needs a ### heading, Status: open, a precise code location, and one short exact fenced diff excerpt. Write "No findings." when clear. In your final response, show every actionable finding with its severity, code location, concrete impact, and a short fenced diff excerpt copied exactly from implementation-${state.currentStep}.diff beside the explanation. Do not replace the excerpt with only a path, line number, or link to the review artifact. If there are no findings, say so plainly. Discuss findings with the user; update their statuses only after agreement. Do not edit project code.`
-                  : "The task is complete. Do not edit project files through this task session.";
+                  : state.phase === "commit"
+                    ? state.commitReady
+                      ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
+                      : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. This is the separate commit phase."
+                    : "The task is complete. Do not edit project files through this task session.";
     const phaseSkill =
       state.phase === "research" ||
       state.phase === "roadmap" ||
@@ -2572,11 +2907,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
         if (command === "resume") {
           if (args.length)
             throw new Error("Usage: /task resume (no task ID is needed).");
-          if (!taskLink(ctx))
-            throw new Error(
-              "No task is attached to this session. Open one with /task TASK-ID, then run /task resume.",
-            );
-          await resumeTaskSession(pi, ctx, requireTask(ctx));
+          await resumeFromCurrentProject(pi, ctx);
           return;
         }
         if (command === "list") {
@@ -2814,7 +3145,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           await showArtifact(
             ctx,
             "Task status",
-            `Task: ${state.id}\nPhase: ${state.phase}\nCurrent step: ${state.currentStep}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nStep skill: ${configuredPhaseSkill(config, "steps") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`,
+            `Task: ${state.id}\nPhase: ${state.phase}\nCurrent step: ${state.currentStep}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nStep skill: ${configuredPhaseSkill(config, "steps") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`,
           );
           return;
         }
@@ -2881,6 +3212,14 @@ export default function taskExtension(pi: ExtensionAPI): void {
             throw new Error(
               `The review is incomplete. Run /task resume to continue and save ${reviewPath(state, reviewStep)} before advancing.`,
             );
+          if (state.phase === "commit") {
+            if (command === "accept" && note)
+              throw new Error(
+                "The commit phase does not accept approval notes. Use /task next when ready to continue.",
+              );
+            await finishCommitPhase(pi, ctx, state);
+            return;
+          }
           const assessment = await assessTransition(ctx, state, command, note);
           if (assessment.openQuestions.length)
             throw new Error(
@@ -2956,7 +3295,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
             return;
           }
           if (state.phase === "review") {
-            await acceptReviewedStep(pi, ctx, state, approval);
+            await acceptReviewedStep(ctx, state, approval);
             return;
           }
         }

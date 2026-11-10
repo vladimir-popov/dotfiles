@@ -2,7 +2,7 @@
   "name": "pi-nvim",
   "pi": {
     "extensions": [
-      "./pi/index.ts"
+      "./pi-nvim/index.ts"
     ]
   },
   "scripts": {
