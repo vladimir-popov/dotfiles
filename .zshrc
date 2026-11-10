@@ -230,8 +230,8 @@ if [[ -n ${PROJECTS:-} && -d "$PROJECTS/dash" ]]; then
   export LLM_PROVIDER=openrouter
   export LLM_MODEL=openai/gpt-6-luna
 else
-  export LLM_PROVIDER=домашний_провайдер
-  export LLM_MODEL=модель_доступная_у_него
+  export LLM_PROVIDER=openai-codex
+  export LLM_MODEL=gpt-6-luna
 fi
 
 alias p='pi --provider "$LLM_PROVIDER" --model "$LLM_MODEL"'
