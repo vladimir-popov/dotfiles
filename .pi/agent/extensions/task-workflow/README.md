@@ -4,7 +4,7 @@ A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-speci
 
 ![A small waterfall flowing into a river past stepping stones](assets/task-flow-waterfall.png)
 
-`/task` guides a coding task through context collection, research, roadmap, step design, implementation, review, and a separate commit phase. Context and research share one saved Pi session. Later phases use separate sessions, with compact task artifacts carrying agreed decisions forward.
+`/task` guides a coding task through context collection, research, roadmap, implementation, review, and a separate commit phase. Each implementation session starts with final discussion of just its current step before coding begins. Context and research share one saved Pi session; later phases use separate sessions, with compact task artifacts carrying agreed decisions forward.
 
 ## 🔄 Workflow
 
@@ -12,17 +12,16 @@ A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-speci
 flowchart LR
     A["Context"] -->|/task next| B["Research"]
     B -->|/task next| C["Roadmap"]
-    C -->|/task next| D["Step design"]
-    D -->|/task next: another step| D
-    D -->|/task next: all designed| E["Implement"]
+    C -->|/task next| D["Step preparation"]
+    D -->|/task next: finalize current step and capture baseline| E["Implement"]
     E -->|/task next: ready| F["Review"]
     F -->|/task next: open findings| E
     F -->|/task next: clear| G["Commit phase"]
-    G -->|/task next: next step| E
+    G -->|/task next: next step| D
     G -->|/task next: final step| H["Complete"]
 ```
 
-Context → research changes the rules inside the same conversation. The implementation session is reused after review finds issues. Each review round opens a fresh session. A clear review opens a separate commit phase; the next step cannot start until that phase is explicitly completed. In Git projects, manual mode requires the reviewed files to be committed before `/task next`; `autoCommit: true` commits them automatically. Projects without Git still show the phase but skip the Git action.
+Context → research changes the rules inside the same conversation. Each step's preparation discussion and implementation share one saved session; after review finds issues, repairs return to that same session. Each review round opens a fresh session. A clear review opens a separate commit phase; the next step cannot start until that phase is explicitly completed. In Git projects, manual mode requires the reviewed files to be committed before `/task next`; `autoCommit: true` commits them automatically. Projects without Git still show the phase but skip the Git action.
 
 ## 📦 Installation
 
@@ -58,7 +57,7 @@ Pi discovers the extension and bundled skill from the repository's `extensions/`
 
 ### Optional phase skills
 
-The repository includes the optional `task-review` skill. The extension asks Pi to use it during the review phase when it is installed and available; without it, review still works using the extension's built-in instructions. Configure discovered Pi skills in the `skills` object to supplement research, roadmap, step-design, or review prompts. Skills are optional; a missing skill does not block the workflow, and `null` disables a phase skill. The Pi package installation above discovers the bundled review skill automatically. For a manual installation, first clone the repository as shown above, then copy the skill into Pi's skills directory:
+The repository includes the optional `task-review` skill. The extension asks Pi to use it during the review phase when it is installed and available; without it, review still works using the extension's built-in instructions. Configure discovered Pi skills in the `skills` object to supplement research, roadmap, current-step preparation, legacy step-design, or review prompts. Skills are optional; a missing skill does not block the workflow, and `null` disables a phase skill. The Pi package installation above discovers the bundled review skill automatically. For a manual installation, first clone the repository as shown above, then copy the skill into Pi's skills directory:
 
 ```bash
 mkdir -p ~/.pi/agent/skills/task-review
@@ -69,7 +68,7 @@ cp -R pi-task-workflow/skills/task-review/. ~/.pi/agent/skills/task-review/
 
 Start Pi in the project directory and enter `/task TASK-100500`. Pi asks whether to create a missing task or continue an existing one. Declining leaves the current session unchanged. `/task` and `/task list` show tasks with a short state description and open the same selector in the terminal UI. Existing IDs also appear in command completion. If you rename a project directory, close Pi and start it from the new path. In the terminal UI, `/task` or `/task resume` can show project-local tasks marked as moved and ask for confirmation before relocating their state and saved sessions. Declining leaves the task unchanged. Outside the terminal UI, relocation is refused; tasks with artifact directories outside the project are not auto-relocated. Session/state paths are rebased, but historical prose in the conversation or artifacts is not rewritten.
 
-The extension shows the current phase in a small header above the editor when a task session opens. Once Pi finishes a response, the second line tells you when `/task next` is useful; a pending proposal may instead need `/task accept`. Pi's built-in footer shows the session name. For step design, implementation, review, and commit, the extension adds a short title from the current numbered roadmap step to that name. These UI labels do not enter the model conversation.
+The extension shows the current phase in a small header above the editor when a task session opens. Once Pi finishes a response, the second line tells you when `/task next` is useful; a pending proposal may instead need `/task accept`. Pi's built-in footer shows the session name. For implementation preparation, implementation, review, and commit, the extension adds a short title from the current numbered roadmap step to that name. These UI labels do not enter the model conversation.
 
 Phase kickoffs are hidden extension messages. They guide Pi and start its work without appearing in the editor's ↑ history. After a session switch, ↑ browses the new session's history; the `/task next` command entered in the previous session may therefore not be the first item.
 
@@ -83,7 +82,7 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task status` | Show the phase, step, session paths, review status, and settings without adding text to the conversation. |
 | `/task resume` | Return to the active task in this project. If multiple tasks are available, choose one in the terminal UI; outside it, use `/task TASK-ID` to select. An interrupted run or pending review resumes automatically; otherwise the saved task session simply opens. |
 | `/task show [FILE.md]` | Select an existing Markdown artifact or show the named file without adding it to the conversation. File names have completion. |
-| `/task next` | Advance after checking the current discussion. In a fresh implementation session, capture a baseline and begin work. In the commit phase, verify the reviewed files are committed before continuing. |
+| `/task next` | Advance after checking the current discussion. In implementation preparation, finalize the current step design, capture a baseline, and begin work. In the commit phase, verify the reviewed files are committed before continuing. |
 | `/task accept [NOTE]` | Agree to pending proposals and advance. With no proposal, act like `/task next`. A note is optional. |
 | `/task help` | Show a short command summary outside the conversation. |
 
@@ -121,12 +120,12 @@ An ID is required to create or open a particular task; `/task` alone opens the l
 | **Context** | Describe the problem, constraints, and possible approaches over several messages. | Pi keeps `context.md` compact and current after each answer. |
 | **Research** | Continue in the same session; inspect code and discuss feasibility, code locations, and unresolved questions. | Agreed findings update `context.md`. Open doubts stay out. |
 | **Roadmap** | Discuss a numbered plan. New agreed requirements update context and cause a revised complete roadmap proposal. | `context.md` and a draft `roadmap.md`; `/task next` finalizes the roadmap. Top-level steps must be numbered consecutively from 1; short bold titles and dash explanations are preferred, but ordinary numbered Markdown steps are accepted. |
-| **Step design** | Discuss each step's approach and checks. Add or revise roadmap items when agreed. | `context.md`, `roadmap.md`, and `step-N.md` as needed; `/task next` finalizes the current step. |
-| **Implementation** | Work on the current step in a normal, saved Pi session. After review, repair open findings in that same session. | Project code may change. `/task next` writes `implementation-N.diff` and opens review. |
+| **Step design** | Temporary compatibility phase for tasks created with an earlier workflow version. New tasks skip it. **TODO: remove this phase after legacy tasks have been migrated or the compatibility window is intentionally ended.** | Existing tasks finish this phase normally. |
+| **Implementation** | Each step opens in a saved preparation session. Pi starts by summarizing the roadmap item and stating that this is the final discussion before coding. Discuss only the current step and its checks. `/task next` checks for open questions/proposals, finalizes `step-N.md`, captures the baseline, and starts coding in the same session. After review, repair open findings in that session. | Only the current step needs a `step-N.md`; future step designs are deferred. `/task next` after implementation writes `implementation-N.diff` and opens review. |
 | **Review** | Inspect the code with read-only project tools in a fresh session. Discuss and track findings. Each finding includes a short exact excerpt from the diff in both the saved review and Pi's response. | `review-N.md`; older rounds are archived as `review-N-round-M.md`. `/task next` returns open findings to implementation or accepts a clear review. |
 | **Commit** | A distinct phase after review acceptance, with its own saved session and visible commit result. With `autoCommit: false`, commit the reviewed files manually; `/task next` verifies they are committed before continuing. With `autoCommit: true`, the extension commits them automatically. | Commit title/body are shown in the commit session; no separate Markdown artifact. |
 
-On accepting a clear review, the extension enters a separate commit phase and opens its own saved session before generating the commit result. With `autoCommit: true`, it commits the reviewed files automatically and shows the result there. Otherwise it proposes a commit title and body; `/task next` remains blocked until the reviewed file contents have been committed. If commit-message generation fails, the task remains in the commit phase and `/task next` retries generation. If the model response is unstructured, manual mode uses a labeled fallback based on the changed file names and implementation summary; auto-commit mode skips the commit and asks for a retry. Once the commit phase ends, the next step's implementation session opens, ready for `/task next` to start editing. After the final step's commit phase, the task is complete. Projects without Git, and steps with no code changes, still pass through the phase but have no commit action.
+On accepting a clear review, the extension enters a separate commit phase and opens its own saved session before generating the commit result. With `autoCommit: true`, it commits the reviewed files automatically and shows the result there. Otherwise it proposes a commit title and body; `/task next` remains blocked until the reviewed file contents have been committed. If commit-message generation fails, the task remains in the commit phase and `/task next` retries generation. If the model response is unstructured, manual mode uses a labeled fallback based on the changed file names and implementation summary; auto-commit mode skips the commit and asks for a retry. Once the commit phase ends, the next step's preparation session opens with a short summary of its roadmap scope. After the final step's commit phase, the task is complete. Projects without Git, and steps with no code changes, still pass through the phase but have no commit action.
 
 `/task resume` returns to the active task in the current project, including from a fresh `/new` session. If several active tasks exist, the terminal UI offers a selector; outside it, use `/task TASK-ID` to choose one. It also detects confirmed project-directory renames for project-local tasks. An aborted run resumes in its saved session with current phase instructions. A review with no saved `review-N.md` also resumes; `/task next` remains blocked until that artifact is saved. If no run needs resuming, the command simply opens the saved task session. It does not advance the phase or clear pending artifacts.
 
@@ -138,9 +137,9 @@ The task instructions tell Pi to converse in your language, including explanatio
 
 Context and research use the same Pi conversation, so research sees the original task description and the full context discussion. `/task next` changes the phase instructions and allowed tools without switching sessions. A configured research model is selected at this boundary; otherwise the current model continues.
 
-Roadmap, each step design, each step implementation, each review round, and each commit phase have their own saved sessions. They see their own messages, Pi's normal instructions, the phase instruction, and task artifacts they read. They do not inherit the preceding phase's chat transcript. The durable handoff is `context.md`, `roadmap.md`, and `step-N.md`; the commit session keeps the commit result and its phase boundary.
+Roadmap, each step's implementation session, each review round, and each commit phase have their own saved sessions. A new implementation session starts with a preparation discussion and a short summary of the current roadmap item; the same session continues into coding after `/task next` captures the baseline. It does not inherit the roadmap chat transcript. The durable handoff is `context.md`, `roadmap.md`, and the current `step-N.md`; the commit session keeps the commit result and its phase boundary.
 
-The implementation session stays with its step. Returning from review restores that same conversation, including implementation decisions and tool output, and adds the current `review-N.md` as repair guidance. Review is a separate conversation and sees task artifacts, the implementation diff, and code it reads. Each repeated review is a new conversation, so it checks the repaired code independently. Sessions are saved in `<artifactDir>/sessions/`, next to the task artifacts. Opening an older task without a session map creates a saved session for its current phase; earlier background worker conversations cannot be reconstructed.
+Returning from review restores that step's implementation session, including preparation decisions, implementation messages, and tool output, and adds the current `review-N.md` as repair guidance. Review is a separate conversation and sees task artifacts, the implementation diff, and code it reads. Each repeated review is a new conversation, so it checks the repaired code independently. Sessions are saved in `<artifactDir>/sessions/`, next to the task artifacts. Opening an older task without a session map creates a saved session for its current phase; earlier background worker conversations cannot be reconstructed.
 
 ## ⚙️ Configuration
 
@@ -181,8 +180,8 @@ The model IDs above are examples. Use a provider and model available in your Pi 
 | --- | --- | --- |
 | `artifactDir` | Nonempty path template; `{projectRoot}/.agents/projects/{taskId}` | Directory for all task artifacts and saved sessions. A relative path resolves from the project root. `{projectRoot}` and `{taskId}` are replaced when a task is created. `/task TASK-ID --dir PATH` overrides it for that task. Existing tasks keep the directory recorded in `state.json`. |
 | `autoCommit` | Boolean; `false` | After a clear review in a Git project, `false` prepares an English commit title and body; `true` commits the reviewed code files. Automatic commit requires a clean code working tree when implementation starts. With no Git repository, neither mode creates a commit. |
-| `phaseModels` | Object; `{}` | Model overrides by phase. Valid keys: `collect`, `research`, `roadmap`, `steps`, `implement`, `review`. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place. |
-| `skills` | Object; `{ "review": "task-review" }` | Maps phase names to Pi skill names. Valid keys: `research`, `roadmap`, `steps`, `review`. Each value is a skill name or `null`; omitted research/roadmap/steps entries add no skill, and omitted `review` uses `task-review`. A missing skill does not block the phase. `null` disables a phase skill. Use names such as `roadmap-planning`, not paths to `SKILL.md`. |
+| `phaseModels` | Object; `{}` | Model overrides by phase. Valid keys: `collect`, `research`, `roadmap`, `steps`, `implement`, `review`. New tasks use `phaseModels.implement` throughout step preparation and coding; `phaseModels.steps` remains for tasks already in the legacy Step design phase. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place. |
+| `skills` | Object; `{ "review": "task-review" }` | Maps phase names to Pi skill names. Valid keys: `research`, `roadmap`, `steps`, `review`. For new tasks, `skills.steps` supplements implementation preparation; it remains the Step design skill for legacy tasks. Each value is a skill name or `null`; omitted research/roadmap/steps entries add no skill, and omitted `review` uses `task-review`. A missing skill does not block the phase. `null` disables a phase skill. Use names such as `roadmap-planning`, not paths to `SKILL.md`. |
 | `reviewSkill` | Pi skill name or `null`; unset (deprecated) | Legacy alias for `skills.review`. `skills.review` takes precedence when both are set. |
 | `reviewTools` | Array of tool names; `[]` | Adds tools to review's default set: `read`, `grep`, `find`, `ls`, and `task_write_artifact`. Add only tools you trust for read-only project work. This setting does not remove default tools. |
 | `allowTreeNavigation` | Boolean; `false` | Allows Pi's `/tree` command inside task sessions when `true`. Branches still share the same task state and artifacts. |
@@ -222,7 +221,7 @@ The review phase also asks Pi to show each finding's severity, location, impact,
 
 ### Safety mechanisms
 
-The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks calls to other tools. Context, research, roadmap, and step design allow reading project files and writing task artifacts. Implementation permits code editing only after its baseline is captured. Review and commit use read-only tools; commit-phase code must be committed through Git outside the model's tool access. These are Pi tool controls, not operating system file permissions; a user command or another extension's own code can still write files.
+The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks calls to other tools. Context, research, roadmap, and implementation preparation allow reading project files and writing task artifacts. Implementation permits code editing only after its baseline is captured. Review and commit use read-only tools; commit-phase code must be committed through Git outside the model's tool access. These are Pi tool controls, not operating system file permissions; a user command or another extension's own code can still write files.
 
 ### Tree navigation
 
