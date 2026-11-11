@@ -1342,16 +1342,23 @@ function taskLink(ctx: ExtensionContext): TaskLink | undefined {
   return undefined;
 }
 
-function requireTask(ctx: ExtensionContext): TaskState {
+function requireTask(
+  ctx: ExtensionContext,
+  maintainLegacyFiles = true,
+): TaskState {
   const link = taskLink(ctx);
   if (!link)
     throw new Error("No task is attached to this session. Use /task TASK-ID.");
   const root = projectRoot(ctx.cwd);
   let linked: TaskState;
   try {
-    linked = loadState(link.statePath);
+    linked = loadState(link.statePath, maintainLegacyFiles);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (
+      (error as NodeJS.ErrnoException).code !== "ENOENT" ||
+      !maintainLegacyFiles
+    )
+      throw error;
     const recovered = listTasks(root).find((task) => task.state.id === link.id);
     if (!recovered) throw error;
     linked = recovered.state;
@@ -1364,6 +1371,16 @@ function requireTask(ctx: ExtensionContext): TaskState {
   if (root !== linked.projectRoot)
     throw new Error(projectMismatchMessage(linked, root, link.statePath));
   return linked;
+}
+
+function taskStatusText(ctx: ExtensionContext, state: TaskState): string {
+  const config = readConfig();
+  const model = configuredModel(state.phase);
+  const phaseStatus =
+    state.phase === "implement" && !state.implementationStarted
+      ? "implementation preparation"
+      : state.phase;
+  return `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
 }
 
 function roadmapPath(state: TaskState): string {
@@ -3541,6 +3558,20 @@ export default function taskExtension(pi: ExtensionAPI): void {
       description: `/task ${command}`,
       handler: (ctx) => {
         if (!ctx.isIdle()) {
+          if (command === "status") {
+            try {
+              ctx.ui.notify(
+                `Task status\n\n${taskStatusText(ctx, requireTask(ctx, false))}`,
+                "info",
+              );
+            } catch (error) {
+              ctx.ui.notify(
+                error instanceof Error ? error.message : String(error),
+                "warning",
+              );
+            }
+            return;
+          }
           ctx.ui.notify(
             `Wait for Pi to finish before using /task ${command}.`,
             "warning",
@@ -4238,20 +4269,10 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             );
           return;
         }
-        const state = requireTask(ctx);
+        const state = requireTask(ctx, command !== "status");
         if (command === "status") {
           if (args.length) throw new Error("Usage: /task status");
-          const config = readConfig();
-          const model = configuredModel(state.phase);
-          const phaseStatus =
-            state.phase === "implement" && !state.implementationStarted
-              ? "implementation preparation"
-              : state.phase;
-          await showArtifact(
-            ctx,
-            "Task status",
-            `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`,
-          );
+          await showArtifact(ctx, "Task status", taskStatusText(ctx, state));
           return;
         }
         if (command === "show") {
