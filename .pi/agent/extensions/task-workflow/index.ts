@@ -386,7 +386,8 @@ function configuredPhaseSkill(
 ): string | null | undefined {
   const skill = config.skills?.[phase];
   if (skill !== undefined) return skill;
-  return phase === "review" ? config.reviewSkill : undefined;
+  if (phase !== "review") return undefined;
+  return config.reviewSkill === undefined ? "task-review" : config.reviewSkill;
 }
 
 function reviewSkillName(config: Config): string {
@@ -1237,14 +1238,6 @@ function writeArtifact(
       "This task uses a legacy context file outside artifactDir. Move it into the task directory before writing.",
     );
   }
-  if (kind === "review") {
-    const title = `# Review: step ${targetStep}`;
-    const trimmed = content.replace(/\r\n/g, "\n").trimStart();
-    content = /^# [^\n]*/.test(trimmed)
-      ? trimmed.replace(/^# [^\n]*/, title)
-      : `${title}\n\n${trimmed}`;
-    validateReviewSnippets(state, targetStep, content);
-  }
   if (existsSync(path) && lstatSync(path).isSymbolicLink())
     throw new Error(`Refusing to replace a symbolic link: ${path}`);
   const temporary = join(taskDir(state), `.task-write-${randomUUID()}.tmp`);
@@ -1578,48 +1571,8 @@ function fileHash(root: string, file: string): string | null {
     : null;
 }
 
-function validateReviewSnippets(
-  state: TaskState,
-  step: number,
-  content: string,
-): void {
-  if (!content.startsWith(`# Review: step ${step}\n`))
-    throw new Error(`Review must start with "# Review: step ${step}".`);
-  if (!content.includes("\n## Summary\n"))
-    throw new Error("Review needs a ## Summary section.");
-  if (!content.includes("\n## Findings\n"))
-    throw new Error("Review needs a ## Findings section.");
-  const diff = readFileSync(
-    join(taskDir(state), `implementation-${step}.diff`),
-    "utf8",
-  );
-  const snippets = [...content.matchAll(/```diff\r?\n([\s\S]*?)\r?\n```/g)].map(
-    (match) => match[1],
-  );
-  const findings = [...content.matchAll(/^### /gm)].length;
-  if (snippets.length !== findings)
-    throw new Error(
-      "Each review finding must include one fenced diff snippet.",
-    );
-  for (const snippet of snippets)
-    if (!snippet.trim() || !diff.includes(snippet))
-      throw new Error("A review snippet does not match implementation-N.diff.");
-  for (const section of content.split(/^### /m).slice(1)) {
-    const statuses = [
-      ...section.matchAll(/^Status: (open|resolved|dismissed)$/gm),
-    ];
-    if (statuses.length > 1)
-      throw new Error("Each review finding may have only one Status line.");
-    if (/^Status: /m.test(section) && statuses.length !== 1)
-      throw new Error(
-        "Review finding status must be open, resolved, or dismissed.",
-      );
-  }
-}
-
 function openReviewFindings(state: TaskState, step: number): number {
   const content = readFileSync(reviewPath(state, step), "utf8");
-  validateReviewSnippets(state, step, content);
   return content
     .split(/^### /m)
     .slice(1)
@@ -2384,7 +2337,7 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
   }
   if (phase === "commit")
     return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue.`;
-  return `Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review step ${step} independently and record findings in ${reviewPath(state, step)}. Each finding must include exactly one fenced code block labeled diff (open the fence with three backticks followed by diff), containing a short exact excerpt copied verbatim from implementation-${step}.diff, including its diff prefixes and spacing. Do not use another language label such as lua. In your response to me, place the same fenced diff excerpt directly beside each finding so I can see the changed code without opening the artifact. Discuss findings with me.`;
+  return `Review step ${step}. Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against the approved scope and inspect relevant project code. Save the review at ${reviewPath(state, step)} using task_write_artifact with artifact "review" and step ${step}. Do not edit project code or advance the workflow. Discuss findings with me and update their statuses only after we agree.`;
 }
 
 async function enterResearch(
@@ -2882,7 +2835,7 @@ async function acceptReviewedStep(
       state,
       "implement",
       n,
-      `Read the agreed review findings in ${reviewPath(state, n)}. Fix only findings still marked Status: open. Preserve the existing implementation context in this session. Run focused checks; do not commit. Use /task next when ready for another review.`,
+      `Read the agreed review findings in ${reviewPath(state, n)}. Fix findings marked Status: open or with no status; only findings explicitly marked resolved or dismissed are closed. Preserve the existing implementation context in this session. Run focused checks; do not commit. Use /task next when ready for another review.`,
       state.sessions!.implement![String(n)],
     );
     return;
@@ -3145,7 +3098,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
     name: ARTIFACT_TOOL,
     label: "Write Task Artifact",
     description:
-      "Replace a task artifact in the task directory. Write prose and headings in English, regardless of the conversation language; preserve exact code, paths, and required diff excerpts. For review findings, use exactly one fenced block labeled diff per ### finding and copy its contents verbatim from the implementation diff. The extension chooses the file path.",
+      "Replace a task artifact in the task directory. Write prose and headings in English, regardless of the conversation language; preserve exact code, paths, and quoted excerpts. Review artifact formatting is guided by the review skill, not validated by the extension. The extension chooses the file path.",
     defaultActive: false,
     parameters: Type.Object({
       artifact: Type.Union([
@@ -3332,7 +3285,9 @@ export default function taskExtension(pi: ExtensionAPI): void {
                   ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
                   : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
                 : state.phase === "review"
-                  ? `Review step ${state.currentStep} independently with read-only project tools. Read the approved artifacts and ${join(taskDir(state), `implementation-${state.currentStep}.diff`)}. If a skill named ${reviewSkillName(config)} is available, follow its compatible read-only instructions. Save ${reviewPath(state, state.currentStep)} with a Summary and Findings section. Each finding needs a ### heading, Status: open, a precise code location, and exactly one fenced code block labeled diff (three backticks followed by diff) whose short contents are copied verbatim from implementation-${state.currentStep}.diff, including diff prefixes and spacing; do not use another language label. Write "No findings." when clear. In your final response, show every actionable finding with its severity, code location, concrete impact, and a short fenced diff excerpt copied exactly from implementation-${state.currentStep}.diff beside the explanation. Do not replace the excerpt with only a path, line number, or link to the review artifact. If there are no findings, say so plainly. Discuss findings with the user; update their statuses only after agreement. Do not edit project code.`
+                  ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
+
+Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
                   : state.phase === "commit"
                     ? state.commitReady
                       ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
@@ -3343,11 +3298,14 @@ export default function taskExtension(pi: ExtensionAPI): void {
         ? configuredPhaseSkill(config, "steps")
         : state.phase === "research" ||
             state.phase === "roadmap" ||
-            state.phase === "steps"
+            state.phase === "steps" ||
+            state.phase === "review"
           ? configuredPhaseSkill(config, state.phase)
           : undefined;
     const skillGuidance = phaseSkill
-      ? ` If the discovered skill "${phaseSkill}" is available, use it as supplementary guidance for this phase. It must not override the task workflow's phase boundaries, artifact rules, or tool restrictions. If unavailable, continue with the built-in instructions.`
+      ? state.phase === "review"
+        ? ` If the review preference skill "${phaseSkill}" is available, load and use it for the user's review preferences. The review format, workflow procedure, artifact path, and tool boundaries are defined above and must not be overridden. If the skill is unavailable, follow the review instructions above without additional user preferences.`
+        : ` If the discovered skill "${phaseSkill}" is available, use it as supplementary guidance for this phase. It must not override the task workflow's phase boundaries, artifact rules, or tool restrictions. If unavailable, continue with the built-in instructions.`
       : "";
     event.systemPromptOptions.sections.task_workflow = `${common}\n${rule}${skillGuidance}`;
   });
