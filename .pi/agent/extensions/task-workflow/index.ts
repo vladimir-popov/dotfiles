@@ -118,6 +118,27 @@ const ARTIFACT_LANGUAGE_RULE =
 const KICKOFF_TYPE = "task-workflow-kickoff";
 const PHASE_WIDGET = "task-workflow-phase";
 const READ_TOOLS = ["read", "grep", "find", "ls"];
+const RESEARCH_WEB_TOOL_PATTERN = /web|browser|internet|search|fetch|url/i;
+const RESEARCH_MUTATION_TOOL_PATTERN =
+  /write|edit|delete|remove|submit|click|post|put|patch|execute|run|shell|bash/i;
+
+function researchAllowedTools(pi: ExtensionAPI): string[] {
+  const tools = pi.getAllTools();
+  const availableNames = new Set(tools.map((tool) => tool.name));
+  const readTools = READ_TOOLS.filter((name) => availableNames.has(name));
+  const webTools = tools
+    .filter(
+      (tool) =>
+        tool.exposure !== "hidden" &&
+        tool.exposure !== "deferred" &&
+        tool.exposure !== "codemode" &&
+        RESEARCH_WEB_TOOL_PATTERN.test(tool.name) &&
+        !RESEARCH_MUTATION_TOOL_PATTERN.test(tool.name) &&
+        tool.annotations?.readOnlyHint !== false,
+    )
+    .map((tool) => tool.name);
+  return [...new Set([...readTools, ...webTools, ARTIFACT_TOOL])];
+}
 const DEFAULT_SNAPSHOT_MAX_FILES = 4_000;
 const DEFAULT_SNAPSHOT_MAX_MIB = 100;
 const DEFAULT_HOTKEYS: Record<string, string> = {
@@ -1370,17 +1391,38 @@ function requireTask(
   }
   if (root !== linked.projectRoot)
     throw new Error(projectMismatchMessage(linked, root, link.statePath));
+  const currentSession = ctx.sessionManager.getSessionFile();
+  const phaseMatches =
+    link.phase === linked.phase ||
+    ((link.phase as string) === "collect" && linked.phase === "research");
+  if (
+    !sessionFor(linked) &&
+    currentSession &&
+    existsSync(currentSession) &&
+    link.id === linked.id &&
+    resolve(link.statePath) === resolve(taskStatePath(linked)) &&
+    phaseMatches &&
+    (link.step || 1) === linked.currentStep &&
+    pathWithin(resolve(sessionDirectory(linked)), resolve(currentSession))
+  ) {
+    setSessionFor(linked, linked.phase, currentSession, linked.currentStep);
+    saveState(linked);
+  }
   return linked;
 }
 
-function taskStatusText(ctx: ExtensionContext, state: TaskState): string {
+function taskStatusText(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  state: TaskState,
+): string {
   const config = readConfig();
   const model = configuredModel(state.phase);
   const phaseStatus =
     state.phase === "implement" && !state.implementationStarted
       ? "implementation preparation"
       : state.phase;
-  return `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
+  return `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nResearch tools available: ${researchAllowedTools(pi).join(", ") || "none"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
 }
 
 function roadmapPath(state: TaskState): string {
@@ -3561,7 +3603,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           if (command === "status") {
             try {
               ctx.ui.notify(
-                `Task status\n\n${taskStatusText(ctx, requireTask(ctx, false))}`,
+                `Task status\n\n${taskStatusText(pi, ctx, requireTask(ctx, false))}`,
                 "info",
               );
             } catch (error) {
@@ -3607,6 +3649,10 @@ export default function taskExtension(pi: ExtensionAPI): void {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const state = requireTask(ctx);
+      if (state.phase === "research" && params.artifact !== "context")
+        throw new Error(
+          "Research can write only context.md. Other artifacts are available in their corresponding phases.",
+        );
       if (!sessionMatches(ctx, state))
         throw new Error(
           "This is an old task session. Use /task TASK-ID to open the current phase before changing artifacts.",
@@ -3650,11 +3696,15 @@ export default function taskExtension(pi: ExtensionAPI): void {
     const allowed = new Set(
       state.phase === "commit"
         ? READ_TOOLS
-        : [
-            ...READ_TOOLS,
-            ARTIFACT_TOOL,
-            ...(state.phase === "review" ? readConfig().reviewTools || [] : []),
-          ],
+        : state.phase === "research"
+          ? researchAllowedTools(pi)
+          : [
+              ...READ_TOOLS,
+              ARTIFACT_TOOL,
+              ...(state.phase === "review"
+                ? readConfig().reviewTools || []
+                : []),
+            ],
     );
     if (allowed.has(event.toolName)) return;
     return {
@@ -3732,10 +3782,9 @@ export default function taskExtension(pi: ExtensionAPI): void {
     let state: TaskState;
     try {
       state = requireTask(ctx);
-    } catch {
+    } catch (error) {
       event.systemPromptOptions.selectedTools = [];
-      event.systemPromptOptions.sections.task_workflow =
-        "Task state is unavailable. Do not call tools.";
+      event.systemPromptOptions.sections.task_workflow = `Task state is unavailable, so task tools are disabled. Cause: ${error instanceof Error ? error.message : String(error)}. Do not claim to inspect files or use tools. Tell the user to run /task status or reopen the task with /task TASK-ID.`;
       return;
     }
     if (!sessionMatches(ctx, state)) {
@@ -3760,15 +3809,17 @@ export default function taskExtension(pi: ExtensionAPI): void {
                 ARTIFACT_TOOL,
               ]),
             ]
-          : [
-              ...READ_TOOLS,
-              ARTIFACT_TOOL,
-              ...(state.phase === "review" ? config.reviewTools || [] : []),
-            ];
+          : state.phase === "research"
+            ? researchAllowedTools(pi)
+            : [
+                ...READ_TOOLS,
+                ARTIFACT_TOOL,
+                ...(state.phase === "review" ? config.reviewTools || [] : []),
+              ];
     const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
       state.phase === "research"
-        ? "Gather and clarify task context, then inspect code and discuss feasibility. Keep context.md concise and current with confirmed facts; add agreed findings and code references, and leave unresolved doubts out."
+        ? `Gather and clarify task context, then inspect project files and use available read-only web search/fetch tools to research feasibility. If none is directly listed, use tool_search to discover an available read-only web tool. You may read project files but must not edit them. Write only context.md using task_write_artifact; do not write roadmap, step, or review artifacts in Research. Keep context.md concise and current with confirmed facts; add agreed findings and code references, and leave unresolved doubts out. Research tools enabled for this turn: ${researchAllowedTools(pi).join(", ") || "none"}.`
         : state.phase === "roadmap"
           ? "Discuss the roadmap. Update context.md when agreed facts change, then present a complete revised numbered roadmap. Draft roadmap.md as decisions settle."
           : state.phase === "implement"
@@ -4240,6 +4291,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             1,
             ctx.sessionManager.getSessionFile(),
           );
+          setSessionFor(state, "research", file);
           saveState(state);
           try {
             rememberTask(state, taskStatePath(state));
@@ -4272,7 +4324,11 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         const state = requireTask(ctx, command !== "status");
         if (command === "status") {
           if (args.length) throw new Error("Usage: /task status");
-          await showArtifact(ctx, "Task status", taskStatusText(ctx, state));
+          await showArtifact(
+            ctx,
+            "Task status",
+            taskStatusText(pi, ctx, state),
+          );
           return;
         }
         if (command === "show") {
