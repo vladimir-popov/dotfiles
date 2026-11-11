@@ -68,6 +68,8 @@ type TaskState = {
   pendingHashes?: Record<string, string | null>;
   pendingSummary?: string;
   pendingAutoCommitEligible?: boolean;
+  workflowMode?: "manual" | "semi-auto";
+  autoCommit?: boolean;
   pendingGitRepository?: boolean;
   pendingBaselineDir?: string;
   commitPendingFiles?: string[];
@@ -95,6 +97,7 @@ type PhaseModel = {
 };
 type SkillPhase = "research" | "roadmap" | "review";
 type Config = {
+  mode?: "manual" | "semi-auto";
   artifactDir?: string;
   runtimeDir?: string;
   autoCommit?: boolean;
@@ -153,6 +156,8 @@ const HELP = `Task workflow
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
+/task config init project   Create project config with current effective settings
+/task config init task      Save current effective settings as task overrides
 /task resume                Return to an active task; resume an interrupted run
 /task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
@@ -182,13 +187,19 @@ Agreement is implied by /task accept; add a note only to clarify a choice or dec
 Text ending in /task next is not parsed as a command.
 Task artifacts may be updated in any phase; project code changes run only in implement.
 The default artifact directory is <project>/.agents/tasks/<task-id>/; local state and sessions use <project>/.agents/task-workflow/<task-id>/.
-Set artifactDir, runtimeDir, autoCommit, phaseModels, skills, reviewTools, hotkeys,
-snapshotMaxFiles, snapshotMaxMiB, or allowTreeNavigation in
-~/.pi/agent/task-workflow.json.
+Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
+<project>/.agents/task-workflow/config.json; task overrides live in that task's
+state.json. Resolution order is task, project, global, then defaults.
+Use /task config init project|task to create/materialize the scoped settings;
+edit the resulting files to change values. Project initialization refuses to
+overwrite an existing config. Task initialization stores the current effective
+mode and autoCommit as task-specific overrides.
+Set mode and autoCommit globally, per project, or per task. Other settings such
+as artifactDir, runtimeDir, phaseModels, skills, reviewTools, hotkeys,
+snapshotMaxFiles, snapshotMaxMiB, and allowTreeNavigation are global.
 You can also pass --dir PATH to /task.
-autoCommit defaults to false.
+mode defaults to manual; autoCommit defaults to false.
 The config path may contain {projectRoot} and {taskId}. Relative paths use the project root.`;
-
 function git(root: string, args: string[]): string {
   try {
     return execFileSync("git", args, {
@@ -248,16 +259,55 @@ function completionArgument(value: string): string | undefined {
   return undefined;
 }
 
+function validateConfig(config: unknown, path: string): Config {
+  if (!config || typeof config !== "object" || Array.isArray(config))
+    throw new Error(`Invalid config: ${path}`);
+  const values = config as Record<string, unknown>;
+  if (
+    values.mode !== undefined &&
+    !["manual", "semi-auto"].includes(String(values.mode))
+  )
+    throw new Error(`mode must be manual or semi-auto: ${path}`);
+  if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean")
+    throw new Error(`autoCommit must be a boolean: ${path}`);
+  return values as Config;
+}
+
+function projectConfigPath(root: string): string {
+  return join(root, ".agents", "task-workflow", "config.json");
+}
+
+function readProjectConfig(root: string): Config {
+  const path = projectConfigPath(root);
+  if (!existsSync(path)) return {};
+  return validateConfig(JSON.parse(readFileSync(path, "utf8")), path);
+}
+
+function effectiveSetting<K extends "mode" | "autoCommit">(
+  state: TaskState,
+  key: K,
+): K extends "mode" ? "manual" | "semi-auto" : boolean {
+  const taskValue = key === "mode" ? state.workflowMode : state.autoCommit;
+  const projectValue = readProjectConfig(state.projectRoot)[key];
+  const globalValue = readConfig()[key];
+  const fallback = key === "mode" ? "manual" : false;
+  return (taskValue ??
+    projectValue ??
+    globalValue ??
+    fallback) as K extends "mode" ? "manual" | "semi-auto" : boolean;
+}
+
 function readConfig(): Config {
   const path = join(
     process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
     "task-workflow.json",
   );
   if (!existsSync(path)) return {};
-  const config: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!config || typeof config !== "object" || Array.isArray(config))
-    throw new Error(`Invalid config: ${path}`);
-  const values = config as Record<string, unknown>;
+  const validated = validateConfig(
+    JSON.parse(readFileSync(path, "utf8")),
+    path,
+  );
+  const values = validated as Record<string, unknown>;
   if (values.contextPath !== undefined)
     throw new Error(`Replace contextPath with artifactDir in ${path}.`);
   if (values.implementModel !== undefined || values.reviewModel !== undefined)
@@ -1422,7 +1472,7 @@ function taskStatusText(
     state.phase === "implement" && !state.implementationStarted
       ? "implementation preparation"
       : state.phase;
-  return `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nResearch tools available: ${researchAllowedTools(pi).join(", ") || "none"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
+  return `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nMode: ${effectiveSetting(state, "mode")}\nAuto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nResearch tools available: ${researchAllowedTools(pi).join(", ") || "none"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
 }
 
 function roadmapPath(state: TaskState): string {
@@ -3126,7 +3176,7 @@ async function beginImplementation(
     );
   const gitRepository = hasGitRepository(state);
   const baselineClean = gitRepository && changedPaths(state).length === 0;
-  if (gitRepository && readConfig().autoCommit && !baselineClean)
+  if (gitRepository && effectiveSetting(state, "autoCommit") && !baselineClean)
     throw new Error(
       "autoCommit requires a clean code working tree before implementation.",
     );
@@ -3197,6 +3247,7 @@ async function beginReview(
 }
 
 async function acceptReviewedStep(
+  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   state: TaskState,
   approval: string,
@@ -3284,6 +3335,12 @@ async function acceptReviewedStep(
           { triggerTurn: false },
         ),
       );
+      if (
+        effectiveSetting(state, "mode") === "semi-auto" &&
+        effectiveSetting(state, "autoCommit") &&
+        state.commitReady
+      )
+        await finishCommitPhase(pi, fresh as ExtensionCommandContext, state);
     } catch (error) {
       fresh.ui.notify(
         error instanceof Error ? error.message : String(error),
@@ -3310,7 +3367,7 @@ async function prepareCommitPhase(
       "No code changes were produced, so there is no commit message to propose.";
   } else {
     const message = await draftCommitMessage(ctx, state, n);
-    if (readConfig().autoCommit) {
+    if (effectiveSetting(state, "autoCommit")) {
       if (message.fallback)
         throw new Error(
           "The model response was unstructured, so auto-commit was skipped. Use /task next to retry.",
@@ -3346,6 +3403,49 @@ async function prepareCommitPhase(
     { placement: "aboveEditor" },
   );
   await sendResult(result);
+}
+
+async function advanceSemiAutomatically(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  state: TaskState,
+): Promise<void> {
+  const commandContext = ctx as ExtensionCommandContext;
+  if (state.phase === "implement" && state.implementationStarted) {
+    const assessment = await assessTransition(ctx, state, "next", "");
+    if (assessment.openQuestions.length || assessment.pendingProposal.trim()) {
+      ctx.ui.notify(
+        "Semi-auto paused: resolve open questions or approve/reject the pending proposal, then use /task next.",
+        "info",
+      );
+      return;
+    }
+    await beginReview(commandContext, state);
+    return;
+  }
+  if (
+    state.phase === "review" &&
+    !state.reviewPending &&
+    existsSync(reviewPath(state, state.currentStep))
+  ) {
+    const assessment = await assessTransition(ctx, state, "next", "");
+    if (assessment.openQuestions.length || assessment.pendingProposal.trim()) {
+      ctx.ui.notify(
+        "Semi-auto paused: the review discussion needs your decision. Use /task next or /task accept when settled.",
+        "info",
+      );
+      return;
+    }
+    await acceptReviewedStep(pi, commandContext, state, "");
+    return;
+  }
+  if (
+    state.phase === "commit" &&
+    state.commitReady &&
+    effectiveSetting(state, "autoCommit")
+  ) {
+    await finishCommitPhase(pi, commandContext, state);
+  }
 }
 
 function sectionBody(content: string, heading: string): string {
@@ -3753,7 +3853,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
     const state = visibleTask(ctx);
     if (state) updatePhaseUi(pi, ctx, state, false);
   });
-  pi.on("agent_settled", (event, ctx) => {
+  pi.on("agent_settled", async (event, ctx) => {
     const state = visibleTask(ctx);
     const session = ctx.sessionManager.getSessionFile();
     if (
@@ -3775,6 +3875,21 @@ export default function taskExtension(pi: ExtensionAPI): void {
       }
     }
     if (state) updatePhaseUi(pi, ctx, state, true);
+    if (
+      !event.aborted &&
+      state &&
+      sessionMatches(ctx, state) &&
+      effectiveSetting(state, "mode") === "semi-auto"
+    ) {
+      try {
+        await advanceSemiAutomatically(pi, ctx, state);
+      } catch (error) {
+        ctx.ui.notify(
+          `Semi-auto transition stopped: ${error instanceof Error ? error.message : String(error)}. Continue manually with /task next when ready.`,
+          "warning",
+        );
+      }
+    }
   });
 
   pi.on("before_agent_start", (event, ctx) => {
@@ -3860,10 +3975,16 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         "next",
         "accept",
         "show",
+        "config",
         "help",
       ];
       let items = commands.map((value) => ({ value, label: value }));
-      if (prefix.startsWith("show ")) {
+      if (prefix.startsWith("config")) {
+        items = [
+          { value: "config init project", label: "init project" },
+          { value: "config init task", label: "init task" },
+        ];
+      } else if (prefix.startsWith("show ")) {
         try {
           if (completionContext) {
             const state = requireTask(completionContext);
@@ -3925,6 +4046,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                   "list",
                   "delete",
                   "status",
+                  "config",
                   "resume",
                   "next",
                   "accept",
@@ -3948,6 +4070,47 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         if (command === "help") {
           if (args.length) throw new Error("Usage: /task help");
           await showArtifact(ctx, "Task help", HELP);
+          return;
+        }
+        if (command === "config") {
+          if (
+            args.length !== 2 ||
+            args[0] !== "init" ||
+            !["project", "task"].includes(args[1])
+          )
+            throw new Error("Usage: /task config init project|task");
+          const scope = args[1];
+          if (scope === "project") {
+            const root = projectRoot(ctx.cwd);
+            const path = projectConfigPath(root);
+            mkdirSync(dirname(path), { recursive: true });
+            const project = readProjectConfig(root);
+            const global = readConfig();
+            const values = {
+              mode: project.mode ?? global.mode ?? "manual",
+              autoCommit: project.autoCommit ?? global.autoCommit ?? false,
+            };
+            writeFileSync(path, `${JSON.stringify(values, null, 2)}\n`, {
+              encoding: "utf8",
+              flag: "wx",
+              mode: 0o600,
+            });
+            await showArtifact(
+              ctx,
+              "Project configuration",
+              `Created ${path}\n\n${JSON.stringify(values, null, 2)}`,
+            );
+            return;
+          }
+          const state = requireTask(ctx, false);
+          state.workflowMode = effectiveSetting(state, "mode");
+          state.autoCommit = effectiveSetting(state, "autoCommit");
+          saveState(state);
+          await showArtifact(
+            ctx,
+            "Task configuration",
+            `Saved task overrides in ${taskStatePath(state)}\n\n${JSON.stringify({ mode: state.workflowMode, autoCommit: state.autoCommit }, null, 2)}`,
+          );
           return;
         }
         if (command === "list") {
@@ -4452,7 +4615,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             return;
           }
           if (state.phase === "review") {
-            await acceptReviewedStep(ctx, state, approval);
+            await acceptReviewedStep(pi, ctx, state, approval);
             return;
           }
         }
