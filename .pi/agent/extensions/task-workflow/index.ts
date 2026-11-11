@@ -44,15 +44,8 @@ import { Type } from "typebox";
 const CURRENT_STRUCTURE_VERSION = "2.0";
 
 type Phase =
-  | "collect"
-  | "research"
-  | "roadmap"
-  | "implement"
-  | "review"
-  | "commit"
-  | "complete";
+  "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
 type SessionRefs = {
-  collect?: string;
   research?: string;
   roadmap?: string;
   implement?: Record<string, string>;
@@ -106,10 +99,7 @@ type Config = {
   runtimeDir?: string;
   autoCommit?: boolean;
   phaseModels?: Partial<
-    Record<
-      "collect" | "research" | "roadmap" | "implement" | "review",
-      PhaseModel | null
-    >
+    Record<"research" | "roadmap" | "implement" | "review", PhaseModel | null>
   >;
   skills?: Partial<Record<SkillPhase, string | null>>;
   /** @deprecated Use skills.review. */
@@ -154,7 +144,7 @@ Configure or disable them with hotkeys in task-workflow.json; use /hotkeys to in
 Quote an ID containing spaces, for example: /task "TASK 100500".
 Starting or opening a specific task requires an explicit ID.
 /task delete removes its artifact directory and saved sessions; code outside it remains.
-Context and research share one saved Pi session. Later phases use their own sessions.
+Research gathers task context and investigates the code in one saved Pi session. Later phases use their own sessions.
 Each implementation session begins with final discussion of its current step; /task next finalizes that step and starts coding in the same session.
 The implementation session stays open for the step and is reused for repairs.
 Each review round uses a fresh read-only session. Reports use review-N-round-M.md, starting at round 0.
@@ -337,11 +327,7 @@ function readConfig(): Config {
     )
       throw new Error(`phaseModels must be an object: ${path}`);
     for (const [phase, model] of Object.entries(values.phaseModels)) {
-      if (
-        !["collect", "research", "roadmap", "implement", "review"].includes(
-          phase,
-        )
-      )
+      if (!["research", "roadmap", "implement", "review"].includes(phase))
         throw new Error(`Unknown phaseModels key ${phase}: ${path}`);
       if (model === null) continue;
       if (!model || typeof model !== "object" || Array.isArray(model))
@@ -517,6 +503,15 @@ function loadState(path: string, maintainLegacyFiles = true): TaskState {
   }
   if (!Object.prototype.hasOwnProperty.call(data, "structureVersion")) {
     data.structureVersion = "1.0";
+  }
+  if ((data.phase as string) === "collect") {
+    data.phase = "research";
+    const sessions = data.sessions as
+      (SessionRefs & { collect?: string }) | undefined;
+    if (sessions?.collect) {
+      sessions.research ??= sessions.collect;
+      delete sessions.collect;
+    }
   }
   if (maintainLegacyFiles) {
     migrateLegacyReviewRoundFiles(data, path);
@@ -829,9 +824,6 @@ function rebaseSessionRefs(
         )
       : undefined;
   return {
-    collect: sessions.collect
-      ? rebaseMovedPath(sessions.collect, oldRoot, newRoot)
-      : undefined,
     research: sessions.research
       ? rebaseMovedPath(sessions.research, oldRoot, newRoot)
       : undefined,
@@ -1123,7 +1115,6 @@ function relocateTask(
   const addPath = (path?: string) => {
     if (path) referencedSessions.add(path);
   };
-  addPath(relocated.sessions?.collect);
   addPath(relocated.sessions?.research);
   addPath(relocated.sessions?.roadmap);
   for (const sessions of [
@@ -1305,7 +1296,6 @@ function taskProgress(state: TaskState): string {
   } catch {
     /* Roadmap may not exist yet. */
   }
-  if (state.phase === "collect") return "Collecting context";
   if (state.phase === "research") return "Researching code";
   if (state.phase === "roadmap") return "Planning roadmap";
   if (state.phase === "implement" && total && state.currentStep > total)
@@ -2387,21 +2377,19 @@ function roadmapStepSummary(
 
 function phaseLabel(state: TaskState): string {
   const phase =
-    state.phase === "collect"
-      ? "Context"
-      : state.phase === "research"
-        ? "Research"
-        : state.phase === "roadmap"
-          ? "Roadmap"
-          : state.phase === "implement"
-            ? state.implementationStarted
-              ? "Implementation"
-              : "Step preparation"
-            : state.phase === "review"
-              ? "Review"
-              : state.phase === "commit"
-                ? "Commit"
-                : "Complete";
+    state.phase === "research"
+      ? "Research"
+      : state.phase === "roadmap"
+        ? "Roadmap"
+        : state.phase === "implement"
+          ? state.implementationStarted
+            ? "Implementation"
+            : "Step preparation"
+          : state.phase === "review"
+            ? "Review"
+            : state.phase === "commit"
+              ? "Commit"
+              : "Complete";
   if (!["implement", "review", "commit"].includes(state.phase)) return phase;
   let total: number | undefined;
   try {
@@ -2422,23 +2410,19 @@ function sessionDisplayName(
     ? stepTitle(state, step)
     : undefined;
   const part =
-    phase === "collect"
-      ? "context"
-      : phase === "research"
-        ? "context + research"
-        : phase === "implement"
-          ? `${state.implementationStarted ? "implement" : "prepare"} ${step}`
-          : phase === "review" || phase === "commit"
-            ? `${phase} ${step}`
-            : phase;
+    phase === "research"
+      ? "research"
+      : phase === "implement"
+        ? `${state.implementationStarted ? "implement" : "prepare"} ${step}`
+        : phase === "review" || phase === "commit"
+          ? `${phase} ${step}`
+          : phase;
   return `${state.id} · ${part}${phase === "review" ? ` · r${state.reviewRound ?? 0}` : ""}${title ? ` · ${title}` : ""}`;
 }
 
 function phaseHint(state: TaskState): string {
   if (state.interruptedSession)
     return "Run /task resume to continue the interrupted run.";
-  if (state.phase === "collect")
-    return "Add context; when ready, use /task next.";
   if (state.phase === "research")
     return "Discuss findings; when ready, use /task next.";
   if (state.phase === "roadmap")
@@ -2591,7 +2575,6 @@ function treeMatches(
 
 function sessionReferencesExist(state: TaskState): boolean {
   const files = [
-    state.sessions?.collect,
     state.sessions?.research,
     state.sessions?.roadmap,
     state.interruptedSession,
@@ -2609,7 +2592,6 @@ function sessionFor(
 ): string | undefined {
   const sessions = state.sessions;
   if (!sessions) return undefined;
-  if (phase === "collect") return sessions.collect;
   if (phase === "research") return sessions.research;
   if (phase === "roadmap") return sessions.roadmap;
   if (phase === "implement") return sessions.implement?.[String(step)];
@@ -2629,8 +2611,7 @@ function setSessionFor(
   step = state.currentStep,
 ): void {
   const sessions = (state.sessions ??= {});
-  if (phase === "collect") sessions.collect = file;
-  else if (phase === "research") sessions.research = file;
+  if (phase === "research") sessions.research = file;
   else if (phase === "roadmap") sessions.roadmap = file;
   else if (phase === "implement")
     (sessions.implement ??= {})[String(step)] = file;
@@ -2652,7 +2633,8 @@ function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
     !!expected &&
     link.id === state.id &&
     link.statePath === taskStatePath(state) &&
-    link.phase === state.phase &&
+    (link.phase === state.phase ||
+      ((link.phase as string) === "collect" && state.phase === "research")) &&
     (link.step || 1) === state.currentStep &&
     resolve(current) === resolve(expected)
   );
@@ -2739,10 +2721,8 @@ function createPhaseSession(
 }
 
 function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
-  if (phase === "collect")
-    return `Describe the task and add context. Keep ${state.contextPath} compact and current after each answer.`;
   if (phase === "research")
-    return `Read ${state.contextPath}, inspect the project, discuss feasibility and questions, and update agreed findings in the context artifact.`;
+    return `First discuss the task, constraints, and expected outcome; keep ${state.contextPath} concise and current. Then inspect the project, discuss feasibility and questions, and add agreed findings to the context artifact.`;
   if (phase === "roadmap")
     return `Read ${state.contextPath}. Propose a numbered roadmap with a short bold title and brief explanation for each step. Discuss additions and update context when we agree on them.`;
   if (phase === "implement") {
@@ -2754,39 +2734,6 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
   if (phase === "commit")
     return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue.`;
   return `Review step ${step}. Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against the approved scope and inspect relevant project code. Save the review at ${reviewPath(state, step)} using task_write_artifact with artifact "review" and step ${step}. Do not edit project code or advance the workflow. Discuss findings with me and update their statuses only after we agree.`;
-}
-
-async function enterResearch(
-  pi: ExtensionAPI,
-  ctx: ExtensionCommandContext,
-  state: TaskState,
-): Promise<void> {
-  const file = ctx.sessionManager.getSessionFile();
-  if (!file || !sessionMatches(ctx, state))
-    throw new Error(
-      "Open the task's context session before starting research.",
-    );
-  await selectPhaseModel(pi, ctx, "research", 1);
-  state.phase = "research";
-  delete state.interruptedSession;
-  setSessionFor(state, "research", file, 1);
-  ctx.sessionManager.appendCustomEntry(ENTRY_TYPE, {
-    id: state.id,
-    statePath: taskStatePath(state),
-    phase: "research",
-    step: 1,
-  } satisfies TaskLink);
-  pi.setSessionName(sessionDisplayName(state));
-  saveState(state);
-  updatePhaseUi(pi, ctx, state, false);
-  pi.sendMessage(
-    {
-      customType: KICKOFF_TYPE,
-      content: phaseKickoff(state, "research", 1),
-      display: false,
-    },
-    { triggerTurn: true },
-  );
 }
 
 async function switchPhase(
@@ -3789,25 +3736,23 @@ export default function taskExtension(pi: ExtensionAPI): void {
             ];
     const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
-      state.phase === "collect"
-        ? "After each user message, keep context.md concise and current with confirmed facts and important provisional options. Do not invent code findings."
-        : state.phase === "research"
-          ? "Inspect code and discuss feasibility. Add agreed findings and code references to context.md; leave unresolved doubts out."
-          : state.phase === "roadmap"
-            ? "Discuss the roadmap. Update context.md when agreed facts change, then present a complete revised numbered roadmap. Draft roadmap.md as decisions settle."
-            : state.phase === "implement"
-              ? writable
-                ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
-                : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
-              : state.phase === "review"
-                ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
+      state.phase === "research"
+        ? "Gather and clarify task context, then inspect code and discuss feasibility. Keep context.md concise and current with confirmed facts; add agreed findings and code references, and leave unresolved doubts out."
+        : state.phase === "roadmap"
+          ? "Discuss the roadmap. Update context.md when agreed facts change, then present a complete revised numbered roadmap. Draft roadmap.md as decisions settle."
+          : state.phase === "implement"
+            ? writable
+              ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
+              : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
+            : state.phase === "review"
+              ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
 
 Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
-                : state.phase === "commit"
-                  ? state.commitReady
-                    ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
-                    : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. This is the separate commit phase."
-                  : "The task is complete. Do not edit project files through this task session.";
+              : state.phase === "commit"
+                ? state.commitReady
+                  ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
+                  : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. This is the separate commit phase."
+                : "The task is complete. Do not edit project files through this task session.";
     const phaseSkill =
       state.phase === "research" ||
       state.phase === "roadmap" ||
@@ -4235,7 +4180,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             ctx.mode === "tui" &&
             !(await ctx.ui.confirm(
               `Start task ${id}?`,
-              `Create artifacts at ${artifactDir}, local task state at ${taskRuntime}, and a context session?`,
+              `Create artifacts at ${artifactDir}, local task state at ${taskRuntime}, and a research session?`,
             ))
           )
             return;
@@ -4252,18 +4197,18 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             artifactDir,
             runtimeDir: taskRuntime,
             contextPath,
-            phase: "collect",
+            phase: "research",
             currentStep: 1,
             completedSteps: [],
             sessions: {},
           };
+          await selectPhaseModel(pi, ctx, "research", 1);
           const file = createPhaseSession(
             state,
-            "collect",
+            "research",
             1,
             ctx.sessionManager.getSessionFile(),
           );
-          setSessionFor(state, "collect", file);
           saveState(state);
           try {
             rememberTask(state, taskStatePath(state));
@@ -4281,7 +4226,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           const result = await ctx.switchSession(file, {
             withSession: async (fresh) => {
               fresh.ui.notify(
-                `Task ${id} started. Describe the problem and add context.`,
+                `Task ${id} started in Research. Describe the problem, constraints, and expected outcome.`,
                 "info",
               );
             },
@@ -4399,10 +4344,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           if (state.phase === "implement" && !state.implementationStarted) {
             await finalizeArtifact(ctx, state, "step", approval);
             await beginImplementation(pi, ctx, state);
-            return;
-          }
-          if (state.phase === "collect") {
-            await enterResearch(pi, ctx, state);
             return;
           }
           if (state.phase === "research") {

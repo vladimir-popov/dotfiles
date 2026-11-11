@@ -6,25 +6,24 @@ A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-speci
 
 ![A small waterfall flowing into a river past stepping stones](assets/task-flow-waterfall.png)
 
-`/task` guides a coding task through context collection, research, roadmap, implementation, review, and a separate commit phase. Each implementation session starts with final discussion of just its current step before coding begins. Context and research share one saved Pi session; later phases use separate sessions, with compact task artifacts carrying agreed decisions forward.
+`/task` guides a coding task through research, roadmap, implementation, review, and a separate commit phase. Research covers task context, discussion, and code investigation in one saved Pi session; later phases use separate sessions, with compact task artifacts carrying agreed decisions forward. Each implementation session starts with final discussion of just its current step before coding begins.
 
 ## 🔄 Workflow
 
 ```mermaid
 flowchart LR
-    A["Context"] -->|/task next| B["Research"]
-    B -->|/task next| C["Roadmap"]
-    C -->|/task next| D["Step preparation"]
-    D -->|/task next: finalize step; status planned → in_progress; capture baseline| E["Implement"]
-    E -->|/task next: save implementation-N.diff; start review round 0| F["Review"]
-    F -->|/task next: open findings; preserve round; repair| E
-    F -->|/task next: clear| G["Commit phase"]
-    G -->|/task next: verify commit; summarize rounds; delete diff; status completed| H["Step completed"]
-    H -->|next step| D
-    H -->|final step| I["Task complete"]
+    A["Research"] -->|/task next| B["Roadmap"]
+    B -->|/task next| C["Step preparation"]
+    C -->|/task next: finalize step; status planned → in_progress; capture baseline| D["Implement"]
+    D -->|/task next: save implementation-N.diff; start review round 0| E["Review"]
+    E -->|/task next: open findings; preserve round; repair| D
+    E -->|/task next: clear| F["Commit phase"]
+    F -->|/task next: verify commit; summarize rounds; delete diff; status completed| G["Step completed"]
+    G -->|next step| C
+    G -->|final step| H["Task complete"]
 ```
 
-Context → research changes the rules inside the same conversation. Each step's preparation discussion and implementation share one saved session; after review finds issues, repairs return to that same session. Each review round opens a fresh session. A clear review opens a separate commit phase; the next step cannot start until that phase is explicitly completed. In Git projects, manual mode requires the reviewed files to be committed before `/task next`; `autoCommit: true` commits them automatically. Projects without Git still show the phase but skip the Git action.
+Research gathers task context and investigates code in one saved conversation. Each step's preparation discussion and implementation share one saved session; after review finds issues, repairs return to that same session. Each review round opens a fresh session. A clear review opens a separate commit phase; the next step cannot start until that phase is explicitly completed. In Git projects, manual mode requires the reviewed files to be committed before `/task next`; `autoCommit: true` commits them automatically. Projects without Git still show the phase but skip the Git action.
 
 The default layout for new tasks separates shareable artifacts from local workflow state. Existing tasks keep their saved paths so active sessions are not moved under the running session manager:
 
@@ -139,8 +138,7 @@ An ID is required to create or open a particular task; `/task` alone opens the l
 
 | Phase | What happens | Artifact updates |
 | --- | --- | --- |
-| **Context** | Describe the problem, constraints, and possible approaches over several messages. | Pi keeps `context.md` compact and current after each answer. |
-| **Research** | Continue in the same session; inspect code and discuss feasibility, code locations, and unresolved questions. | Agreed findings update `context.md`. Open doubts stay out. |
+| **Research** | Describe the problem, constraints, and possible approaches; inspect code and discuss feasibility, code locations, and unresolved questions in the same session. | Pi keeps `context.md` compact and current; agreed findings update it, while unresolved doubts stay out. |
 | **Roadmap** | Discuss a numbered plan. New agreed requirements update context and cause a revised complete roadmap proposal. | `context.md` and a draft `roadmap.md`; `/task next` finalizes the roadmap. Top-level steps must be numbered consecutively from 1; short bold titles and dash explanations are preferred, but ordinary numbered Markdown steps are accepted. |
 | **Implementation** | Each step opens in a saved preparation session. Pi starts by summarizing the roadmap item and stating that this is the final discussion before coding. Discuss only the current step and its checks. `/task next` checks for open questions/proposals, finalizes `step-N.md`, marks it `in_progress`, captures a local baseline, and starts coding in the same session. After review, repair open findings in that session. | Only the current step needs a `step-N.md`; future step designs are deferred. `/task next` after implementation writes the temporary `implementation-N.diff` and opens review. |
 | **Review** | Each round uses a fresh read-only session. The first report is `review-N-round-0.md`; every subsequent round gets the next number and all reports are retained. | `/task next` returns open findings to implementation or accepts a clear review. |
@@ -157,7 +155,7 @@ The task instructions tell Pi to converse in your language, including explanatio
 
 ### 👀 What each Pi sees
 
-Context and research use the same Pi conversation, so research sees the original task description and the full context discussion. `/task next` changes the phase instructions and allowed tools without switching sessions. A configured research model is selected at this boundary; otherwise the current model continues.
+Research gathers task context and investigates the code in the same Pi conversation. The configured research model is selected when the task starts; otherwise the current model continues. `/task next` advances to the roadmap and changes the phase instructions and allowed tools without switching sessions.
 
 Roadmap, each step's implementation session, each review round, and each commit phase have their own saved sessions. A new implementation session starts with a preparation discussion and a short summary of the current roadmap item; the same session continues into coding after `/task next` captures the baseline. It does not inherit the roadmap chat transcript. The durable handoff is `context.md`, `roadmap.md`, and the current `step-N.md`; the commit session keeps the commit result and its phase boundary.
 
@@ -203,7 +201,7 @@ The model IDs above are examples. Use a provider and model available in your Pi 
 | `artifactDir` | Nonempty path template; `{projectRoot}/.agents/tasks/{taskId}` | Directory for committable task artifacts. A relative path resolves from the project root. `{projectRoot}` and `{taskId}` are replaced when a task is created. `/task TASK-ID --dir PATH` overrides it for that task. Existing tasks keep the directory recorded in `state.json`. |
 | `runtimeDir` | Nonempty path template; `{projectRoot}/.agents/task-workflow/{taskId}` | Directory for local `state.json`, saved sessions, and implementation baselines. A relative path resolves from the project root. Keep it separate from `artifactDir` and exclude it from Git. The default path is added to the repository's `.git/info/exclude`; project `.gitignore` can also be used. Existing tasks keep their recorded paths; legacy layouts are supported and their local state paths are added to `.git/info/exclude` when opened. Already tracked runtime files must be untracked manually.
 | `autoCommit` | Boolean; `false` | After a clear review in a Git project, `false` prepares an English commit title and body; `true` commits the reviewed code files. Automatic commit requires a clean code working tree when implementation starts. With no Git repository, neither mode creates a commit. |
-| `phaseModels` | Object; `{}` | Model overrides by phase. Valid keys: `collect`, `research`, `roadmap`, `implement`, `review`. New tasks use `phaseModels.implement` throughout step preparation and coding. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place. |
+| `phaseModels` | Object; `{}` | Model overrides by phase. Valid keys: `research`, `roadmap`, `implement`, `review`. New tasks use `phaseModels.implement` throughout step preparation and coding. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place. |
 | `skills` | Object; `{ "review": "task-review" }` | Maps phase names to Pi skill names. Valid keys: `research`, `roadmap`, `review`. Each value is a skill name or `null`; omitted research/roadmap entries add no skill, and omitted `review` uses `task-review`. A review skill adds user-specific preferences but does not replace the built-in review procedure. A missing skill does not block the phase. `null` disables a phase skill. Use names such as `roadmap-planning`, not paths to `SKILL.md`. |
 | `reviewSkill` | Pi skill name or `null`; unset (deprecated) | Legacy alias for `skills.review`. `skills.review` takes precedence when both are set. |
 | `reviewTools` | Array of tool names; `[]` | Adds tools to review's default set: `read`, `grep`, `find`, `ls`, and `task_write_artifact`. Add only tools you trust for read-only project work. This setting does not remove default tools. |
@@ -226,9 +224,9 @@ A model object has this shape:
 
 `provider` and `model` are required nonempty strings and must identify a model Pi can find and authenticate. `thinkingLevel` is optional and accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. When omitted, Pi keeps the current thinking level. A missing or `null` override keeps Pi's current model.
 
-Add any phase to `phaseModels` using the same object shape. For example, `phaseModels.research` selects a model when context moves into research, while `phaseModels.review` selects one for each new review session.
+Add any supported phase to `phaseModels` using the same object shape. For example, `phaseModels.research` selects a model when the task starts, while `phaseModels.review` selects one for each new review session.
 
-The context model is selected when its session opens. Research shares that session, so its model override is applied on the context → research transition. Other overrides apply when their new phase session opens. Reopening a session with an already applied override keeps its saved model; changing configuration does not retroactively replace it. You can also change a session's model with Pi's normal controls.
+The research model is selected when its session opens. Other overrides apply when their new phase session opens. Reopening a session with an already applied override keeps its saved model; changing configuration does not retroactively replace it. You can also change a session's model with Pi's normal controls.
 
 `context.md`, `roadmap.md`, `step-N.md`, and `review-N-round-M.md` live in `artifactDir`. `implementation-N.diff` exists only while the step is active and is removed after commit completion. `state.json`, `sessions/`, and `baselines/` live in `runtimeDir`. Task discovery scans the configured and default artifact/runtime locations, legacy task directories, and a small index under `~/.pi/agent/task-workflow-index/`.
 
@@ -242,7 +240,7 @@ The extension's review prompt defines the review procedure and artifact format. 
 
 ### Safety mechanisms
 
-The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks calls to other tools. Context, research, roadmap, and implementation preparation allow reading project files and writing task artifacts. Implementation permits code editing only after its baseline is captured. Review and commit use read-only tools; commit-phase code must be committed through Git outside the model's tool access. These are Pi tool controls, not operating system file permissions; a user command or another extension's own code can still write files.
+The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks calls to other tools. Research, roadmap, and implementation preparation allow reading project files and writing task artifacts. Implementation permits code editing only after its baseline is captured. Review and commit use read-only tools; commit-phase code must be committed through Git outside the model's tool access. These are Pi tool controls, not operating system file permissions; a user command or another extension's own code can still write files.
 
 ### Tree navigation
 
