@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import {
   constants as fsConstants,
+  cpSync,
   promises as fsPromises,
   existsSync,
   lstatSync,
@@ -40,12 +41,12 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+const CURRENT_STRUCTURE_VERSION = "2.0";
 
 type Phase =
   | "collect"
   | "research"
   | "roadmap"
-  | "steps"
   | "implement"
   | "review"
   | "commit"
@@ -54,16 +55,17 @@ type SessionRefs = {
   collect?: string;
   research?: string;
   roadmap?: string;
-  steps?: Record<string, string>;
   implement?: Record<string, string>;
   review?: Record<string, string[]>;
   commit?: Record<string, string>;
 };
 type TaskState = {
   version: 1;
+  structureVersion: string;
   id: string;
   projectRoot: string;
   artifactDir?: string;
+  runtimeDir?: string;
   contextPath: string;
   phase: Phase;
   currentStep: number;
@@ -98,13 +100,14 @@ type PhaseModel = {
   thinkingLevel?:
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 };
-type SkillPhase = "research" | "roadmap" | "steps" | "review";
+type SkillPhase = "research" | "roadmap" | "review";
 type Config = {
   artifactDir?: string;
+  runtimeDir?: string;
   autoCommit?: boolean;
   phaseModels?: Partial<
     Record<
-      "collect" | "research" | "roadmap" | "steps" | "implement" | "review",
+      "collect" | "research" | "roadmap" | "implement" | "review",
       PhaseModel | null
     >
   >;
@@ -154,7 +157,8 @@ Starting or opening a specific task requires an explicit ID.
 Context and research share one saved Pi session. Later phases use their own sessions.
 Each implementation session begins with final discussion of its current step; /task next finalizes that step and starts coding in the same session.
 The implementation session stays open for the step and is reused for repairs.
-Each review round uses a fresh read-only session. Review findings live in review-N.md.
+Each review round uses a fresh read-only session. Reports use review-N-round-M.md, starting at round 0.
+Step status in step-N.md is planned, in_progress, or completed.
 An accepted review enters a separate commit phase before the next implementation step.
 Commit-message generation failures stay in that phase; /task next retries them.
 With manual commits, /task next verifies the reviewed files were committed.
@@ -166,8 +170,8 @@ Use /task next when discussion is settled; use /task accept to agree to proposal
 Agreement is implied by /task accept; add a note only to clarify a choice or decision.
 Text ending in /task next is not parsed as a command.
 Task artifacts may be updated in any phase; project code changes run only in implement.
-The default artifact directory is <project>/.agents/projects/<task-id>/.
-Set artifactDir, autoCommit, phaseModels, skills, reviewTools, hotkeys,
+The default artifact directory is <project>/.agents/tasks/<task-id>/; local state and sessions use <project>/.agents/task-workflow/<task-id>/.
+Set artifactDir, runtimeDir, autoCommit, phaseModels, skills, reviewTools, hotkeys,
 snapshotMaxFiles, snapshotMaxMiB, or allowTreeNavigation in
 ~/.pi/agent/task-workflow.json.
 You can also pass --dir PATH to /task.
@@ -199,10 +203,19 @@ function projectRoot(cwd: string): string {
 }
 
 function defaultArtifactDir(root: string, id: string): string {
-  return join(root, ".agents", "projects", id);
+  return join(root, ".agents", "tasks", id);
+}
+function defaultRuntimeDir(root: string, id: string): string {
+  return join(root, ".agents", "task-workflow", id);
 }
 function taskDir(state: TaskState): string {
   return state.artifactDir || defaultArtifactDir(state.projectRoot, state.id);
+}
+function runtimeDir(state: TaskState): string {
+  return state.runtimeDir || taskDir(state);
+}
+function taskStatePath(state: TaskState): string {
+  return statePath(runtimeDir(state));
 }
 function statePath(dir: string): string {
   return join(dir, "state.json");
@@ -240,11 +253,13 @@ function readConfig(): Config {
     throw new Error(
       `Move implementModel and reviewModel to phaseModels.implement and phaseModels.review in ${path}.`,
     );
-  if (
-    values.artifactDir !== undefined &&
-    (typeof values.artifactDir !== "string" || !values.artifactDir.trim())
-  )
-    throw new Error(`Invalid artifactDir: ${path}`);
+  for (const key of ["artifactDir", "runtimeDir"]) {
+    if (
+      values[key] !== undefined &&
+      (typeof values[key] !== "string" || !(values[key] as string).trim())
+    )
+      throw new Error(`Invalid ${key}: ${path}`);
+  }
   if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean")
     throw new Error(`autoCommit must be a boolean: ${path}`);
   if (
@@ -268,11 +283,7 @@ function readConfig(): Config {
     )
       throw new Error(`skills must be an object: ${path}`);
     for (const [phase, skill] of Object.entries(values.skills)) {
-      if (
-        !(["research", "roadmap", "steps", "review"] as string[]).includes(
-          phase,
-        )
-      )
+      if (!(["research", "roadmap", "review"] as string[]).includes(phase))
         throw new Error(`Unknown skills phase ${phase}: ${path}`);
       if (
         skill !== null &&
@@ -327,14 +338,9 @@ function readConfig(): Config {
       throw new Error(`phaseModels must be an object: ${path}`);
     for (const [phase, model] of Object.entries(values.phaseModels)) {
       if (
-        ![
-          "collect",
-          "research",
-          "roadmap",
-          "steps",
-          "implement",
-          "review",
-        ].includes(phase)
+        !["collect", "research", "roadmap", "implement", "review"].includes(
+          phase,
+        )
       )
         throw new Error(`Unknown phaseModels key ${phase}: ${path}`);
       if (model === null) continue;
@@ -412,13 +418,27 @@ function configuredHotkeys(): Array<{ command: string; key: string }> {
   return hotkeys;
 }
 
-function parseArtifactDir(root: string, id: string, override?: string): string {
-  const template =
-    override || readConfig().artifactDir || ".agents/projects/{taskId}";
+function parsePathTemplate(root: string, id: string, template: string): string {
   const expanded = template
     .replaceAll("{projectRoot}", root)
     .replaceAll("{taskId}", id);
   return isAbsolute(expanded) ? resolve(expanded) : resolve(root, expanded);
+}
+
+function parseArtifactDir(root: string, id: string, override?: string): string {
+  return parsePathTemplate(
+    root,
+    id,
+    override || readConfig().artifactDir || ".agents/tasks/{taskId}",
+  );
+}
+
+function parseRuntimeDir(root: string, id: string): string {
+  return parsePathTemplate(
+    root,
+    id,
+    readConfig().runtimeDir || ".agents/task-workflow/{taskId}",
+  );
 }
 
 type Argument = { value: string; quoted: boolean };
@@ -460,7 +480,31 @@ function validateTaskId(id: string): void {
   }
 }
 
-function loadState(path: string): TaskState {
+function checkStructureVersion(path: string): string | undefined {
+  if (!existsSync(path)) return undefined;
+  const data = JSON.parse(readFileSync(path, "utf8")) as TaskState;
+  const detected: unknown = data.structureVersion ?? "1.0";
+  if (detected !== "1.0" && detected !== CURRENT_STRUCTURE_VERSION)
+    throw new Error(
+      `Task ${data.id || "(unknown)"} has unsupported structure version ${JSON.stringify(detected)} in ${path}; this extension supports 1.0 and ${CURRENT_STRUCTURE_VERSION}. Start a new task using the contents of its context.md; this will not be done automatically.`,
+    );
+  if ((data.phase as string) === "steps")
+    return `Task ${data.id} uses the removed Step design phase. Start a new task and use the contents of ${data.contextPath} as its context; this will not be done automatically.`;
+  const actualArtifact =
+    data.artifactDir || defaultArtifactDir(data.projectRoot, data.id);
+  const actualRuntime = data.runtimeDir || actualArtifact;
+  const expectedArtifact = parseArtifactDir(data.projectRoot, data.id);
+  const expectedRuntime = parseRuntimeDir(data.projectRoot, data.id);
+  if (
+    detected === CURRENT_STRUCTURE_VERSION &&
+    resolve(actualArtifact) === resolve(expectedArtifact) &&
+    resolve(actualRuntime) === resolve(expectedRuntime)
+  )
+    return undefined;
+  return `Task ${data.id} structure does not match this extension. Structure version: actual ${detected}; expected ${CURRENT_STRUCTURE_VERSION}.\nArtifact path: actual ${actualArtifact}; expected ${expectedArtifact}.\nRuntime path: actual ${actualRuntime}; expected ${expectedRuntime}.`;
+}
+
+function loadState(path: string, maintainLegacyFiles = true): TaskState {
   const data = JSON.parse(readFileSync(path, "utf8")) as TaskState;
   if (
     data.version !== 1 ||
@@ -471,7 +515,82 @@ function loadState(path: string): TaskState {
   ) {
     throw new Error(`Invalid task state: ${path}`);
   }
+  if (!Object.prototype.hasOwnProperty.call(data, "structureVersion")) {
+    data.structureVersion = "1.0";
+  }
+  if (maintainLegacyFiles) {
+    migrateLegacyReviewRoundFiles(data, path);
+    if (!data.runtimeDir) ignoreLegacyRuntimeFiles(data);
+  }
   return data;
+}
+
+function migrateLegacyReviewRoundFiles(
+  state: TaskState,
+  stateFile: string,
+): void {
+  const directory = taskDir(state);
+  if (!existsSync(directory)) return;
+  const entries = readdirSync(directory, { withFileTypes: true });
+  const names = new Set(
+    entries.filter((entry) => entry.isFile()).map((entry) => entry.name),
+  );
+  const steps = new Set<number>();
+  for (const name of names) {
+    const match = name.match(/^review-(\d+)(?:-round-(\d+))?\.md$/);
+    if (match) steps.add(Number(match[1]));
+  }
+  let changed = false;
+  for (const step of steps) {
+    const plain = `review-${step}.md`;
+    const archives = [...names]
+      .map((name) => {
+        const match = name.match(
+          new RegExp(`^review-${step}-round-(\\d+)\\.md$`),
+        );
+        return match ? { name, round: Number(match[1]) } : undefined;
+      })
+      .filter((entry): entry is { name: string; round: number } => !!entry)
+      .sort((left, right) => left.round - right.round);
+    const hasPlain = names.has(plain);
+    const hasRoundZero = archives.some((entry) => entry.round === 0);
+    if (!hasPlain && (!archives.length || hasRoundZero)) continue;
+    const staged = archives.map((entry) => {
+      const temporary = join(
+        directory,
+        `.review-migration-${randomUUID()}.tmp`,
+      );
+      renameSync(join(directory, entry.name), temporary);
+      return { ...entry, temporary };
+    });
+    for (const entry of staged) {
+      const round = hasRoundZero ? entry.round : Math.max(0, entry.round - 1);
+      renameSync(
+        entry.temporary,
+        join(directory, `review-${step}-round-${round}.md`),
+      );
+    }
+    const nextRound = archives.length
+      ? Math.max(...archives.map((entry) => entry.round)) +
+        (hasRoundZero ? 1 : 0)
+      : 0;
+    if (hasPlain)
+      renameSync(
+        join(directory, plain),
+        join(directory, `review-${step}-round-${nextRound}.md`),
+      );
+    if (
+      step === (state.awaitingReview || state.currentStep) &&
+      state.reviewRound !== undefined
+    ) {
+      state.reviewRound = hasRoundZero
+        ? Math.max(state.reviewRound, nextRound)
+        : Math.max(0, state.reviewRound - 1);
+    }
+    changed = true;
+  }
+  if (changed)
+    writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
 function projectMismatchMessage(
@@ -621,15 +740,16 @@ function relocatedProjectRoot(
   if (
     previousRoot === root ||
     existsSync(previousRoot) ||
-    !pathWithin(previousRoot, resolve(taskDir(state)))
+    !pathWithin(previousRoot, resolve(taskDir(state))) ||
+    !pathWithin(previousRoot, resolve(runtimeDir(state)))
   )
     return undefined;
-  const movedArtifactDir = resolve(
+  const movedRuntimeDir = resolve(
     root,
-    relative(previousRoot, resolve(taskDir(state))),
+    relative(previousRoot, resolve(runtimeDir(state))),
   );
   if (
-    resolve(path) !== resolve(statePath(movedArtifactDir)) ||
+    resolve(path) !== resolve(statePath(movedRuntimeDir)) ||
     !pathWithin(root, resolve(path))
   )
     return undefined;
@@ -637,9 +757,15 @@ function relocatedProjectRoot(
 }
 
 function listTasks(root: string): DiscoveredTask[] {
-  const configured = readConfig().artifactDir || ".agents/projects/{taskId}";
+  const config = readConfig();
   const candidates = [
-    ...templateStatePaths(root, configured),
+    ...templateStatePaths(
+      root,
+      config.runtimeDir || ".agents/task-workflow/{taskId}",
+    ),
+    ...templateStatePaths(root, ".agents/task-workflow/{taskId}"),
+    ...templateStatePaths(root, config.artifactDir || ".agents/tasks/{taskId}"),
+    ...templateStatePaths(root, ".agents/tasks/{taskId}"),
     ...templateStatePaths(root, ".agents/projects/{taskId}"),
     ...indexedStatePaths(root),
     ...relocatedIndexedStatePaths(root),
@@ -648,13 +774,20 @@ function listTasks(root: string): DiscoveredTask[] {
   for (const path of candidates) {
     try {
       if (!lstatSync(path).isFile()) continue;
-      const state = loadState(path);
-      const task: DiscoveredTask = { state, path };
+      const state = loadState(path, false);
+      const currentStatePath = existsSync(taskStatePath(state))
+        ? taskStatePath(state)
+        : path;
+      const task: DiscoveredTask = { state, path: currentStatePath };
       if (resolve(state.projectRoot) !== resolve(root)) {
-        const previousRoot = relocatedProjectRoot(state, path, root);
+        const previousRoot = relocatedProjectRoot(
+          state,
+          currentStatePath,
+          root,
+        );
         if (!previousRoot) continue;
         task.relocatedFrom = previousRoot;
-      } else if (resolve(statePath(taskDir(state))) !== resolve(path)) {
+      } else if (resolve(taskStatePath(state)) !== resolve(currentStatePath)) {
         continue;
       }
       const existing = tasks.get(state.id);
@@ -705,7 +838,6 @@ function rebaseSessionRefs(
     roadmap: sessions.roadmap
       ? rebaseMovedPath(sessions.roadmap, oldRoot, newRoot)
       : undefined,
-    steps: rebaseMap(sessions.steps),
     implement: rebaseMap(sessions.implement),
     review: sessions.review
       ? Object.fromEntries(
@@ -717,6 +849,48 @@ function rebaseSessionRefs(
       : undefined,
     commit: rebaseMap(sessions.commit),
   };
+}
+
+function rewriteMigrationSessionFile(
+  file: string,
+  taskId: string,
+  newStatePath: string,
+): string {
+  const original = readFileSync(file, "utf8");
+  let hasHeader = false;
+  let taskLinks = 0;
+  let latestTaskLinkId: string | undefined;
+  const lines = original.split("\n").map((line) => {
+    if (!line) return line;
+    let entry: Record<string, any>;
+    try {
+      entry = JSON.parse(line) as Record<string, any>;
+    } catch {
+      throw new Error(`Cannot safely migrate malformed Pi session: ${file}`);
+    }
+    if (entry.type === "session") hasHeader = true;
+    if (entry.type === "custom" && entry.customType === ENTRY_TYPE) {
+      if (!entry.data || typeof entry.data.id !== "string")
+        throw new Error(
+          `Cannot safely migrate malformed task association: ${file}`,
+        );
+      latestTaskLinkId = entry.data.id;
+      if (entry.data.id === taskId) {
+        entry.data.statePath = newStatePath;
+        taskLinks++;
+      }
+    }
+    return JSON.stringify(entry);
+  });
+  if (!hasHeader)
+    throw new Error(
+      `Cannot safely migrate Pi session without a header: ${file}`,
+    );
+  if (!taskLinks || latestTaskLinkId !== taskId)
+    throw new Error(
+      `Cannot safely migrate Pi session without its current task association: ${file}`,
+    );
+  return lines.join("\n");
 }
 
 function relocateSessionFile(
@@ -879,7 +1053,8 @@ function relocateTask(
     !discovered.relocatedFrom ||
     oldRoot !== resolve(state.projectRoot) ||
     existsSync(oldRoot) ||
-    !pathWithin(oldRoot, resolve(taskDir(state)))
+    !pathWithin(oldRoot, resolve(taskDir(state))) ||
+    !pathWithin(oldRoot, resolve(runtimeDir(state)))
   )
     throw new Error(
       "The task no longer matches the detected project relocation.",
@@ -888,18 +1063,28 @@ function relocateTask(
     newRoot,
     relative(oldRoot, resolve(taskDir(state))),
   );
-  const targetStatePath = statePath(artifactDir);
+  const runtimeDirectory = resolve(
+    newRoot,
+    relative(oldRoot, resolve(runtimeDir(state))),
+  );
+  const targetStatePath = statePath(runtimeDirectory);
   if (
-    resolve(discovered.path) !== resolve(targetStatePath) ||
+    resolve(discovered.path) !== resolve(statePath(runtimeDir(state))) ||
     !pathWithin(newRoot, resolve(discovered.path))
   )
     throw new Error(
       "The task artifact directory is not inside the renamed project.",
     );
   const artifactInfo = lstatSync(artifactDir);
-  if (!artifactInfo.isDirectory() || artifactInfo.isSymbolicLink())
+  const runtimeInfo = lstatSync(runtimeDirectory);
+  if (
+    !artifactInfo.isDirectory() ||
+    artifactInfo.isSymbolicLink() ||
+    !runtimeInfo.isDirectory() ||
+    runtimeInfo.isSymbolicLink()
+  )
     throw new Error(
-      `Cannot safely relocate linked task artifacts: ${artifactDir}`,
+      `Cannot safely relocate linked task directories: ${artifactDir}, ${runtimeDirectory}`,
     );
   if (
     !pathWithin(realpathSync(newRoot), realpathSync(artifactDir)) ||
@@ -914,6 +1099,7 @@ function relocateTask(
     ...state,
     projectRoot: newRoot,
     artifactDir,
+    runtimeDir: runtimeDirectory,
     contextPath: rebaseMovedPath(state.contextPath, oldRoot, newRoot),
     sessions: rebaseSessionRefs(state.sessions, oldRoot, newRoot),
     pendingBaselineDir: state.pendingBaselineDir
@@ -932,7 +1118,7 @@ function relocateTask(
       `The task baseline is missing after relocation: ${relocated.pendingBaselineDir}`,
     );
 
-  const sessionsDir = join(artifactDir, "sessions");
+  const sessionsDir = join(runtimeDirectory, "sessions");
   const referencedSessions = new Set<string>();
   const addPath = (path?: string) => {
     if (path) referencedSessions.add(path);
@@ -941,7 +1127,6 @@ function relocateTask(
   addPath(relocated.sessions?.research);
   addPath(relocated.sessions?.roadmap);
   for (const sessions of [
-    relocated.sessions?.steps,
     relocated.sessions?.implement,
     relocated.sessions?.commit,
   ])
@@ -1033,7 +1218,8 @@ async function confirmTaskRelocation(
   if (
     taskLink(ctx) ||
     (currentSession &&
-      pathWithin(resolve(taskDir(task.state)), resolve(currentSession)))
+      (pathWithin(resolve(taskDir(task.state)), resolve(currentSession)) ||
+        pathWithin(resolve(runtimeDir(task.state)), resolve(currentSession))))
   ) {
     ctx.ui.notify(
       "Start a fresh Pi session in the renamed project before relocating this task; do not migrate an open task session.",
@@ -1088,6 +1274,7 @@ function taskDisplayState(task: DiscoveredTask, root: string): TaskState {
     ...task.state,
     projectRoot: newRoot,
     artifactDir: rebaseMovedPath(taskDir(task.state), oldRoot, newRoot),
+    runtimeDir: rebaseMovedPath(runtimeDir(task.state), oldRoot, newRoot),
     contextPath: rebaseMovedPath(task.state.contextPath, oldRoot, newRoot),
   };
 }
@@ -1121,8 +1308,6 @@ function taskProgress(state: TaskState): string {
   if (state.phase === "collect") return "Collecting context";
   if (state.phase === "research") return "Researching code";
   if (state.phase === "roadmap") return "Planning roadmap";
-  if (state.phase === "steps")
-    return `Designing step ${state.currentStep}${total ? `/${total}` : ""}`;
   if (state.phase === "implement" && total && state.currentStep > total)
     return `Complete (${state.completedSteps.length}/${total} steps)`;
   if (state.phase === "implement")
@@ -1146,7 +1331,7 @@ function taskProgress(state: TaskState): string {
 }
 
 function saveState(state: TaskState): void {
-  const path = statePath(taskDir(state));
+  const path = taskStatePath(state);
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
@@ -1197,8 +1382,60 @@ function roadmapPath(state: TaskState): string {
 function stepPath(state: TaskState, n: number): string {
   return join(taskDir(state), `step-${n}.md`);
 }
-function reviewPath(state: TaskState, n: number): string {
-  return join(taskDir(state), `review-${n}.md`);
+type StepStatus = "planned" | "in_progress" | "completed";
+function stepStatus(content: string): StepStatus | undefined {
+  const match = content.match(/^Status: (planned|in_progress|completed)$/m);
+  return match?.[1] as StepStatus | undefined;
+}
+function withStepStatus(content: string, status: StepStatus): string {
+  const lines = content.split(/\r?\n/);
+  const heading = lines.findIndex(
+    (line) => line.trim() === "## Workflow status",
+  );
+  if (heading >= 0) {
+    let end = heading + 1;
+    while (end < lines.length && !/^## /.test(lines[end])) end++;
+    lines.splice(
+      heading,
+      end - heading,
+      "## Workflow status",
+      "",
+      `Status: ${status}`,
+      "",
+    );
+  } else {
+    const title = lines.findIndex((line) => /^# /.test(line));
+    if (title >= 0)
+      lines.splice(
+        title + 1,
+        0,
+        "",
+        "## Workflow status",
+        "",
+        `Status: ${status}`,
+      );
+    else lines.unshift(`Status: ${status}`, "");
+  }
+  return lines.join("\n").trimEnd();
+}
+function updateStepStatus(
+  state: TaskState,
+  step: number,
+  status: StepStatus,
+): void {
+  const path = stepPath(state, step);
+  if (!existsSync(path)) return;
+  const current = readFileSync(path, "utf8");
+  const updated = withStepStatus(current, status);
+  if (updated !== current.trimEnd())
+    writeArtifact(state, "step", updated, step);
+}
+function reviewPath(
+  state: TaskState,
+  n: number,
+  round = state.reviewRound ?? 0,
+): string {
+  return join(taskDir(state), `review-${n}-round-${round}.md`);
 }
 
 type ArtifactKind = "context" | "roadmap" | "step" | "review";
@@ -1230,6 +1467,14 @@ function writeArtifact(
       ? step || state.awaitingReview || state.currentStep
       : step || state.currentStep;
   const path = artifactPath(state, kind, step);
+  if (kind === "step") {
+    const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+    const status = stepStatus(existing) || "planned";
+    content = withStepStatus(content, status);
+    const record = existing.match(/^## Execution record\n[\s\S]*$/m)?.[0];
+    if (record && !/^## Execution record\n/m.test(content))
+      content = `${content.trimEnd()}\n\n${record}`;
+  }
   if (
     kind === "context" &&
     resolve(path) !== resolve(taskDir(state), "context.md")
@@ -1279,7 +1524,7 @@ function stepCount(state: TaskState): number {
 }
 
 function exclusions(state: TaskState): string[] {
-  const paths = [taskDir(state), state.contextPath];
+  const paths = [taskDir(state), runtimeDir(state), state.contextPath];
   return paths.flatMap((path) => {
     const rel = relative(state.projectRoot, path);
     return rel && rel !== ".." && !rel.startsWith(`..${sep}`)
@@ -1306,20 +1551,86 @@ function hasGitRepository(state: TaskState): boolean {
   }
 }
 
+function appendGitExcludePatterns(root: string, patterns: string[]): boolean {
+  try {
+    const excludePath = git(root, ["rev-parse", "--git-path", "info/exclude"]);
+    const path = isAbsolute(excludePath)
+      ? excludePath
+      : resolve(root, excludePath);
+    if (existsSync(path) && lstatSync(path).isSymbolicLink()) return false;
+    const current = existsSync(path) ? readFileSync(path, "utf8") : "";
+    const existing = new Set(current.split(/\r?\n/));
+    const missing = patterns.filter((pattern) => !existing.has(pattern));
+    if (!missing.length) return true;
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(
+      path,
+      `${current.trimEnd()}${current.trimEnd() ? "\n" : ""}# Pi task workflow local runtime\n${missing.join("\n")}\n`,
+      "utf8",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ignoreLegacyRuntimeFiles(state: TaskState): void {
+  const root = state.projectRoot;
+  const directory = taskDir(state);
+  const relativeDirectory = relative(root, directory);
+  if (
+    !relativeDirectory ||
+    relativeDirectory === ".." ||
+    relativeDirectory.startsWith(`..${sep}`)
+  )
+    return;
+  const prefix = `/${relativeDirectory
+    .split(sep)
+    .map((part) => part.replace(/[\\*?\[\]#!]/g, "\\$&"))
+    .join("/")}`;
+  appendGitExcludePatterns(root, [
+    `${prefix}/state.json`,
+    `${prefix}/sessions/`,
+    `${prefix}/.implementation-baseline-*/`,
+  ]);
+}
+
+function ignoreRuntimeDirectory(root: string, directory: string): boolean {
+  try {
+    const relativeDirectory = relative(root, directory);
+    if (
+      !relativeDirectory ||
+      relativeDirectory === ".." ||
+      relativeDirectory.startsWith(`..${sep}`)
+    )
+      return true;
+    const pattern = `/${relativeDirectory
+      .split(sep)
+      .map((part) => part.replace(/[\\*?\[\]#!]/g, "\\$&"))
+      .join("/")}/`;
+    return appendGitExcludePatterns(root, [pattern]);
+  } catch {
+    return false;
+  }
+}
+
 async function projectFiles(
   state: TaskState,
   onProgress?: (message: string) => void,
   maxFiles?: number,
 ): Promise<Set<string>> {
   const files = new Set<string>();
-  const artifactDirectory = resolve(taskDir(state));
+  const excludedDirectories = new Set([
+    resolve(taskDir(state)),
+    resolve(runtimeDir(state)),
+  ]);
   const stack = [state.projectRoot];
   let inspected = 0;
   while (stack.length) {
     const directory = stack.pop()!;
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
-      if (resolve(path) === artifactDirectory || entry.isSymbolicLink())
+      if (excludedDirectories.has(resolve(path)) || entry.isSymbolicLink())
         continue;
       if (entry.isDirectory()) {
         if (entry.name !== ".git") stack.push(path);
@@ -1396,9 +1707,9 @@ async function captureBaseline(
         `Checking snapshot size: ${index + 1}/${files.length} files`,
       );
   }
-  const directory = mkdtempSync(
-    join(taskDir(state), ".implementation-baseline-"),
-  );
+  const baselineParent = join(runtimeDir(state), "baselines");
+  mkdirSync(baselineParent, { recursive: true });
+  const directory = mkdtempSync(join(baselineParent, "implementation-"));
   const paths = new Map<string, string | null>();
   const hashes = new Map<string, string | null>();
   try {
@@ -1494,7 +1805,20 @@ function diffNoIndex(
         failure.stderr?.toString().trim() || `Cannot diff ${file}.`,
       );
     const output = failure.stdout?.toString().trimEnd();
-    return output ? `# ${file}\n${output}` : "";
+    if (!output) return "";
+    const quotePath = (prefix: string) => {
+      const path = `${prefix}${file}`;
+      return /[\s"\\]/.test(path)
+        ? `"${path.replace(/(["\\])/g, "\\$1")}"`
+        : path;
+    };
+    const source = quotePath("a/");
+    const target = quotePath("b/");
+    const normalized = output
+      .replace(/^diff --git .*$/m, `diff --git ${source} ${target}`)
+      .replace(/^--- a\/.*$/m, `--- ${source}`)
+      .replace(/^\+\+\+ b\/.*$/m, `+++ ${target}`);
+    return `# ${file}\n${normalized}`;
   }
 }
 
@@ -2018,7 +2342,7 @@ async function showArtifact(
 }
 
 function sessionDirectory(state: TaskState): string {
-  return join(taskDir(state), "sessions");
+  return join(runtimeDir(state), "sessions");
 }
 
 function stepTitle(
@@ -2069,19 +2393,16 @@ function phaseLabel(state: TaskState): string {
         ? "Research"
         : state.phase === "roadmap"
           ? "Roadmap"
-          : state.phase === "steps"
-            ? "Step design"
-            : state.phase === "implement"
-              ? state.implementationStarted
-                ? "Implementation"
-                : "Step preparation"
-              : state.phase === "review"
-                ? "Review"
-                : state.phase === "commit"
-                  ? "Commit"
-                  : "Complete";
-  if (!["steps", "implement", "review", "commit"].includes(state.phase))
-    return phase;
+          : state.phase === "implement"
+            ? state.implementationStarted
+              ? "Implementation"
+              : "Step preparation"
+            : state.phase === "review"
+              ? "Review"
+              : state.phase === "commit"
+                ? "Commit"
+                : "Complete";
+  if (!["implement", "review", "commit"].includes(state.phase)) return phase;
   let total: number | undefined;
   try {
     total = stepCount(state);
@@ -2097,7 +2418,7 @@ function sessionDisplayName(
   phase = state.phase,
   step = state.currentStep,
 ): string {
-  const title = ["steps", "implement", "review", "commit"].includes(phase)
+  const title = ["implement", "review", "commit"].includes(phase)
     ? stepTitle(state, step)
     : undefined;
   const part =
@@ -2105,14 +2426,12 @@ function sessionDisplayName(
       ? "context"
       : phase === "research"
         ? "context + research"
-        : phase === "steps"
-          ? `steps ${step}`
-          : phase === "implement"
-            ? `${state.implementationStarted ? "implement" : "prepare"} ${step}`
-            : phase === "review" || phase === "commit"
-              ? `${phase} ${step}`
-              : phase;
-  return `${state.id} · ${part}${phase === "review" ? ` · r${state.reviewRound || 1}` : ""}${title ? ` · ${title}` : ""}`;
+        : phase === "implement"
+          ? `${state.implementationStarted ? "implement" : "prepare"} ${step}`
+          : phase === "review" || phase === "commit"
+            ? `${phase} ${step}`
+            : phase;
+  return `${state.id} · ${part}${phase === "review" ? ` · r${state.reviewRound ?? 0}` : ""}${title ? ` · ${title}` : ""}`;
 }
 
 function phaseHint(state: TaskState): string {
@@ -2122,7 +2441,7 @@ function phaseHint(state: TaskState): string {
     return "Add context; when ready, use /task next.";
   if (state.phase === "research")
     return "Discuss findings; when ready, use /task next.";
-  if (state.phase === "roadmap" || state.phase === "steps")
+  if (state.phase === "roadmap")
     return "When agreed, use /task next (or /task accept for a proposal).";
   if (state.phase === "implement")
     return state.implementationStarted
@@ -2182,6 +2501,107 @@ function visibleTask(ctx: ExtensionContext): TaskState | undefined {
   return undefined;
 }
 
+function legacySourceMatchesCopies(
+  source: string,
+  artifactDirectory: string,
+  runtimeDirectory: string,
+  task: TaskState,
+  sourceStateSnapshot: string,
+): boolean {
+  try {
+    if (
+      readFileSync(join(source, "state.json"), "utf8") !== sourceStateSnapshot
+    )
+      return false;
+    const sourceState = JSON.parse(sourceStateSnapshot) as TaskState;
+    if (sourceState.id !== task.id) return false;
+    for (const entry of readdirSync(source, { withFileTypes: true })) {
+      if (entry.name === "state.json") continue;
+      if (entry.isSymbolicLink()) return false;
+      const runtimeEntry =
+        entry.name === "sessions" || entry.name === "baselines";
+      const original = join(source, entry.name);
+      const copied = join(
+        runtimeEntry ? runtimeDirectory : artifactDirectory,
+        entry.name,
+      );
+      if (
+        !treeMatches(
+          original,
+          copied,
+          runtimeEntry && entry.name === "sessions",
+          task,
+        )
+      )
+        return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function treeMatches(
+  source: string,
+  destination: string,
+  rewriteSessions: boolean,
+  task: TaskState,
+): boolean {
+  const sourceInfo = lstatSync(source);
+  const destinationInfo = lstatSync(destination);
+  if (sourceInfo.isSymbolicLink() || destinationInfo.isSymbolicLink())
+    return false;
+  if (sourceInfo.isDirectory() || destinationInfo.isDirectory()) {
+    if (!sourceInfo.isDirectory() || !destinationInfo.isDirectory())
+      return false;
+    const sourceEntries = readdirSync(source).sort();
+    const destinationEntries = readdirSync(destination).sort();
+    return (
+      sourceEntries.length === destinationEntries.length &&
+      sourceEntries.every(
+        (name, index) =>
+          name === destinationEntries[index] &&
+          treeMatches(
+            join(source, name),
+            join(destination, name),
+            rewriteSessions,
+            task,
+          ),
+      )
+    );
+  }
+  if (!sourceInfo.isFile() || !destinationInfo.isFile()) return false;
+  const sourceContent = readFileSync(source);
+  const destinationContent = readFileSync(destination);
+  if (rewriteSessions && source.endsWith(".jsonl")) {
+    if (sourceContent.equals(destinationContent)) return true;
+    try {
+      const rewritten = rewriteMigrationSessionFile(
+        source,
+        task.id,
+        taskStatePath(task),
+      );
+      return destinationContent.toString("utf8") === rewritten;
+    } catch {
+      return false;
+    }
+  }
+  return sourceContent.equals(destinationContent);
+}
+
+function sessionReferencesExist(state: TaskState): boolean {
+  const files = [
+    state.sessions?.collect,
+    state.sessions?.research,
+    state.sessions?.roadmap,
+    state.interruptedSession,
+    ...Object.values(state.sessions?.implement || {}),
+    ...Object.values(state.sessions?.commit || {}),
+    ...Object.values(state.sessions?.review || {}).flat(),
+  ].filter((file): file is string => !!file);
+  return files.every((file) => existsSync(file));
+}
+
 function sessionFor(
   state: TaskState,
   phase = state.phase,
@@ -2192,7 +2612,6 @@ function sessionFor(
   if (phase === "collect") return sessions.collect;
   if (phase === "research") return sessions.research;
   if (phase === "roadmap") return sessions.roadmap;
-  if (phase === "steps") return sessions.steps?.[String(step)];
   if (phase === "implement") return sessions.implement?.[String(step)];
   if (phase === "commit") return sessions.commit?.[String(step)];
   if (phase === "complete")
@@ -2213,7 +2632,6 @@ function setSessionFor(
   if (phase === "collect") sessions.collect = file;
   else if (phase === "research") sessions.research = file;
   else if (phase === "roadmap") sessions.roadmap = file;
-  else if (phase === "steps") (sessions.steps ??= {})[String(step)] = file;
   else if (phase === "implement")
     (sessions.implement ??= {})[String(step)] = file;
   else if (phase === "review")
@@ -2233,7 +2651,7 @@ function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
     !!current &&
     !!expected &&
     link.id === state.id &&
-    link.statePath === statePath(taskDir(state)) &&
+    link.statePath === taskStatePath(state) &&
     link.phase === state.phase &&
     (link.step || 1) === state.currentStep &&
     resolve(current) === resolve(expected)
@@ -2292,10 +2710,10 @@ function createPhaseSession(
     sessionDirectory(state),
     parent ? { parentSession: parent } : undefined,
   );
-  const round = phase === "review" ? state.reviewRound || 1 : undefined;
+  const round = phase === "review" ? (state.reviewRound ?? 0) : undefined;
   session.appendCustomEntry(ENTRY_TYPE, {
     id: state.id,
-    statePath: statePath(taskDir(state)),
+    statePath: taskStatePath(state),
     phase,
     step,
     round,
@@ -2327,8 +2745,6 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
     return `Read ${state.contextPath}, inspect the project, discuss feasibility and questions, and update agreed findings in the context artifact.`;
   if (phase === "roadmap")
     return `Read ${state.contextPath}. Propose a numbered roadmap with a short bold title and brief explanation for each step. Discuss additions and update context when we agree on them.`;
-  if (phase === "steps")
-    return `Read ${state.contextPath} and ${roadmapPath(state)}. Discuss the design and verification of step ${step}; update agreed task artifacts.`;
   if (phase === "implement") {
     const total = stepCount(state);
     const summary =
@@ -2356,7 +2772,7 @@ async function enterResearch(
   setSessionFor(state, "research", file, 1);
   ctx.sessionManager.appendCustomEntry(ENTRY_TYPE, {
     id: state.id,
-    statePath: statePath(taskDir(state)),
+    statePath: taskStatePath(state),
     phase: "research",
     step: 1,
   } satisfies TaskLink);
@@ -2719,6 +3135,7 @@ async function beginImplementation(
   } finally {
     ctx.ui.setStatus("task-baseline", undefined);
   }
+  updateStepStatus(state, state.currentStep, "in_progress");
   state.pendingBaselineDir = baseline.directory;
   state.pendingGitRepository = gitRepository;
   state.pendingAutoCommitEligible = baselineClean;
@@ -2756,15 +3173,8 @@ async function beginReview(
   } finally {
     ctx.ui.setStatus("task-diff", undefined);
   }
-  const previousReview = reviewPath(state, n);
-  if (existsSync(previousReview)) {
-    const round = state.reviewRound || 1;
-    writeFileSync(
-      join(taskDir(state), `review-${n}-round-${round}.md`),
-      readFileSync(previousReview, "utf8"),
-      "utf8",
-    );
-  }
+  state.reviewRound =
+    state.reviewRound === undefined ? 0 : state.reviewRound + 1;
   writeFileSync(
     join(taskDir(state), `implementation-${n}.diff`),
     changes.diff ? `${changes.diff}\n` : "",
@@ -2777,7 +3187,6 @@ async function beginReview(
   state.pendingSummary = lastAssistantSummary(ctx);
   state.awaitingReview = n;
   state.reviewPending = true;
-  state.reviewRound = (state.reviewRound || 0) + 1;
   await switchPhase(ctx, state, "review", n, phaseKickoff(state, "review", n));
 }
 
@@ -2844,7 +3253,6 @@ async function acceptReviewedStep(
   state.completedSteps.sort((a, b) => a - b);
   state.awaitingReview = undefined;
   state.reviewPending = undefined;
-  state.reviewRound = undefined;
   delete state.interruptedSession;
   state.implementationStarted = false;
   delete state.commitPendingFiles;
@@ -2934,6 +3342,65 @@ async function prepareCommitPhase(
   await sendResult(result);
 }
 
+function sectionBody(content: string, heading: string): string {
+  const lines = content.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === heading);
+  if (start < 0) return "";
+  let end = start + 1;
+  while (end < lines.length && !/^## /.test(lines[end])) end++;
+  return lines
+    .slice(start + 1, end)
+    .join("\n")
+    .trim();
+}
+
+function updateStepExecutionRecord(state: TaskState, step: number): void {
+  const path = stepPath(state, step);
+  if (!existsSync(path)) return;
+  const names = readdirSync(taskDir(state)).filter((name) => {
+    const match = name.match(new RegExp(`^review-${step}-round-(\\d+)\\.md$`));
+    return !!match;
+  });
+  names.sort((left, right) => {
+    const round = (name: string) =>
+      Number(name.match(/-round-(\d+)\.md$/)?.[1] || 0);
+    return round(left) - round(right);
+  });
+  const rounds = names.map((name) => {
+    const round = Number(name.match(/-round-(\d+)\.md$/)?.[1] || 0);
+    const content = readFileSync(join(taskDir(state), name), "utf8");
+    const summary = sectionBody(content, "## Summary");
+    const accepted = sectionBody(content, "## Accepted proposal");
+    const findings = content
+      .split(/^### /m)
+      .slice(1)
+      .map((section) => {
+        const title = section.split(/\r?\n/, 1)[0]?.trim();
+        const status = section.match(/^Status: (.+)$/m)?.[1] || "open";
+        const location = section.match(/^Location: (.+)$/m)?.[1];
+        return title
+          ? `- ${title} — ${status}${location ? `; ${location}` : ""}`
+          : "";
+      })
+      .filter(Boolean);
+    return [
+      `### Review round ${round}`,
+      summary,
+      accepted ? `Accepted decisions:\n${accepted}` : "",
+      findings.length ? `Findings:\n${findings.join("\n")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  });
+  if (!rounds.length) return;
+  const current = readFileSync(path, "utf8");
+  const record = `## Execution record\n\n${rounds.join("\n\n")}`;
+  const updated = /^## Execution record\n[\s\S]*$/m.test(current)
+    ? current.replace(/^## Execution record\n[\s\S]*$/m, record)
+    : `${current.trimEnd()}\n\n${record}\n`;
+  writeArtifact(state, "step", updated, step);
+}
+
 async function finishCommitPhase(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
@@ -2962,11 +3429,22 @@ async function finishCommitPhase(
       );
     }
   }
+  const more = n < stepCount(state);
   delete state.commitPendingFiles;
   delete state.commitPendingHashes;
   delete state.commitReady;
   delete state.commitResult;
-  const more = n < stepCount(state);
+  updateStepExecutionRecord(state, n);
+  updateStepStatus(state, n, "completed");
+  const diffPath = join(taskDir(state), `implementation-${n}.diff`);
+  if (existsSync(diffPath)) {
+    if (lstatSync(diffPath).isSymbolicLink() || !lstatSync(diffPath).isFile())
+      throw new Error(
+        `Refusing to remove a non-regular implementation diff: ${diffPath}`,
+      );
+    rmSync(diffPath);
+  }
+  state.reviewRound = undefined;
   if (more) {
     state.phase = "implement";
     state.currentStep = n + 1;
@@ -2990,6 +3468,40 @@ async function finishCommitPhase(
   }
 }
 
+function directoryContentsEqual(left: string, right: string): boolean {
+  const leftInfo = lstatSync(left);
+  const rightInfo = lstatSync(right);
+  if (
+    !leftInfo.isDirectory() ||
+    leftInfo.isSymbolicLink() ||
+    !rightInfo.isDirectory() ||
+    rightInfo.isSymbolicLink()
+  )
+    return false;
+  const leftEntries = readdirSync(left).sort();
+  const rightEntries = readdirSync(right).sort();
+  if (leftEntries.length !== rightEntries.length) return false;
+  for (let i = 0; i < leftEntries.length; i++) {
+    const name = leftEntries[i];
+    if (name !== rightEntries[i]) return false;
+    const leftPath = join(left, name);
+    const rightPath = join(right, name);
+    const leftEntry = lstatSync(leftPath);
+    const rightEntry = lstatSync(rightPath);
+    if (leftEntry.isSymbolicLink() || rightEntry.isSymbolicLink()) return false;
+    if (leftEntry.isDirectory() || rightEntry.isDirectory()) {
+      if (!directoryContentsEqual(leftPath, rightPath)) return false;
+    } else if (
+      !leftEntry.isFile() ||
+      !rightEntry.isFile() ||
+      !readFileSync(leftPath).equals(readFileSync(rightPath))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function pathWithin(parent: string, child: string): boolean {
   const path = relative(parent, child);
   return (
@@ -2999,41 +3511,46 @@ function pathWithin(parent: string, child: string): boolean {
 }
 
 function taskDirectoryForDeletion(state: TaskState, path: string): string {
-  const directory = resolve(taskDir(state));
-  if (resolve(path) !== resolve(statePath(directory)))
-    throw new Error(`Task state is outside its artifact directory: ${path}`);
-  if (
-    !lstatSync(directory).isDirectory() ||
-    lstatSync(directory).isSymbolicLink()
-  )
-    throw new Error(`Refusing to delete a linked task directory: ${directory}`);
+  const artifactDirectory = resolve(taskDir(state));
+  const runtimeDirectory = resolve(runtimeDir(state));
+  if (resolve(path) !== resolve(taskStatePath(state)))
+    throw new Error(`Task state is outside its runtime directory: ${path}`);
   if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink())
     throw new Error(`Refusing to delete a linked task state: ${path}`);
-  const actual = realpathSync(directory);
-  if (realpathSync(path) !== join(actual, "state.json"))
-    throw new Error(`Task state does not belong to ${directory}.`);
   const root = realpathSync(state.projectRoot);
-  if (pathWithin(actual, root))
-    throw new Error(
-      `Refusing to delete the project root or one of its parents: ${directory}`,
-    );
   const agentRoot = resolve(
     process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
   );
-  if (
-    pathWithin(actual, agentRoot) ||
-    actual === resolve(agentRoot, "sessions") ||
-    actual === resolve(taskIndexDir())
-  )
-    throw new Error(
-      `Refusing to delete a Pi configuration or sessions directory: ${directory}`,
-    );
-  return directory;
+  for (const directory of new Set([artifactDirectory, runtimeDirectory])) {
+    const info = lstatSync(directory);
+    if (!info.isDirectory() || info.isSymbolicLink())
+      throw new Error(
+        `Refusing to delete a linked task directory: ${directory}`,
+      );
+    const actual = realpathSync(directory);
+    if (pathWithin(actual, root))
+      throw new Error(
+        `Refusing to delete the project root or one of its parents: ${directory}`,
+      );
+    if (
+      pathWithin(actual, agentRoot) ||
+      actual === resolve(agentRoot, "sessions") ||
+      actual === resolve(taskIndexDir())
+    )
+      throw new Error(
+        `Refusing to delete a Pi configuration or sessions directory: ${directory}`,
+      );
+  }
+  const actualRuntime = realpathSync(runtimeDirectory);
+  if (realpathSync(path) !== join(actualRuntime, "state.json"))
+    throw new Error(`Task state does not belong to ${runtimeDirectory}.`);
+  return artifactDirectory;
 }
 
 function deleteTaskFiles(state: TaskState, path: string): void {
   const directory = taskDirectoryForDeletion(state, path);
-  rmSync(directory, { recursive: true });
+  for (const target of new Set([directory, resolve(runtimeDir(state))]))
+    rmSync(target, { recursive: true });
   const index = join(
     taskIndexDir(),
     createHash("sha256")
@@ -3278,30 +3795,25 @@ export default function taskExtension(pi: ExtensionAPI): void {
           ? "Inspect code and discuss feasibility. Add agreed findings and code references to context.md; leave unresolved doubts out."
           : state.phase === "roadmap"
             ? "Discuss the roadmap. Update context.md when agreed facts change, then present a complete revised numbered roadmap. Draft roadmap.md as decisions settle."
-            : state.phase === "steps"
-              ? `Discuss step ${state.currentStep}. Update agreed context, roadmap, and step artifacts. Do not edit project code.`
-              : state.phase === "implement"
-                ? writable
-                  ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
-                  : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
-                : state.phase === "review"
-                  ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
+            : state.phase === "implement"
+              ? writable
+                ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
+                : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
+              : state.phase === "review"
+                ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
 
 Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
-                  : state.phase === "commit"
-                    ? state.commitReady
-                      ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
-                      : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. This is the separate commit phase."
-                    : "The task is complete. Do not edit project files through this task session.";
+                : state.phase === "commit"
+                  ? state.commitReady
+                    ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
+                    : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. This is the separate commit phase."
+                  : "The task is complete. Do not edit project files through this task session.";
     const phaseSkill =
-      state.phase === "implement" && !state.implementationStarted
-        ? configuredPhaseSkill(config, "steps")
-        : state.phase === "research" ||
-            state.phase === "roadmap" ||
-            state.phase === "steps" ||
-            state.phase === "review"
-          ? configuredPhaseSkill(config, state.phase)
-          : undefined;
+      state.phase === "research" ||
+      state.phase === "roadmap" ||
+      state.phase === "review"
+        ? configuredPhaseSkill(config, state.phase)
+        : undefined;
     const skillGuidance = phaseSkill
       ? state.phase === "review"
         ? ` If the review preference skill "${phaseSkill}" is available, load and use it for the user's review preferences. The review format, workflow procedure, artifact path, and tool boundaries are defined above and must not be overridden. If the skill is unavailable, follow the review instructions above without additional user preferences.`
@@ -3411,12 +3923,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           await showArtifact(ctx, "Task help", HELP);
           return;
         }
-        if (command === "resume") {
-          if (args.length)
-            throw new Error("Usage: /task resume (no task ID is needed).");
-          await resumeFromCurrentProject(pi, ctx);
-          return;
-        }
         if (command === "list") {
           if (args.length) throw new Error("Usage: /task list");
           const root = projectRoot(ctx.cwd);
@@ -3430,6 +3936,14 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             if (selected === undefined) return;
             const task = tasks[options.indexOf(selected)];
             if (task) {
+              const mismatch = checkStructureVersion(task.path);
+              if (mismatch) {
+                ctx.ui.notify(
+                  `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${task.state.contextPath} as its context; this will not be done automatically.`,
+                  "warning",
+                );
+                return;
+              }
               const state = await confirmTaskRelocation(ctx, task, root);
               if (state) await continueTaskSession(ctx, state);
             }
@@ -3448,6 +3962,75 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           );
           return;
         }
+        const root = projectRoot(ctx.cwd);
+        let versionPath: string | undefined;
+        const explicitTaskId =
+          command && command !== "delete" ? args[0] : undefined;
+        if ((!command || command === "delete") && args.length) {
+          const id = args[0];
+          const candidates = [
+            statePath(parseRuntimeDir(root, id)),
+            statePath(parseArtifactDir(root, id)),
+            statePath(join(root, ".agents", "projects", id)),
+            statePath(join(root, ".agents", "tasks", id)),
+          ].filter((candidate) => existsSync(candidate));
+          if (candidates.length > 1)
+            throw new Error(
+              `Multiple task state files exist for ${id}: ${candidates.join(", ")}. Resolve the duplicate state files before continuing.`,
+            );
+          versionPath = candidates[0];
+        } else if (explicitTaskId) {
+          const candidates = [
+            statePath(parseRuntimeDir(root, explicitTaskId)),
+            statePath(parseArtifactDir(root, explicitTaskId)),
+            statePath(join(root, ".agents", "projects", explicitTaskId)),
+            statePath(join(root, ".agents", "tasks", explicitTaskId)),
+          ].filter((candidate) => existsSync(candidate));
+          if (candidates.length > 1)
+            throw new Error(
+              `Multiple task state files exist for ${explicitTaskId}: ${candidates.join(", ")}. Resolve the duplicate state files before continuing.`,
+            );
+          versionPath = candidates[0];
+        } else if (command) {
+          const link = taskLink(ctx);
+          if (link && existsSync(link.statePath)) {
+            const linkedState = JSON.parse(
+              readFileSync(link.statePath, "utf8"),
+            ) as TaskState;
+            const current = ctx.sessionManager.getSessionFile();
+            if (
+              link.id === linkedState.id &&
+              resolve(link.statePath) === resolve(taskStatePath(linkedState)) &&
+              link.phase === linkedState.phase &&
+              (link.step || 1) === linkedState.currentStep &&
+              !!current &&
+              !!sessionFor(linkedState) &&
+              resolve(current) === resolve(sessionFor(linkedState)!)
+            )
+              versionPath = link.statePath;
+          }
+        }
+        if (versionPath) {
+          const mismatch = checkStructureVersion(versionPath);
+          if (mismatch) {
+            const state = JSON.parse(
+              readFileSync(versionPath, "utf8"),
+            ) as TaskState;
+            const context = resolve(state.contextPath);
+            const guidance = `${mismatch}\nThis task cannot be continued with the current structure. Start a new task and use the contents of ${context} as its context; this will not be done automatically.`;
+            if (ctx.mode === "tui") {
+              ctx.ui.notify(guidance, "warning");
+              return;
+            }
+            throw new Error(guidance);
+          }
+        }
+        if (command === "resume") {
+          if (args.length)
+            throw new Error("Usage: /task resume (no task ID is needed).");
+          await resumeFromCurrentProject(pi, ctx);
+          return;
+        }
         if (command === "delete") {
           if (args.length > 1) throw new Error("Usage: /task delete [TASK-ID]");
           if (!ctx.isIdle())
@@ -3455,6 +4038,10 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               "Wait for Pi to finish or cancel its current run before deleting a task.",
             );
           const root = projectRoot(ctx.cwd);
+          if (!args.length)
+            throw new Error(
+              "Specify a task ID with /task delete TASK-ID. ID-less deletion is unavailable because task state must be checked before loading it.",
+            );
           const discovered = listTasks(root);
           const tasks = discovered.filter((task) => !task.relocatedFrom);
           let target: DiscoveredTask | undefined;
@@ -3495,22 +4082,29 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
           if (!target) return;
           const targetPath = target.path;
+          const mismatch = checkStructureVersion(targetPath);
+          if (mismatch)
+            throw new Error(
+              `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${target.state.contextPath} as its context; this will not be done automatically.`,
+            );
           const state = loadState(targetPath);
           if (state.id !== target.state.id || state.projectRoot !== root)
             throw new Error(
               "Task changed while choosing it; run /task delete again.",
             );
           const directory = taskDirectoryForDeletion(state, targetPath);
+          const runtimeDirectory = resolve(runtimeDir(state));
           const confirmed = await ctx.ui.confirm(
             `Permanently delete task ${state.id}?`,
-            `Delete ${directory} and all its artifacts and saved sessions? This cannot be undone.`,
+            `Delete artifacts at ${directory} and local workflow state at ${runtimeDirectory}? This cannot be undone.`,
           );
           if (!confirmed) return;
           const latest = loadState(targetPath);
           if (
             latest.id !== state.id ||
             latest.projectRoot !== root ||
-            resolve(taskDir(latest)) !== directory
+            resolve(taskDir(latest)) !== directory ||
+            resolve(runtimeDir(latest)) !== runtimeDirectory
           )
             throw new Error(
               "Task changed before deletion; run /task delete again.",
@@ -3518,11 +4112,16 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           const current = ctx.sessionManager.getSessionFile();
           const link = taskLink(ctx);
           const active =
-            (current && pathWithin(directory, resolve(current))) ||
+            (current &&
+              (pathWithin(directory, resolve(current)) ||
+                pathWithin(runtimeDirectory, resolve(current)))) ||
             (link?.id === state.id && link.statePath === targetPath);
           if (active) {
             const neutral = createNeutralSession(root);
-            if (pathWithin(directory, resolve(neutral)))
+            if (
+              pathWithin(directory, resolve(neutral)) ||
+              pathWithin(runtimeDirectory, resolve(neutral))
+            )
               throw new Error(
                 "The replacement session would be inside the task directory; deletion was cancelled.",
               );
@@ -3570,16 +4169,25 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           const id = args[0];
           validateTaskId(id);
           const artifactDir = parseArtifactDir(root, id, override);
-          let path = statePath(artifactDir);
-          if (!existsSync(path) && !override) {
-            const fallback = statePath(defaultArtifactDir(root, id));
-            if (existsSync(fallback)) path = fallback;
-            else
-              path =
-                listTasks(root).find((task) => task.state.id === id)?.path ||
-                path;
+          const taskRuntime = parseRuntimeDir(root, id);
+          let path = statePath(taskRuntime);
+          if (!existsSync(path)) {
+            const legacyPaths = [
+              statePath(artifactDir),
+              statePath(join(root, ".agents", "projects", id)),
+              statePath(join(root, ".agents", "tasks", id)),
+            ];
+            path =
+              legacyPaths.find((candidate) => existsSync(candidate)) ||
+              listTasks(root).find((task) => task.state.id === id)?.path ||
+              path;
           }
           if (existsSync(path)) {
+            const mismatch = checkStructureVersion(path);
+            if (mismatch)
+              throw new Error(
+                `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${JSON.parse(readFileSync(path, "utf8")).contextPath} as its context; this will not be done automatically.`,
+              );
             const state = loadState(path);
             if (state.id !== id)
               throw new Error(
@@ -3608,26 +4216,41 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             await continueTaskSession(ctx, state);
             return;
           }
+          if (
+            pathWithin(artifactDir, taskRuntime) ||
+            pathWithin(taskRuntime, artifactDir)
+          )
+            throw new Error(
+              "artifactDir and runtimeDir must be separate directories.",
+            );
           if (existsSync(artifactDir))
             throw new Error(
               `Artifact directory already exists without task state: ${artifactDir}`,
+            );
+          if (existsSync(taskRuntime) && readdirSync(taskRuntime).length)
+            throw new Error(
+              `Runtime directory already exists without task state: ${taskRuntime}`,
             );
           if (
             ctx.mode === "tui" &&
             !(await ctx.ui.confirm(
               `Start task ${id}?`,
-              `Create ${artifactDir} and a context session?`,
+              `Create artifacts at ${artifactDir}, local task state at ${taskRuntime}, and a context session?`,
             ))
           )
             return;
           mkdirSync(artifactDir, { recursive: true });
+          mkdirSync(taskRuntime, { recursive: true });
+          const ignoredRuntime = ignoreRuntimeDirectory(root, taskRuntime);
           const contextPath = join(artifactDir, "context.md");
           writeFileSync(contextPath, `# ${id}\n`, "utf8");
           const state: TaskState = {
             version: 1,
+            structureVersion: CURRENT_STRUCTURE_VERSION,
             id,
             projectRoot: root,
             artifactDir,
+            runtimeDir: taskRuntime,
             contextPath,
             phase: "collect",
             currentStep: 1,
@@ -3643,7 +4266,12 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           setSessionFor(state, "collect", file);
           saveState(state);
           try {
-            rememberTask(state, statePath(artifactDir));
+            rememberTask(state, taskStatePath(state));
+            if (hasGitRepository(state) && !ignoredRuntime)
+              ctx.ui.notify(
+                `Could not add ${taskRuntime} to .git/info/exclude; add it to .gitignore to keep local task state out of Git.`,
+                "warning",
+              );
           } catch {
             ctx.ui.notify(
               "Task started, but its discovery index could not be updated.",
@@ -3677,7 +4305,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           await showArtifact(
             ctx,
             "Task status",
-            `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nStep skill: ${configuredPhaseSkill(config, "steps") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`,
+            `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nAuto-commit: ${config.autoCommit === true ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`,
           );
           return;
         }
@@ -3799,29 +4427,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               1,
               phaseKickoff(state, "implement", 1),
             );
-            return;
-          }
-          if (state.phase === "steps") {
-            await finalizeArtifact(ctx, state, "step", approval);
-            const n = state.currentStep;
-            if (n < stepCount(state))
-              await switchPhase(
-                ctx,
-                state,
-                "steps",
-                n + 1,
-                phaseKickoff(state, "steps", n + 1),
-              );
-            else {
-              state.implementationStarted = false;
-              await switchPhase(
-                ctx,
-                state,
-                "implement",
-                1,
-                phaseKickoff(state, "implement", 1),
-              );
-            }
             return;
           }
           if (state.phase === "implement") {
