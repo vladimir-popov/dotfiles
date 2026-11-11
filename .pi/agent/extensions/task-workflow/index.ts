@@ -1846,14 +1846,11 @@ async function assessTransition(
     ],
     timestamp: Date.now(),
   };
-  const started = Date.now();
-  const update = () =>
-    ctx.ui.setStatus(
-      "task-transition",
-      `Checking task transition · ${Math.floor((Date.now() - started) / 1000)}s`,
-    );
-  update();
-  const timer = setInterval(update, 1000);
+  try {
+    ctx.ui.setStatus("task-transition", "Checking task transition…");
+  } catch {
+    // The session may already have been replaced.
+  }
   try {
     const response = await ctx.modelRegistry.complete(
       ctx.model,
@@ -1913,8 +1910,11 @@ An open question is a material uncertainty that still needs user input after app
       reason: result.reason.replace(/\s+/g, " ").slice(0, 1000),
     };
   } finally {
-    clearInterval(timer);
-    ctx.ui.setStatus("task-transition", undefined);
+    try {
+      ctx.ui.setStatus("task-transition", undefined);
+    } catch {
+      // The session may have been replaced while the transition check ran.
+    }
   }
 }
 
