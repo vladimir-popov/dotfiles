@@ -41,7 +41,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const CURRENT_STRUCTURE_VERSION = "2.0";
+const CURRENT_STRUCTURE_VERSION = "3.0";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -57,8 +57,6 @@ type TaskState = {
   structureVersion: string;
   id: string;
   projectRoot: string;
-  artifactDir?: string;
-  runtimeDir?: string;
   contextPath: string;
   phase: Phase;
   currentStep: number;
@@ -98,8 +96,6 @@ type PhaseModel = {
 type SkillPhase = "research" | "roadmap" | "review";
 type Config = {
   mode?: "manual" | "semi-auto";
-  artifactDir?: string;
-  runtimeDir?: string;
   autoCommit?: boolean;
   phaseModels?: Partial<
     Record<"research" | "roadmap" | "implement" | "review", PhaseModel | null>
@@ -152,7 +148,7 @@ const DEFAULT_HOTKEYS: Record<string, string> = {
 };
 const HELP = `Task workflow
 
-/task TASK-ID [--dir PATH]  Start or continue a task after confirmation
+/task TASK-ID              Start or continue a task after confirmation
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
@@ -186,7 +182,7 @@ Use /task next when discussion is settled; use /task accept to agree to proposal
 Agreement is implied by /task accept; add a note only to clarify a choice or decision.
 Text ending in /task next is not parsed as a command.
 Task artifacts may be updated in any phase; project code changes run only in implement.
-The default artifact directory is <project>/.agents/tasks/<task-id>/; local state and sessions use <project>/.agents/task-workflow/<task-id>/.
+Task data uses the fixed path <project>/.agents/task-workflow/<task-id>/, with artifacts under context/.
 Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 <project>/.agents/task-workflow/config.json; task overrides live in that task's
 state.json. Resolution order is task, project, global, then defaults.
@@ -195,11 +191,11 @@ edit the resulting files to change values. Project initialization refuses to
 overwrite an existing config. Task initialization stores the current effective
 mode and autoCommit as task-specific overrides.
 Set mode and autoCommit globally, per project, or per task. Other settings such
-as artifactDir, runtimeDir, phaseModels, skills, reviewTools, hotkeys,
-snapshotMaxFiles, snapshotMaxMiB, and allowTreeNavigation are global.
-You can also pass --dir PATH to /task.
+as phaseModels, skills, reviewTools, hotkeys, snapshotMaxFiles, snapshotMaxMiB,
+and allowTreeNavigation are global. Task files are fixed under
+.agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
-The config path may contain {projectRoot} and {taskId}. Relative paths use the project root.`;
+The global config is JSON; project mode and autoCommit live in .agents/task-workflow/config.json.`;
 function git(root: string, args: string[]): string {
   try {
     return execFileSync("git", args, {
@@ -224,17 +220,17 @@ function projectRoot(cwd: string): string {
   }
 }
 
-function defaultArtifactDir(root: string, id: string): string {
-  return join(root, ".agents", "tasks", id);
-}
 function defaultRuntimeDir(root: string, id: string): string {
   return join(root, ".agents", "task-workflow", id);
 }
+function defaultArtifactDir(root: string, id: string): string {
+  return join(defaultRuntimeDir(root, id), "context");
+}
 function taskDir(state: TaskState): string {
-  return state.artifactDir || defaultArtifactDir(state.projectRoot, state.id);
+  return defaultArtifactDir(state.projectRoot, state.id);
 }
 function runtimeDir(state: TaskState): string {
-  return state.runtimeDir || taskDir(state);
+  return defaultRuntimeDir(state.projectRoot, state.id);
 }
 function taskStatePath(state: TaskState): string {
   return statePath(runtimeDir(state));
@@ -280,7 +276,15 @@ function projectConfigPath(root: string): string {
 function readProjectConfig(root: string): Config {
   const path = projectConfigPath(root);
   if (!existsSync(path)) return {};
-  return validateConfig(JSON.parse(readFileSync(path, "utf8")), path);
+  const config = validateConfig(JSON.parse(readFileSync(path, "utf8")), path);
+  const unknown = Object.keys(config).filter(
+    (key) => key !== "mode" && key !== "autoCommit",
+  );
+  if (unknown.length)
+    throw new Error(
+      `Unsupported project setting(s) in ${path}: ${unknown.join(", ")}`,
+    );
+  return config;
 }
 
 function effectiveSetting<K extends "mode" | "autoCommit">(
@@ -308,19 +312,10 @@ function readConfig(): Config {
     path,
   );
   const values = validated as Record<string, unknown>;
-  if (values.contextPath !== undefined)
-    throw new Error(`Replace contextPath with artifactDir in ${path}.`);
   if (values.implementModel !== undefined || values.reviewModel !== undefined)
     throw new Error(
       `Move implementModel and reviewModel to phaseModels.implement and phaseModels.review in ${path}.`,
     );
-  for (const key of ["artifactDir", "runtimeDir"]) {
-    if (
-      values[key] !== undefined &&
-      (typeof values[key] !== "string" || !(values[key] as string).trim())
-    )
-      throw new Error(`Invalid ${key}: ${path}`);
-  }
   if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean")
     throw new Error(`autoCommit must be a boolean: ${path}`);
   if (
@@ -482,20 +477,12 @@ function parsePathTemplate(root: string, id: string, template: string): string {
   return isAbsolute(expanded) ? resolve(expanded) : resolve(root, expanded);
 }
 
-function parseArtifactDir(root: string, id: string, override?: string): string {
-  return parsePathTemplate(
-    root,
-    id,
-    override || readConfig().artifactDir || ".agents/tasks/{taskId}",
-  );
+function parseArtifactDir(root: string, id: string): string {
+  return defaultArtifactDir(root, id);
 }
 
 function parseRuntimeDir(root: string, id: string): string {
-  return parsePathTemplate(
-    root,
-    id,
-    readConfig().runtimeDir || ".agents/task-workflow/{taskId}",
-  );
+  return defaultRuntimeDir(root, id);
 }
 
 type Argument = { value: string; quoted: boolean };
@@ -540,25 +527,16 @@ function validateTaskId(id: string): void {
 function checkStructureVersion(path: string): string | undefined {
   if (!existsSync(path)) return undefined;
   const data = JSON.parse(readFileSync(path, "utf8")) as TaskState;
-  const detected: unknown = data.structureVersion ?? "1.0";
-  if (detected !== "1.0" && detected !== CURRENT_STRUCTURE_VERSION)
-    throw new Error(
-      `Task ${data.id || "(unknown)"} has unsupported structure version ${JSON.stringify(detected)} in ${path}; this extension supports 1.0 and ${CURRENT_STRUCTURE_VERSION}. Start a new task using the contents of its context.md; this will not be done automatically.`,
-    );
-  if ((data.phase as string) === "steps")
-    return `Task ${data.id} uses the removed Step design phase. Start a new task and use the contents of ${data.contextPath} as its context; this will not be done automatically.`;
-  const actualArtifact =
-    data.artifactDir || defaultArtifactDir(data.projectRoot, data.id);
-  const actualRuntime = data.runtimeDir || actualArtifact;
-  const expectedArtifact = parseArtifactDir(data.projectRoot, data.id);
-  const expectedRuntime = parseRuntimeDir(data.projectRoot, data.id);
-  if (
-    detected === CURRENT_STRUCTURE_VERSION &&
-    resolve(actualArtifact) === resolve(expectedArtifact) &&
-    resolve(actualRuntime) === resolve(expectedRuntime)
-  )
-    return undefined;
-  return `Task ${data.id} structure does not match this extension. Structure version: actual ${detected}; expected ${CURRENT_STRUCTURE_VERSION}.\nArtifact path: actual ${actualArtifact}; expected ${expectedArtifact}.\nRuntime path: actual ${actualRuntime}; expected ${expectedRuntime}.`;
+  const detected: unknown = data.structureVersion;
+  if (detected !== CURRENT_STRUCTURE_VERSION)
+    return `Task ${data.id} uses an unsupported structure version: ${JSON.stringify(detected)}.`;
+  const expectedContext = join(
+    defaultArtifactDir(data.projectRoot, data.id),
+    "context.md",
+  );
+  if (resolve(data.contextPath) !== resolve(expectedContext))
+    return `Task ${data.id} contextPath must be ${expectedContext}.`;
+  return undefined;
 }
 
 function loadState(path: string, maintainLegacyFiles = true): TaskState {
@@ -572,91 +550,11 @@ function loadState(path: string, maintainLegacyFiles = true): TaskState {
   ) {
     throw new Error(`Invalid task state: ${path}`);
   }
-  if (!Object.prototype.hasOwnProperty.call(data, "structureVersion")) {
-    data.structureVersion = "1.0";
-  }
-  if ((data.phase as string) === "collect") {
-    data.phase = "research";
-    const sessions = data.sessions as
-      (SessionRefs & { collect?: string }) | undefined;
-    if (sessions?.collect) {
-      sessions.research ??= sessions.collect;
-      delete sessions.collect;
-    }
-  }
-  if (maintainLegacyFiles) {
-    migrateLegacyReviewRoundFiles(data, path);
-    if (!data.runtimeDir) ignoreLegacyRuntimeFiles(data);
-  }
+  if (data.structureVersion !== CURRENT_STRUCTURE_VERSION)
+    throw new Error(
+      `Task structure version must be ${CURRENT_STRUCTURE_VERSION}: ${path}`,
+    );
   return data;
-}
-
-function migrateLegacyReviewRoundFiles(
-  state: TaskState,
-  stateFile: string,
-): void {
-  const directory = taskDir(state);
-  if (!existsSync(directory)) return;
-  const entries = readdirSync(directory, { withFileTypes: true });
-  const names = new Set(
-    entries.filter((entry) => entry.isFile()).map((entry) => entry.name),
-  );
-  const steps = new Set<number>();
-  for (const name of names) {
-    const match = name.match(/^review-(\d+)(?:-round-(\d+))?\.md$/);
-    if (match) steps.add(Number(match[1]));
-  }
-  let changed = false;
-  for (const step of steps) {
-    const plain = `review-${step}.md`;
-    const archives = [...names]
-      .map((name) => {
-        const match = name.match(
-          new RegExp(`^review-${step}-round-(\\d+)\\.md$`),
-        );
-        return match ? { name, round: Number(match[1]) } : undefined;
-      })
-      .filter((entry): entry is { name: string; round: number } => !!entry)
-      .sort((left, right) => left.round - right.round);
-    const hasPlain = names.has(plain);
-    const hasRoundZero = archives.some((entry) => entry.round === 0);
-    if (!hasPlain && (!archives.length || hasRoundZero)) continue;
-    const staged = archives.map((entry) => {
-      const temporary = join(
-        directory,
-        `.review-migration-${randomUUID()}.tmp`,
-      );
-      renameSync(join(directory, entry.name), temporary);
-      return { ...entry, temporary };
-    });
-    for (const entry of staged) {
-      const round = hasRoundZero ? entry.round : Math.max(0, entry.round - 1);
-      renameSync(
-        entry.temporary,
-        join(directory, `review-${step}-round-${round}.md`),
-      );
-    }
-    const nextRound = archives.length
-      ? Math.max(...archives.map((entry) => entry.round)) +
-        (hasRoundZero ? 1 : 0)
-      : 0;
-    if (hasPlain)
-      renameSync(
-        join(directory, plain),
-        join(directory, `review-${step}-round-${nextRound}.md`),
-      );
-    if (
-      step === (state.awaitingReview || state.currentStep) &&
-      state.reviewRound !== undefined
-    ) {
-      state.reviewRound = hasRoundZero
-        ? Math.max(state.reviewRound, nextRound)
-        : Math.max(0, state.reviewRound - 1);
-    }
-    changed = true;
-  }
-  if (changed)
-    writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
 function projectMismatchMessage(
@@ -669,7 +567,7 @@ function projectMismatchMessage(
     `State file: ${path}`,
     `Saved project root: ${state.projectRoot}`,
     `Current project root: ${currentRoot}`,
-    "After moving project-local task artifacts, close and restart Pi from the new project path. In the terminal UI, /task can offer a confirmed relocation if the saved root no longer exists. External artifact directories and cases where the old root still exists are not auto-relocated. Do not update only projectRoot manually; saved session paths and the task index also need migration.",
+    "After moving the project directory, close and restart Pi from the new project path. In the terminal UI, /task can offer a confirmed relocation if the saved root no longer exists. Do not update only projectRoot manually; saved session paths and the task index also need migration.",
   ];
   if (state.pendingBaselineDir)
     lines.push(
@@ -823,16 +721,9 @@ function relocatedProjectRoot(
 }
 
 function listTasks(root: string): DiscoveredTask[] {
-  const config = readConfig();
+  readConfig();
   const candidates = [
-    ...templateStatePaths(
-      root,
-      config.runtimeDir || ".agents/task-workflow/{taskId}",
-    ),
     ...templateStatePaths(root, ".agents/task-workflow/{taskId}"),
-    ...templateStatePaths(root, config.artifactDir || ".agents/tasks/{taskId}"),
-    ...templateStatePaths(root, ".agents/tasks/{taskId}"),
-    ...templateStatePaths(root, ".agents/projects/{taskId}"),
     ...indexedStatePaths(root),
     ...relocatedIndexedStatePaths(root),
   ];
@@ -1161,8 +1052,6 @@ function relocateTask(
   const relocated: TaskState = {
     ...state,
     projectRoot: newRoot,
-    artifactDir,
-    runtimeDir: runtimeDirectory,
     contextPath: rebaseMovedPath(state.contextPath, oldRoot, newRoot),
     sessions: rebaseSessionRefs(state.sessions, oldRoot, newRoot),
     pendingBaselineDir: state.pendingBaselineDir
@@ -1335,8 +1224,6 @@ function taskDisplayState(task: DiscoveredTask, root: string): TaskState {
   return {
     ...task.state,
     projectRoot: newRoot,
-    artifactDir: rebaseMovedPath(taskDir(task.state), oldRoot, newRoot),
-    runtimeDir: rebaseMovedPath(runtimeDir(task.state), oldRoot, newRoot),
     contextPath: rebaseMovedPath(task.state.contextPath, oldRoot, newRoot),
   };
 }
@@ -1579,7 +1466,7 @@ function writeArtifact(
     resolve(path) !== resolve(taskDir(state), "context.md")
   ) {
     throw new Error(
-      "This task uses a legacy context file outside artifactDir. Move it into the task directory before writing.",
+      "Task context must be stored inside the fixed task context directory.",
     );
   }
   if (existsSync(path) && lstatSync(path).isSymbolicLink())
@@ -1671,27 +1558,6 @@ function appendGitExcludePatterns(root: string, patterns: string[]): boolean {
   } catch {
     return false;
   }
-}
-
-function ignoreLegacyRuntimeFiles(state: TaskState): void {
-  const root = state.projectRoot;
-  const directory = taskDir(state);
-  const relativeDirectory = relative(root, directory);
-  if (
-    !relativeDirectory ||
-    relativeDirectory === ".." ||
-    relativeDirectory.startsWith(`..${sep}`)
-  )
-    return;
-  const prefix = `/${relativeDirectory
-    .split(sep)
-    .map((part) => part.replace(/[\\*?\[\]#!]/g, "\\$&"))
-    .join("/")}`;
-  appendGitExcludePatterns(root, [
-    `${prefix}/state.json`,
-    `${prefix}/sessions/`,
-    `${prefix}/.implementation-baseline-*/`,
-  ]);
 }
 
 function ignoreRuntimeDirectory(root: string, directory: string): boolean {
@@ -4158,12 +4024,9 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           command && command !== "delete" ? args[0] : undefined;
         if ((!command || command === "delete") && args.length) {
           const id = args[0];
-          const candidates = [
-            statePath(parseRuntimeDir(root, id)),
-            statePath(parseArtifactDir(root, id)),
-            statePath(join(root, ".agents", "projects", id)),
-            statePath(join(root, ".agents", "tasks", id)),
-          ].filter((candidate) => existsSync(candidate));
+          const candidates = [statePath(parseRuntimeDir(root, id))].filter(
+            (candidate) => existsSync(candidate),
+          );
           if (candidates.length > 1)
             throw new Error(
               `Multiple task state files exist for ${id}: ${candidates.join(", ")}. Resolve the duplicate state files before continuing.`,
@@ -4172,9 +4035,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         } else if (explicitTaskId) {
           const candidates = [
             statePath(parseRuntimeDir(root, explicitTaskId)),
-            statePath(parseArtifactDir(root, explicitTaskId)),
-            statePath(join(root, ".agents", "projects", explicitTaskId)),
-            statePath(join(root, ".agents", "tasks", explicitTaskId)),
           ].filter((candidate) => existsSync(candidate));
           if (candidates.length > 1)
             throw new Error(
@@ -4343,35 +4203,14 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           return;
         }
         if (!command) {
-          const optionAt = args.indexOf("--dir");
-          let override: string | undefined;
-          if (optionAt >= 0) {
-            override = args[optionAt + 1];
-            if (!override || optionAt !== args.length - 2)
-              throw new Error("Usage: /task TASK-ID [--dir PATH]");
-            args.splice(optionAt, 2);
-          }
           if (args.length !== 1 || !args[0] || args[0].startsWith("--"))
-            throw new Error(
-              "A task ID is required. Usage: /task TASK-ID [--dir PATH]",
-            );
+            throw new Error("A task ID is required. Usage: /task TASK-ID");
           const root = projectRoot(ctx.cwd);
           const id = args[0];
           validateTaskId(id);
-          const artifactDir = parseArtifactDir(root, id, override);
+          const artifactDir = parseArtifactDir(root, id);
           const taskRuntime = parseRuntimeDir(root, id);
-          let path = statePath(taskRuntime);
-          if (!existsSync(path)) {
-            const legacyPaths = [
-              statePath(artifactDir),
-              statePath(join(root, ".agents", "projects", id)),
-              statePath(join(root, ".agents", "tasks", id)),
-            ];
-            path =
-              legacyPaths.find((candidate) => existsSync(candidate)) ||
-              listTasks(root).find((task) => task.state.id === id)?.path ||
-              path;
-          }
+          const path = statePath(taskRuntime);
           if (existsSync(path)) {
             const mismatch = checkStructureVersion(path);
             if (mismatch)
@@ -4406,13 +4245,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             await continueTaskSession(ctx, state);
             return;
           }
-          if (
-            pathWithin(artifactDir, taskRuntime) ||
-            pathWithin(taskRuntime, artifactDir)
-          )
-            throw new Error(
-              "artifactDir and runtimeDir must be separate directories.",
-            );
           if (existsSync(artifactDir))
             throw new Error(
               `Artifact directory already exists without task state: ${artifactDir}`,
@@ -4425,7 +4257,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             ctx.mode === "tui" &&
             !(await ctx.ui.confirm(
               `Start task ${id}?`,
-              `Create artifacts at ${artifactDir}, local task state at ${taskRuntime}, and a research session?`,
+              `Create task files under ${taskRuntime}, and a research session?`,
             ))
           )
             return;
@@ -4439,8 +4271,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             structureVersion: CURRENT_STRUCTURE_VERSION,
             id,
             projectRoot: root,
-            artifactDir,
-            runtimeDir: taskRuntime,
             contextPath,
             phase: "research",
             currentStep: 1,
