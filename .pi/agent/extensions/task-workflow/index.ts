@@ -4552,10 +4552,15 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             return;
           }
           const assessment = await assessTransition(ctx, state, command, note);
-          if (assessment.openQuestions.length)
-            throw new Error(
-              `The phase is unchanged. Resolve these open questions first: ${assessment.openQuestions.join("; ")}`,
+          if (assessment.openQuestions.length) {
+            ctx.ui.notify(
+              "The phase is unchanged. Resolve these open questions first:",
+              "warning",
             );
+            for (const question of assessment.openQuestions)
+              ctx.ui.notify(question, "info");
+            return;
+          }
           if (command === "next" && assessment.pendingProposal.trim())
             throw new Error(
               `The phase is unchanged. A proposal still needs approval: ${assessment.pendingProposal}. Use /task accept if you agree.`,
