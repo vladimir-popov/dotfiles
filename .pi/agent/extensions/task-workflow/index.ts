@@ -160,6 +160,7 @@ const HELP = `Task workflow
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
+/task config                Show effective settings for the current task
 /task config init project   Create project config with current effective settings
 /task config init task      Save current effective settings as task overrides
 /task resume                Return to an active task; resume an interrupted run
@@ -4070,6 +4071,41 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           return;
         }
         if (command === "config") {
+          if (args.length === 0) {
+            const state = requireTask(ctx, false);
+            const global = readConfig();
+            const effectiveConfig = {
+              mode: effectiveSetting(state, "mode"),
+              autoCommit: effectiveSetting(state, "autoCommit"),
+              statusColors: {
+                taskName: global.statusColors?.taskName ?? "brightGreen",
+                currentSettings:
+                  global.statusColors?.currentSettings ?? "brightBlack",
+                currentPhase: global.statusColors?.currentPhase ?? "blue",
+                phaseDescription:
+                  global.statusColors?.phaseDescription ?? "blue",
+              },
+              phaseModels: global.phaseModels ?? {},
+              skills: {
+                research: configuredPhaseSkill(global, "research") ?? null,
+                roadmap: configuredPhaseSkill(global, "roadmap") ?? null,
+                implement: configuredPhaseSkill(global, "implement") ?? null,
+                review: configuredPhaseSkill(global, "review") ?? null,
+              },
+              reviewTools: global.reviewTools ?? [],
+              allowTreeNavigation: global.allowTreeNavigation ?? false,
+              hotkeys: { ...DEFAULT_HOTKEYS, ...global.hotkeys },
+              snapshotMaxFiles:
+                global.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
+              snapshotMaxMiB: global.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB,
+            };
+            await showArtifact(
+              ctx,
+              "Effective task configuration",
+              JSON.stringify(effectiveConfig, null, 2),
+            );
+            return;
+          }
           if (
             args.length !== 2 ||
             args[0] !== "init" ||
