@@ -2136,7 +2136,7 @@ async function assessTransition(
     timestamp: Date.now(),
   };
   try {
-    ctx.ui.setStatus("task-transition", "Checking task transition…");
+    ctx.ui.setStatus("task-transition-check", "Checking task transition…");
   } catch {
     // The session may already have been replaced.
   }
@@ -2200,7 +2200,7 @@ An open question is a material uncertainty that still needs user input after app
     };
   } finally {
     try {
-      ctx.ui.setStatus("task-transition", undefined);
+      ctx.ui.setStatus("task-transition-check", undefined);
     } catch {
       // The session may have been replaced while the transition check ran.
     }
@@ -3900,6 +3900,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
       return filtered.length ? filtered : null;
     },
     handler: async (rawArgs, ctx) => {
+      let transitionStatus = false;
       try {
         const parsed = parseArguments(rawArgs);
         const requestedCommand =
@@ -4360,6 +4361,11 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           return;
         }
         if (command === "next" || command === "accept") {
+          transitionStatus = true;
+          ctx.ui.setStatus(
+            "task-transition",
+            "Transitioning to the next task phase…",
+          );
           if (!sessionMatches(ctx, state))
             throw new Error(
               `This is not the active task session. Use /task ${state.id} to continue ${state.phase}.`,
@@ -4455,6 +4461,8 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           error instanceof Error ? error.message : String(error),
           "error",
         );
+      } finally {
+        if (transitionStatus) ctx.ui.setStatus("task-transition", undefined);
       }
     },
   });
