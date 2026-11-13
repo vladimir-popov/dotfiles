@@ -36,6 +36,8 @@ import { uuidv7, type Message } from "@earendil-works/pi-ai";
 import {
   decodeKittyPrintable,
   Markdown,
+  parseColor,
+  Text,
   matchesKey,
   truncateToWidth,
   visibleWidth,
@@ -108,6 +110,12 @@ type Config = {
   snapshotMaxFiles?: number;
   snapshotMaxMiB?: number;
   hotkeys?: Record<string, string | null>;
+  statusColors?: Partial<
+    Record<
+      "taskName" | "currentSettings" | "currentPhase" | "phaseDescription",
+      string | number
+    >
+  >;
 };
 
 const ENTRY_TYPE = "task-workflow-link";
@@ -157,6 +165,7 @@ const HELP = `Task workflow
 /task resume                Return to an active task; resume an interrupted run
 /task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
+/task skip-commit           Explicitly skip the current commit phase
 /task show [FILE.md]        Select or view an existing Markdown artifact without adding it to the session
 /task help                  Show this help
 
@@ -195,7 +204,11 @@ as phaseModels, skills, reviewTools, hotkeys, snapshotMaxFiles, snapshotMaxMiB,
 and allowTreeNavigation are global. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
-The global config is JSON; project mode and autoCommit live in .agents/task-workflow/config.json.`;
+The global config is JSON; project mode and autoCommit live in .agents/task-workflow/config.json.
+Set global statusColors keys taskName, currentSettings, currentPhase, and phaseDescription to ANSI color names
+(black, red, green, yellow, blue, purple, cyan, white, or bright-prefixed variants), palette indices 0-255,
+or hex colors such as #RRGGBB. Defaults: brightGreen, brightBlack, blue, blue. Example:
+{"statusColors":{"taskName":"brightGreen","currentSettings":"brightBlack","currentPhase":"blue","phaseDescription":"blue"}}.`;
 function git(root: string, args: string[]): string {
   try {
     return execFileSync("git", args, {
@@ -255,6 +268,31 @@ function completionArgument(value: string): string | undefined {
   return undefined;
 }
 
+const ANSI_STATUS_COLORS: Record<string, number> = {
+  black: 0,
+  red: 1,
+  green: 2,
+  yellow: 3,
+  blue: 4,
+  purple: 5,
+  cyan: 6,
+  white: 7,
+  brightBlack: 8,
+  brightRed: 9,
+  brightGreen: 10,
+  brightYellow: 11,
+  brightBlue: 12,
+  brightPurple: 13,
+  brightCyan: 14,
+  brightWhite: 15,
+};
+
+function parseStatusColor(value: string | number) {
+  if (typeof value === "string" && value in ANSI_STATUS_COLORS)
+    return parseColor(ANSI_STATUS_COLORS[value]);
+  return parseColor(value);
+}
+
 function validateConfig(config: unknown, path: string): Config {
   if (!config || typeof config !== "object" || Array.isArray(config))
     throw new Error(`Invalid config: ${path}`);
@@ -266,6 +304,39 @@ function validateConfig(config: unknown, path: string): Config {
     throw new Error(`mode must be manual or semi-auto: ${path}`);
   if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean")
     throw new Error(`autoCommit must be a boolean: ${path}`);
+  if (values.statusColors !== undefined) {
+    if (
+      !values.statusColors ||
+      typeof values.statusColors !== "object" ||
+      Array.isArray(values.statusColors)
+    )
+      throw new Error(`statusColors must be an object: ${path}`);
+    const colors = values.statusColors as Record<string, unknown>;
+    for (const [name, color] of Object.entries(colors)) {
+      if (
+        ![
+          "taskName",
+          "currentSettings",
+          "currentPhase",
+          "phaseDescription",
+        ].includes(name)
+      )
+        throw new Error(`Unknown statusColors key ${name}: ${path}`);
+      if (
+        typeof color !== "string" &&
+        (typeof color !== "number" ||
+          !Number.isInteger(color) ||
+          color < 0 ||
+          color > 255)
+      )
+        throw new Error(`Invalid statusColors.${name}: ${path}`);
+      try {
+        parseStatusColor(color as string | number);
+      } catch {
+        throw new Error(`Invalid statusColors.${name}: ${path}`);
+      }
+    }
+  }
   return values as Config;
 }
 
@@ -2427,12 +2498,52 @@ function updatePhaseUi(
 ): void {
   const name = sessionDisplayName(state);
   if (pi.getSessionName() !== name) pi.setSessionName(name);
+  setPhaseWidget(ctx, state, waiting);
+}
+
+function setPhaseWidget(
+  ctx: ExtensionContext,
+  state: TaskState,
+  waiting: boolean,
+): void {
+  const config = readConfig();
+  const title = ["implement", "review", "commit"].includes(state.phase)
+    ? stepTitle(state)
+    : undefined;
+  const fullPhase = phaseLabel(state);
+  const phase = title
+    ? fullPhase.slice(0, fullPhase.lastIndexOf(` · ${title}`))
+    : fullPhase;
+  const settings = `[mode: ${effectiveSetting(state, "mode")}, auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}]`;
+  const colors = {
+    taskName: parseStatusColor(config.statusColors?.taskName ?? "brightGreen"),
+    currentSettings: parseStatusColor(
+      config.statusColors?.currentSettings ?? "brightBlack",
+    ),
+    currentPhase: parseStatusColor(config.statusColors?.currentPhase ?? "blue"),
+    phaseDescription: parseStatusColor(
+      config.statusColors?.phaseDescription ?? "blue",
+    ),
+  };
   ctx.ui.setWidget(
     PHASE_WIDGET,
-    [
-      `Task ${state.id} · ${phaseLabel(state)}`,
-      waiting ? phaseHint(state) : "Pi is working…",
-    ],
+    (_tui, theme) =>
+      new Text(
+        [
+          theme.style(`Task ${state.id}`, { fg: colors.taskName }),
+          " ",
+          theme.style(settings, { fg: colors.currentSettings }),
+          " · ",
+          theme.style(phase, { fg: colors.currentPhase }),
+          title
+            ? ` · ${theme.style(title, { fg: colors.phaseDescription })}`
+            : "",
+          "\n",
+          waiting ? phaseHint(state) : "Pi is working…",
+        ].join(""),
+        0,
+        0,
+      ),
     { placement: "aboveEditor" },
   );
 }
@@ -3226,8 +3337,12 @@ async function prepareCommitPhase(
   let result: string;
   let commitPendingFiles: string[] | undefined;
   let commitPendingHashes: Record<string, string | null> | undefined;
-  if (state.pendingGitRepository === false || !hasGitRepository(state)) {
-    result = `Step ${n} accepted. No Git repository; commit skipped.`;
+  if (!hasGitRepository(state)) {
+    await sendResult(
+      `Git repository not detected. The commit phase is still open. Create or initialize a Git repository, then run /task next to retry commit-message generation. If you intentionally want to skip committing this step, run /task skip-commit.`,
+    );
+    setPhaseWidget(ctx, state, true);
+    return;
   } else if (!state.pendingFiles?.length) {
     result =
       "No code changes were produced, so there is no commit message to propose.";
@@ -3263,55 +3378,27 @@ async function prepareCommitPhase(
   state.pendingAutoCommitEligible = undefined;
   state.pendingGitRepository = undefined;
   saveState(state);
-  ctx.ui.setWidget(
-    PHASE_WIDGET,
-    [`Task ${state.id} · ${phaseLabel(state)}`, phaseHint(state)],
-    { placement: "aboveEditor" },
-  );
+  setPhaseWidget(ctx, state, true);
   await sendResult(result);
 }
 
 async function advanceSemiAutomatically(
   pi: ExtensionAPI,
-  ctx: ExtensionContext,
   state: TaskState,
 ): Promise<void> {
-  const commandContext = ctx as ExtensionCommandContext;
-  if (state.phase === "implement" && state.implementationStarted) {
-    const assessment = await assessTransition(ctx, state, "next", "");
-    if (assessment.openQuestions.length || assessment.pendingProposal.trim()) {
-      ctx.ui.notify(
-        "Semi-auto paused: resolve open questions or approve/reject the pending proposal, then use /task next.",
-        "info",
-      );
-      return;
-    }
-    await beginReview(commandContext, state);
-    return;
-  }
-  if (
-    state.phase === "review" &&
-    !state.reviewPending &&
-    existsSync(reviewPath(state, state.currentStep))
-  ) {
-    const assessment = await assessTransition(ctx, state, "next", "");
-    if (assessment.openQuestions.length || assessment.pendingProposal.trim()) {
-      ctx.ui.notify(
-        "Semi-auto paused: the review discussion needs your decision. Use /task next or /task accept when settled.",
-        "info",
-      );
-      return;
-    }
-    await acceptReviewedStep(pi, commandContext, state, "");
-    return;
-  }
-  if (
-    state.phase === "commit" &&
-    state.commitReady &&
-    effectiveSetting(state, "autoCommit")
-  ) {
-    await finishCommitPhase(pi, commandContext, state);
-  }
+  const shouldAdvance =
+    (state.phase === "implement" && state.implementationStarted) ||
+    (state.phase === "review" &&
+      !state.reviewPending &&
+      existsSync(reviewPath(state, state.currentStep))) ||
+    (state.phase === "commit" &&
+      state.commitReady &&
+      effectiveSetting(state, "autoCommit"));
+  if (!shouldAdvance) return;
+
+  // Session-control methods exist only on ExtensionCommandContext. Dispatch the
+  // workflow command through Pi so its handler receives a valid command context.
+  await pi.sendUserMessage("/task next", { expandPromptTemplates: true });
 }
 
 function sectionBody(content: string, heading: string): string {
@@ -3326,7 +3413,11 @@ function sectionBody(content: string, heading: string): string {
     .trim();
 }
 
-function updateStepExecutionRecord(state: TaskState, step: number): void {
+function updateStepExecutionRecord(
+  state: TaskState,
+  step: number,
+  commitResult?: string,
+): void {
   const path = stepPath(state, step);
   if (!existsSync(path)) return;
   const names = readdirSync(taskDir(state)).filter((name) => {
@@ -3366,7 +3457,10 @@ function updateStepExecutionRecord(state: TaskState, step: number): void {
   });
   if (!rounds.length) return;
   const current = readFileSync(path, "utf8");
-  const record = `## Execution record\n\n${rounds.join("\n\n")}`;
+  const commitNote = commitResult?.startsWith("Commit intentionally skipped")
+    ? `\n\n${commitResult}`
+    : "";
+  const record = `## Execution record\n\n${rounds.join("\n\n")}${commitNote}`;
   const updated = /^## Execution record\n[\s\S]*$/m.test(current)
     ? current.replace(/^## Execution record\n[\s\S]*$/m, record)
     : `${current.trimEnd()}\n\n${record}\n`;
@@ -3378,6 +3472,35 @@ async function finishCommitPhase(
   ctx: ExtensionCommandContext,
   state: TaskState,
 ): Promise<void> {
+  if (
+    state.commitReady &&
+    state.commitResult?.includes("No Git repository; commit skipped")
+  ) {
+    state.commitReady = false;
+    state.commitResult = undefined;
+    state.commitPendingFiles = undefined;
+    state.commitPendingHashes = undefined;
+    if (hasGitRepository(state)) {
+      const diffPath = join(
+        taskDir(state),
+        `implementation-${state.currentStep}.diff`,
+      );
+      const diff = existsSync(diffPath) ? readFileSync(diffPath, "utf8") : "";
+      const files = [...diff.matchAll(/^# (.+)$/gm)].map((match) => match[1]);
+      if (!files.length)
+        throw new Error(
+          "The previous no-Git commit result cannot be retried because the implementation diff has no file list. Review the task diff before proceeding.",
+        );
+      state.pendingFiles = [...new Set(files)];
+      state.pendingHashes = Object.fromEntries(
+        state.pendingFiles.map((file) => [
+          file,
+          fileHash(state.projectRoot, file),
+        ]),
+      );
+    }
+    saveState(state);
+  }
   if (!state.commitReady) {
     await prepareCommitPhase(ctx, state, (content) =>
       pi.sendMessage({ customType: "task-commit", content, display: true }),
@@ -3406,7 +3529,7 @@ async function finishCommitPhase(
   delete state.commitPendingHashes;
   delete state.commitReady;
   delete state.commitResult;
-  updateStepExecutionRecord(state, n);
+  updateStepExecutionRecord(state, n, state.commitResult);
   updateStepStatus(state, n, "completed");
   const diffPath = join(taskDir(state), `implementation-${n}.diff`);
   if (existsSync(diffPath)) {
@@ -3748,7 +3871,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
       effectiveSetting(state, "mode") === "semi-auto"
     ) {
       try {
-        await advanceSemiAutomatically(pi, ctx, state);
+        await advanceSemiAutomatically(pi, state);
       } catch (error) {
         ctx.ui.notify(
           `Semi-auto transition stopped: ${error instanceof Error ? error.message : String(error)}. Continue manually with /task next when ready.`,
@@ -3814,7 +3937,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               : state.phase === "commit"
                 ? state.commitReady
                   ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
-                  : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. This is the separate commit phase."
+                  : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. If Git is unavailable and the user deliberately wants to skip this commit, they can run /task skip-commit. This is the separate commit phase."
                 : "The task is complete. Do not edit project files through this task session.";
     const phaseSkill =
       state.phase === "research" ||
@@ -3840,6 +3963,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         "resume",
         "next",
         "accept",
+        "skip-commit",
         "show",
         "config",
         "help",
@@ -3901,6 +4025,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
     },
     handler: async (rawArgs, ctx) => {
       let transitionStatus = false;
+      let sessionReplaced = false;
       try {
         const parsed = parseArguments(rawArgs);
         const requestedCommand =
@@ -4360,6 +4485,34 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           await showArtifact(ctx, name, readFileSync(path, "utf8"));
           return;
         }
+        if (command === "skip-commit") {
+          transitionStatus = true;
+          ctx.ui.setStatus(
+            "task-transition",
+            "Recording intentional commit skip…",
+          );
+          if (!sessionMatches(ctx, state))
+            throw new Error(
+              `This is not the active task session. Use /task ${state.id} to continue ${state.phase}.`,
+            );
+          if (state.phase !== "commit")
+            throw new Error(
+              "/task skip-commit is only available during the commit phase.",
+            );
+          if (args.length)
+            throw new Error("/task skip-commit does not accept arguments.");
+          if (state.commitResult?.startsWith("Committed step"))
+            throw new Error(
+              "This step was already committed automatically; /task skip-commit cannot undo it.",
+            );
+          state.commitPendingFiles = undefined;
+          state.commitPendingHashes = undefined;
+          state.commitReady = true;
+          state.commitResult = `Commit intentionally skipped by user for step ${state.currentStep}.`;
+          saveState(state);
+          await finishCommitPhase(pi, ctx, state);
+          return;
+        }
         if (command === "next" || command === "accept") {
           transitionStatus = true;
           ctx.ui.setStatus(
@@ -4395,6 +4548,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 "The commit phase does not accept approval notes. Use /task next when ready to continue.",
               );
             await finishCommitPhase(pi, ctx, state);
+            sessionReplaced = true;
             return;
           }
           const assessment = await assessTransition(ctx, state, command, note);
@@ -4420,6 +4574,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           if (state.phase === "implement" && !state.implementationStarted) {
             await finalizeArtifact(ctx, state, "step", approval);
             await beginImplementation(pi, ctx, state);
+            sessionReplaced = true;
             return;
           }
           if (state.phase === "research") {
@@ -4431,6 +4586,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               1,
               phaseKickoff(state, "roadmap", 1),
             );
+            sessionReplaced = true;
             return;
           }
           if (state.phase === "roadmap") {
@@ -4444,14 +4600,17 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               1,
               phaseKickoff(state, "implement", 1),
             );
+            sessionReplaced = true;
             return;
           }
           if (state.phase === "implement") {
             await beginReview(ctx, state);
+            sessionReplaced = true;
             return;
           }
           if (state.phase === "review") {
             await acceptReviewedStep(pi, ctx, state, approval);
+            sessionReplaced = true;
             return;
           }
         }
@@ -4462,7 +4621,8 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           "error",
         );
       } finally {
-        if (transitionStatus) ctx.ui.setStatus("task-transition", undefined);
+        if (transitionStatus && !sessionReplaced)
+          ctx.ui.setStatus("task-transition", undefined);
       }
     },
   });
