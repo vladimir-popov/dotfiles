@@ -70,6 +70,7 @@ type TaskState = {
   pendingAutoCommitEligible?: boolean;
   workflowMode?: "manual" | "semi-auto";
   autoCommit?: boolean;
+  configOverrides?: Config;
   pendingGitRepository?: boolean;
   pendingBaselineDir?: string;
   commitPendingFiles?: string[];
@@ -95,7 +96,7 @@ type PhaseModel = {
   thinkingLevel?:
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 };
-type SkillPhase = "research" | "roadmap" | "implement" | "review";
+type SkillPhase = "research" | "roadmap" | "implement" | "review" | "commit";
 type Config = {
   mode?: "manual" | "semi-auto";
   autoCommit?: boolean;
@@ -103,8 +104,6 @@ type Config = {
     Record<"research" | "roadmap" | "implement" | "review", PhaseModel | null>
   >;
   skills?: Partial<Record<SkillPhase, string | null>>;
-  /** @deprecated Use skills.review. */
-  reviewSkill?: string | null;
   reviewTools?: string[];
   allowTreeNavigation?: boolean;
   snapshotMaxFiles?: number;
@@ -198,14 +197,11 @@ Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 state.json. Resolution order is task, project, global, then defaults.
 Use /task config init project|task to create/materialize the scoped settings;
 edit the resulting files to change values. Project initialization refuses to
-overwrite an existing config. Task initialization stores the current effective
-mode and autoCommit as task-specific overrides.
-Set mode and autoCommit globally, per project, or per task. Other settings such
-as phaseModels, skills, reviewTools, hotkeys, snapshotMaxFiles, snapshotMaxMiB,
-and allowTreeNavigation are global. Task files are fixed under
+overwrite an existing config. Project and task initialization materialize the current effective settings at that scope.
+Settings resolve from task, project, global, then defaults; nested phase maps resolve by key, while lists and scalar values are replaced by the more local scope. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
-The global config is JSON; project mode and autoCommit live in .agents/task-workflow/config.json.
+Global settings live in task-workflow.json; project settings live in .agents/task-workflow/config.json; task overrides live in state.json.
 Set global statusColors keys taskName, currentSettings, currentPhase, and phaseDescription to ANSI color names
 (black, red, green, yellow, blue, purple, cyan, white, or bright-prefixed variants), palette indices 0-255,
 or hex colors such as #RRGGBB. Defaults: brightGreen, brightBlack, blue, blue. Example:
@@ -349,28 +345,72 @@ function readProjectConfig(root: string): Config {
   const path = projectConfigPath(root);
   if (!existsSync(path)) return {};
   const config = validateConfig(JSON.parse(readFileSync(path, "utf8")), path);
-  const unknown = Object.keys(config).filter(
-    (key) => key !== "mode" && key !== "autoCommit",
-  );
-  if (unknown.length)
-    throw new Error(
-      `Unsupported project setting(s) in ${path}: ${unknown.join(", ")}`,
-    );
   return config;
+}
+
+function effectiveConfig(state: TaskState): Config {
+  const global = readConfig();
+  const project = readProjectConfig(state.projectRoot);
+  const task = {
+    ...state.configOverrides,
+    ...(state.workflowMode !== undefined ? { mode: state.workflowMode } : {}),
+    ...(state.autoCommit !== undefined ? { autoCommit: state.autoCommit } : {}),
+  };
+  return {
+    ...global,
+    ...project,
+    ...task,
+    phaseModels: {
+      ...global.phaseModels,
+      ...project.phaseModels,
+      ...task.phaseModels,
+    },
+    skills: { ...global.skills, ...project.skills, ...task.skills },
+    hotkeys: { ...global.hotkeys, ...project.hotkeys, ...task.hotkeys },
+    statusColors: {
+      ...global.statusColors,
+      ...project.statusColors,
+      ...task.statusColors,
+    },
+  };
+}
+
+function materializedConfig(config: Config): Config {
+  return {
+    ...config,
+    mode: config.mode ?? "manual",
+    autoCommit: config.autoCommit ?? false,
+    phaseModels: config.phaseModels ?? {},
+    skills: {
+      research: config.skills?.research ?? null,
+      roadmap: config.skills?.roadmap ?? null,
+      implement: config.skills?.implement ?? null,
+      review: config.skills?.review ?? null,
+      commit: config.skills?.commit ?? null,
+    },
+    reviewTools: config.reviewTools ?? [],
+    allowTreeNavigation: config.allowTreeNavigation ?? false,
+    hotkeys: { ...DEFAULT_HOTKEYS, ...config.hotkeys },
+    statusColors: {
+      taskName: config.statusColors?.taskName ?? "brightGreen",
+      currentSettings: config.statusColors?.currentSettings ?? "brightBlack",
+      currentPhase: config.statusColors?.currentPhase ?? "blue",
+      phaseDescription: config.statusColors?.phaseDescription ?? "blue",
+    },
+    snapshotMaxFiles: config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
+    snapshotMaxMiB: config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB,
+  };
 }
 
 function effectiveSetting<K extends "mode" | "autoCommit">(
   state: TaskState,
   key: K,
 ): K extends "mode" ? "manual" | "semi-auto" : boolean {
-  const taskValue = key === "mode" ? state.workflowMode : state.autoCommit;
-  const projectValue = readProjectConfig(state.projectRoot)[key];
-  const globalValue = readConfig()[key];
+  const legacy = key === "mode" ? state.workflowMode : state.autoCommit;
   const fallback = key === "mode" ? "manual" : false;
-  return (taskValue ??
-    projectValue ??
-    globalValue ??
-    fallback) as K extends "mode" ? "manual" | "semi-auto" : boolean;
+  return (legacy ?? effectiveConfig(state)[key] ?? fallback) as K extends "mode"
+    ? "manual" | "semi-auto"
+    : boolean;
 }
 
 function readConfig(): Config {
@@ -395,14 +435,6 @@ function readConfig(): Config {
     typeof values.allowTreeNavigation !== "boolean"
   )
     throw new Error(`allowTreeNavigation must be a boolean: ${path}`);
-  if (
-    values.reviewSkill !== undefined &&
-    values.reviewSkill !== null &&
-    (typeof values.reviewSkill !== "string" ||
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(values.reviewSkill) ||
-      values.reviewSkill.length > 64)
-  )
-    throw new Error(`reviewSkill must be a skill name or null: ${path}`);
   if (values.skills !== undefined) {
     if (
       !values.skills ||
@@ -412,9 +444,9 @@ function readConfig(): Config {
       throw new Error(`skills must be an object: ${path}`);
     for (const [phase, skill] of Object.entries(values.skills)) {
       if (
-        !(["research", "roadmap", "implement", "review"] as string[]).includes(
-          phase,
-        )
+        !(
+          ["research", "roadmap", "implement", "review", "commit"] as string[]
+        ).includes(phase)
       )
         throw new Error(`Unknown skills phase ${phase}: ${path}`);
       if (
@@ -518,10 +550,7 @@ function configuredPhaseSkill(
   config: Config,
   phase: SkillPhase,
 ): string | null | undefined {
-  const skill = config.skills?.[phase];
-  if (skill !== undefined) return skill;
-  if (phase !== "review") return undefined;
-  return config.reviewSkill ?? null;
+  return config.skills?.[phase];
 }
 
 function reviewSkillName(config: Config): string {
@@ -626,6 +655,8 @@ function loadState(path: string, maintainLegacyFiles = true): TaskState {
   ) {
     throw new Error(`Invalid task state: ${path}`);
   }
+  if (data.configOverrides !== undefined)
+    data.configOverrides = validateConfig(data.configOverrides, path);
   if (data.structureVersion !== CURRENT_STRUCTURE_VERSION)
     throw new Error(
       `Task structure version must be ${CURRENT_STRUCTURE_VERSION}: ${path}`,
@@ -1429,8 +1460,8 @@ function taskStatusText(
   ctx: ExtensionContext,
   state: TaskState,
 ): string {
-  const config = readConfig();
-  const model = configuredModel(state.phase);
+  const config = effectiveConfig(state);
+  const model = configuredModel(state.phase, state);
   const phaseStatus =
     state.phase === "implement" && !state.implementationStarted
       ? "implementation preparation"
@@ -1722,7 +1753,7 @@ async function captureBaseline(
   gitRepository: boolean,
   onProgress?: (message: string) => void,
 ): Promise<Baseline> {
-  const config = readConfig();
+  const config = effectiveConfig(state);
   const maxFiles = config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES;
   const maxMiB = config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB;
   const files = gitRepository
@@ -2511,7 +2542,7 @@ function setPhaseWidget(
   state: TaskState,
   waiting: boolean,
 ): void {
-  const config = readConfig();
+  const config = effectiveConfig(state);
   const title = ["implement", "review", "commit"].includes(state.phase)
     ? stepTitle(state)
     : undefined;
@@ -2731,8 +2762,11 @@ function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
   );
 }
 
-function configuredModel(phase: Phase): PhaseModel | null | undefined {
-  const config = readConfig();
+function configuredModel(
+  phase: Phase,
+  state?: TaskState,
+): PhaseModel | null | undefined {
+  const config = state ? effectiveConfig(state) : readConfig();
   if (phase === "complete" || phase === "commit") return undefined;
   return config.phaseModels?.[phase];
 }
@@ -2740,10 +2774,11 @@ function configuredModel(phase: Phase): PhaseModel | null | undefined {
 async function selectPhaseModel(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
+  state: TaskState,
   phase: Phase,
   step: number,
 ): Promise<void> {
-  const model = configuredModel(phase);
+  const model = configuredModel(phase, state);
   if (!model) return;
   const ready = ctx.sessionManager
     .getBranch()
@@ -3796,7 +3831,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
               ...READ_TOOLS,
               ARTIFACT_TOOL,
               ...(state.phase === "review"
-                ? readConfig().reviewTools || []
+                ? effectiveConfig(state).reviewTools || []
                 : []),
             ],
     );
@@ -3812,7 +3847,8 @@ export default function taskExtension(pi: ExtensionAPI): void {
 
   pi.on("session_before_tree", (_event, ctx) => {
     if (!taskLink(ctx)) return;
-    if (readConfig().allowTreeNavigation === true) return;
+    const state = visibleTask(ctx);
+    if (state && effectiveConfig(state).allowTreeNavigation === true) return;
     ctx.ui.notify(
       "/tree is blocked in task sessions because artifacts are shared across branches. Set allowTreeNavigation to true to allow it.",
       "warning",
@@ -3831,7 +3867,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
     updatePhaseUi(pi, ctx, state, true);
     if (!sessionMatches(ctx, state)) return;
     try {
-      await selectPhaseModel(pi, ctx, state.phase, state.currentStep);
+      await selectPhaseModel(pi, ctx, state, state.phase, state.currentStep);
     } catch (error) {
       ctx.ui.notify(
         error instanceof Error ? error.message : String(error),
@@ -3902,7 +3938,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
       return;
     }
     const writable = state.phase === "implement" && state.implementationStarted;
-    const config = readConfig();
+    const config = effectiveConfig(state);
     event.systemPromptOptions.selectedTools =
       state.phase === "commit"
         ? [...READ_TOOLS]
@@ -3948,7 +3984,8 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
       state.phase === "research" ||
       state.phase === "roadmap" ||
       state.phase === "implement" ||
-      state.phase === "review"
+      state.phase === "review" ||
+      state.phase === "commit"
         ? configuredPhaseSkill(config, state.phase)
         : undefined;
     const skillGuidance = phaseSkill
@@ -4073,8 +4110,8 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         if (command === "config") {
           if (args.length === 0) {
             const state = requireTask(ctx, false);
-            const global = readConfig();
-            const effectiveConfig = {
+            const global = effectiveConfig(state);
+            const effectiveSettings = {
               mode: effectiveSetting(state, "mode"),
               autoCommit: effectiveSetting(state, "autoCommit"),
               statusColors: {
@@ -4091,6 +4128,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 roadmap: configuredPhaseSkill(global, "roadmap") ?? null,
                 implement: configuredPhaseSkill(global, "implement") ?? null,
                 review: configuredPhaseSkill(global, "review") ?? null,
+                commit: configuredPhaseSkill(global, "commit") ?? null,
               },
               reviewTools: global.reviewTools ?? [],
               allowTreeNavigation: global.allowTreeNavigation ?? false,
@@ -4102,7 +4140,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             await showArtifact(
               ctx,
               "Effective task configuration",
-              JSON.stringify(effectiveConfig, null, 2),
+              JSON.stringify(effectiveSettings, null, 2),
             );
             return;
           }
@@ -4120,9 +4158,14 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             const project = readProjectConfig(root);
             const global = readConfig();
             const values = {
-              mode: project.mode ?? global.mode ?? "manual",
-              autoCommit: project.autoCommit ?? global.autoCommit ?? false,
+              ...global,
+              ...project,
+              phaseModels: { ...global.phaseModels, ...project.phaseModels },
+              skills: { ...global.skills, ...project.skills },
+              hotkeys: { ...global.hotkeys, ...project.hotkeys },
+              statusColors: { ...global.statusColors, ...project.statusColors },
             };
+            Object.assign(values, materializedConfig(values));
             writeFileSync(path, `${JSON.stringify(values, null, 2)}\n`, {
               encoding: "utf8",
               flag: "wx",
@@ -4136,13 +4179,14 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             return;
           }
           const state = requireTask(ctx, false);
-          state.workflowMode = effectiveSetting(state, "mode");
-          state.autoCommit = effectiveSetting(state, "autoCommit");
+          state.configOverrides = materializedConfig(effectiveConfig(state));
+          state.workflowMode = undefined;
+          state.autoCommit = undefined;
           saveState(state);
           await showArtifact(
             ctx,
             "Task configuration",
-            `Saved task overrides in ${taskStatePath(state)}\n\n${JSON.stringify({ mode: state.workflowMode, autoCommit: state.autoCommit }, null, 2)}`,
+            `Saved task overrides in ${taskStatePath(state)}\n\n${JSON.stringify(state.configOverrides, null, 2)}`,
           );
           return;
         }
