@@ -3,7 +3,7 @@ description: Draft a commit title and detailed description from Git changes
 argument-hint: "[all]"
 ---
 
-Draft a Git commit message for the current repository. Arguments: ${@:-<none>}.
+Draft a Git commit message for the current repository. Arguments: ${@:-<none>}. Before drafting, use the `commit-message` skill for title and description style.
 
 Interpret arguments strictly: accept no arguments or exactly `all`; otherwise explain `/commit` and `/commit all` and stop.
 
@@ -15,4 +15,4 @@ Determine whether the current directory is inside a Git worktree (for example, `
 
 Inspect status and the applicable patch(es) and summaries before drafting. For staged-only scope use `git diff --cached`; for tracked changes combine staged and unstaged patches without describing overlaps twice. For `all`, also inspect untracked non-ignored files as new-file content. In non-Git mode, use the successful-invocation boundary rules above and inspect each included file's relevant changes. Read surrounding code only as needed. If output is truncated, inspect included files individually until the changes are understood. If the selected scope contains no changes, say so rather than inventing a message.
 
-Return only a proposed commit title and a detailed commit description. Write them in English. Make the title concise and specific, preferably in the imperative mood. In the description, explain the substantive changes and their purpose using short paragraphs or bullets; mention important behavior changes and tests only when the patch supports them. Keep every description line at or below 70 characters. Do not invent motivation, tests, or outcomes. Do not stage files, create a commit, or modify the working tree.
+Return only the proposed title and description, following the `commit-message` skill. Do not stage files, create a commit, or modify the working tree.

@@ -1,6 +1,7 @@
 {
   "skills": {
     "implement": "public-api-docs",
-    "review": "task-review"
+    "review": "task-review",
+    "commit": "commit-message"
   }
 }
