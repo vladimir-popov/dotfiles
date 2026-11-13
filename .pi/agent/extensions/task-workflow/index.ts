@@ -4646,10 +4646,17 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               ctx.ui.notify(question, "info");
             return;
           }
-          if (command === "next" && assessment.pendingProposal.trim())
-            throw new Error(
-              `The phase is unchanged. A proposal still needs approval: ${assessment.pendingProposal}. Use /task accept if you agree.`,
+          if (command === "next" && assessment.pendingProposal.trim()) {
+            ctx.ui.notify(
+              "The phase is unchanged. A proposal still needs approval:",
+              "warning",
             );
+            ctx.ui.notify(
+              `${assessment.pendingProposal}. Use /task accept if you agree.`,
+              "info",
+            );
+            return;
+          }
           const approval =
             command === "accept"
               ? [
