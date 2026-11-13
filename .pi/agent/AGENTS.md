@@ -2,6 +2,10 @@
 
 Reply in the same language as the user's prompt. In particular, if the user writes in Russian, respond in Russian.
 
+## Commit message formatting
+
+Whenever I ask you to draft or edit a commit message, whether through `/commit` or in a normal prompt, keep every description line at or below 70 characters. This limit does not apply to the title. Wrap long sentences onto additional lines without cutting off text.
+
 ## Jira formatting
 
 When I ask for Jira markup or Jira-ready text, use Jira wiki markup, not Markdown. Wrap code blocks in `{code}` and `{code}`; do not use Markdown code fences. Load the `jira-markup` skill for detailed Jira formatting guidance.
