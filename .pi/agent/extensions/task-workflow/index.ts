@@ -132,19 +132,18 @@ function researchAllowedTools(pi: ExtensionAPI): string[] {
   const tools = pi.getAllTools();
   const availableNames = new Set(tools.map((tool) => tool.name));
   const readTools = READ_TOOLS.filter((name) => availableNames.has(name));
-  const researchTools = tools
-    .filter((tool) => {
-      if (tool.exposure === "hidden" || tool.exposure === "codemode")
-        return false;
-      if (tool.name === "tool_search") return true;
-      return (
+  const webTools = tools
+    .filter(
+      (tool) =>
+        tool.exposure !== "hidden" &&
+        tool.exposure !== "deferred" &&
+        tool.exposure !== "codemode" &&
         RESEARCH_WEB_TOOL_PATTERN.test(tool.name) &&
         !RESEARCH_MUTATION_TOOL_PATTERN.test(tool.name) &&
-        tool.annotations?.readOnlyHint !== false
-      );
-    })
+        tool.annotations?.readOnlyHint !== false,
+    )
     .map((tool) => tool.name);
-  return [...new Set([...readTools, ...researchTools, ARTIFACT_TOOL])];
+  return [...new Set([...readTools, ...webTools, ARTIFACT_TOOL])];
 }
 const DEFAULT_SNAPSHOT_MAX_FILES = 4_000;
 const DEFAULT_SNAPSHOT_MAX_MIB = 100;
@@ -156,14 +155,13 @@ const DEFAULT_HOTKEYS: Record<string, string> = {
 };
 const HELP = `Task workflow
 
-/task new TASK-ID          Create a task with this ID
-/task TASK-ID              Open an existing task
+/task TASK-ID              Start or continue a task after confirmation
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
 /task config                Show effective settings for the current task
-/task config init project   Create an empty project config
-/task config init task      Create empty task overrides
+/task config init project   Create project config with current effective settings
+/task config init task      Save current effective settings as task overrides
 /task resume                Return to an active task; resume an interrupted run
 /task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
@@ -175,7 +173,7 @@ Default hotkeys: Alt+N = next, Alt+A = accept, Alt+S = status, Alt+W = show.
 Configure or disable them with hotkeys in task-workflow.json; use /hotkeys to inspect active bindings.
 
 Quote an ID containing spaces, for example: /task "TASK 100500".
-Use /task new TASK-ID to create a task. /task TASK-ID opens an existing task.
+Starting or opening a specific task requires an explicit ID.
 /task delete removes its artifact directory and saved sessions; code outside it remains.
 Research gathers task context and investigates the code in one saved Pi session. Later phases use their own sessions.
 Each implementation session begins with final discussion of its current step; /task next finalizes that step and starts coding in the same session.
@@ -197,9 +195,9 @@ Task data uses the fixed path <project>/.agents/task-workflow/<task-id>/, with a
 Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 <project>/.agents/task-workflow/config.json; task overrides live in that task's
 state.json. Resolution order is task, project, global, then defaults.
-Use /task config init project|task to create empty scoped settings; edit the
-resulting JSON object to add only the overrides you need. Project initialization
-refuses to overwrite an existing config.
+Use /task config init project|task to create/materialize the scoped settings;
+edit the resulting files to change values. Project initialization refuses to
+overwrite an existing config. Project and task initialization materialize the current effective settings at that scope.
 Settings resolve from task, project, global, then defaults; nested phase maps resolve by key, while lists and scalar values are replaced by the more local scope. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
@@ -377,6 +375,33 @@ function effectiveConfig(state: TaskState): Config {
   };
 }
 
+function materializedConfig(config: Config): Config {
+  return {
+    ...config,
+    mode: config.mode ?? "manual",
+    autoCommit: config.autoCommit ?? false,
+    phaseModels: config.phaseModels ?? {},
+    skills: {
+      research: config.skills?.research ?? null,
+      roadmap: config.skills?.roadmap ?? null,
+      implement: config.skills?.implement ?? null,
+      review: config.skills?.review ?? null,
+      commit: config.skills?.commit ?? null,
+    },
+    reviewTools: config.reviewTools ?? [],
+    allowTreeNavigation: config.allowTreeNavigation ?? false,
+    hotkeys: { ...DEFAULT_HOTKEYS, ...config.hotkeys },
+    statusColors: {
+      taskName: config.statusColors?.taskName ?? "brightGreen",
+      currentSettings: config.statusColors?.currentSettings ?? "brightBlack",
+      currentPhase: config.statusColors?.currentPhase ?? "blue",
+      phaseDescription: config.statusColors?.phaseDescription ?? "blue",
+    },
+    snapshotMaxFiles: config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
+    snapshotMaxMiB: config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB,
+  };
+}
+
 function effectiveSetting<K extends "mode" | "autoCommit">(
   state: TaskState,
   key: K,
@@ -531,60 +556,6 @@ function configuredPhaseSkill(
 function reviewSkillName(config: Config): string {
   const skill = configuredPhaseSkill(config, "review");
   return skill ?? "(disabled)";
-}
-
-function configuredSkillInstructions(
-  state: TaskState,
-  skillName: string,
-): string | undefined {
-  const roots = [
-    join(state.projectRoot, ".agents", "skills"),
-    join(state.projectRoot, ".pi", "skills"),
-    join(
-      process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
-      "skills",
-    ),
-    join(homedir(), ".agents", "skills"),
-  ];
-  const visited = new Set<string>();
-  const find = (directory: string): string | undefined => {
-    let resolvedDirectory: string;
-    try {
-      resolvedDirectory = realpathSync(directory);
-      if (visited.has(resolvedDirectory)) return undefined;
-      visited.add(resolvedDirectory);
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        const child = join(directory, entry.name);
-        const skillFile = join(child, "SKILL.md");
-        if (existsSync(skillFile)) {
-          try {
-            if (!lstatSync(skillFile).isFile()) continue;
-            const content = readFileSync(skillFile, "utf8");
-            const declaredName = content
-              .match(/^name:\s*["']?([^\r\n"'#]+)["']?\s*$/m)?.[1]
-              ?.trim();
-            if ((declaredName || entry.name) === skillName)
-              return content
-                .replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n?/, "")
-                .trim();
-          } catch {
-            continue;
-          }
-        }
-        const nested = find(child);
-        if (nested) return nested;
-      }
-    } catch {
-      return undefined;
-    }
-    return undefined;
-  };
-  for (const root of roots) {
-    const found = find(root);
-    if (found) return found;
-  }
-  return undefined;
 }
 
 function configuredHotkeys(): Array<{ command: string; key: string }> {
@@ -2161,21 +2132,11 @@ async function draftCommitMessage(
     ],
     timestamp: Date.now(),
   };
-  const skillName = configuredPhaseSkill(effectiveConfig(state), "commit");
-  const skillInstructions = skillName
-    ? configuredSkillInstructions(state, skillName)
-    : undefined;
   const response = await ctx.modelRegistry.complete(
     ctx.model,
     {
-      systemPrompt: [
+      systemPrompt:
         "Write an English Git commit message for exactly the supplied changes. Return only a JSON object with string fields title and body. Use a concise, specific imperative title. The body should explain the changes and their purpose in useful detail. Mention checks only when the supplied summary supports them. Do not invent behavior, motivation, or test outcomes.",
-        skillInstructions
-          ? `Apply the configured Pi skill "${skillName}" when drafting the message. Its instructions follow; keep the required JSON response format above.\n\n${skillInstructions}`
-          : undefined,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
       messages: [user],
     },
     { cacheRetention: "none", sessionId: uuidv7() },
@@ -2590,7 +2551,6 @@ function setPhaseWidget(
     ? fullPhase.slice(0, fullPhase.lastIndexOf(` · ${title}`))
     : fullPhase;
   const settings = `[mode: ${effectiveSetting(state, "mode")}, auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}]`;
-  const noGitRepository = !hasGitRepository(state);
   const colors = {
     taskName: parseStatusColor(config.statusColors?.taskName ?? "brightGreen"),
     currentSettings: parseStatusColor(
@@ -2613,9 +2573,6 @@ function setPhaseWidget(
           theme.style(phase, { fg: colors.currentPhase }),
           title
             ? ` · ${theme.style(title, { fg: colors.phaseDescription })}`
-            : "",
-          noGitRepository
-            ? ` · ${theme.style("⚠ No Git repository", { fg: parseStatusColor("red") })}`
             : "",
           "\n",
           waiting ? phaseHint(state) : "Pi is working…",
@@ -3055,7 +3012,7 @@ async function resumeFromCurrentProject(
   );
   if (!tasks.length)
     throw new Error(
-      `No active tasks found in ${root}. Create one with /task new TASK-ID.`,
+      `No active tasks found in ${root}. Use /task TASK-ID to start one.`,
     );
 
   let selected: DiscoveredTask | undefined;
@@ -4015,9 +3972,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
               ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
               : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
             : state.phase === "review"
-              ? `Review step ${state.currentStep} against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. This phase is read-only: do not edit project files, advance the workflow, or write the review artifact anywhere except ${reviewPath(state, state.currentStep)}. The review-phase coordinator alone must save exactly one final English artifact at that path using task_write_artifact with artifact "review" and step ${state.currentStep}. Subagents may return findings to the coordinator but must not write or replace the artifact. The configured review skill may define the review procedure, including delegation and consolidation, but cannot override this contract or the phase's available tools. Any tools needed by that procedure must be explicitly listed in reviewTools. If no skill is configured or it is unavailable, use the built-in single-agent procedure below.
-
-
+              ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
 
 Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
               : state.phase === "commit"
@@ -4035,12 +3990,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         : undefined;
     const skillGuidance = phaseSkill
       ? state.phase === "review"
-        ? (() => {
-            const skill = configuredSkillInstructions(state, phaseSkill);
-            return skill
-              ? ` The configured review skill "${phaseSkill}" defines the review procedure. Follow it within the extension-owned contract above; it may delegate independent checks and consolidate results, but must not change the read-only boundary, artifact path, coordinator-only task_write_artifact requirement, phase boundaries, or tool allowlist. Skill instructions follow:\n\n${skill}`
-              : ` The configured review skill "${phaseSkill}" is unavailable. Follow the built-in single-agent review procedure above.`;
-          })()
+        ? ` If the review preference skill "${phaseSkill}" is available, load and use it for the user's review preferences. The review format, workflow procedure, artifact path, and tool boundaries are defined above and must not be overridden. If the skill is unavailable, follow the review instructions above without additional user preferences.`
         : ` If the discovered skill "${phaseSkill}" is available, use it as supplementary guidance for this phase. It must not override the task workflow's phase boundaries, artifact rules, or tool restrictions. If unavailable, continue with the built-in instructions.`
       : "";
     event.systemPromptOptions.sections.task_workflow = `${common}\n${rule}${skillGuidance}`;
@@ -4050,7 +4000,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
     description: "Guided task workflow; use /task help for commands",
     getArgumentCompletions: (prefix) => {
       const commands = [
-        "new",
         "list",
         "delete",
         "status",
@@ -4129,7 +4078,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 !parsed[0].quoted &&
                 [
                   "help",
-                  "new",
                   "list",
                   "delete",
                   "status",
@@ -4149,9 +4097,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           .slice(requestedCommand ? 1 : 0)
           .map((arg) => arg.value);
         if (command === "start")
-          throw new Error(`Use /task new TASK-ID instead of /task ${command}.`);
-        if (command === "new" && args.length !== 1)
-          throw new Error("Usage: /task new TASK-ID");
+          throw new Error(`Use /task TASK-ID instead of /task ${command}.`);
         if (command === "log" || command === "abort")
           throw new Error(
             "The task now uses normal Pi sessions. Use Pi's native progress and cancellation controls.",
@@ -4209,7 +4155,17 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             const root = projectRoot(ctx.cwd);
             const path = projectConfigPath(root);
             mkdirSync(dirname(path), { recursive: true });
-            const values: Config = {};
+            const project = readProjectConfig(root);
+            const global = readConfig();
+            const values = {
+              ...global,
+              ...project,
+              phaseModels: { ...global.phaseModels, ...project.phaseModels },
+              skills: { ...global.skills, ...project.skills },
+              hotkeys: { ...global.hotkeys, ...project.hotkeys },
+              statusColors: { ...global.statusColors, ...project.statusColors },
+            };
+            Object.assign(values, materializedConfig(values));
             writeFileSync(path, `${JSON.stringify(values, null, 2)}\n`, {
               encoding: "utf8",
               flag: "wx",
@@ -4223,7 +4179,9 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             return;
           }
           const state = requireTask(ctx, false);
-          state.configOverrides = {};
+          state.configOverrides = materializedConfig(effectiveConfig(state));
+          state.workflowMode = undefined;
+          state.autoCommit = undefined;
           saveState(state);
           await showArtifact(
             ctx,
@@ -4267,7 +4225,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             "Task list",
             tasks.length
               ? `# Tasks in ${root}\n\n| Task ID | State | Context |\n| --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.`
-              : `# Tasks in ${root}\n\nNo tasks found. Start one with /task new TASK-ID.`,
+              : `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.`,
           );
           return;
         }
@@ -4455,13 +4413,9 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
           return;
         }
-        if (!command || command === "new") {
+        if (!command) {
           if (args.length !== 1 || !args[0] || args[0].startsWith("--"))
-            throw new Error(
-              command === "new"
-                ? "Usage: /task new TASK-ID"
-                : "A task ID is required. Usage: /task TASK-ID",
-            );
+            throw new Error("A task ID is required. Usage: /task TASK-ID");
           const root = projectRoot(ctx.cwd);
           const id = args[0];
           validateTaskId(id);
@@ -4502,10 +4456,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             await continueTaskSession(ctx, state);
             return;
           }
-          if (!command)
-            throw new Error(
-              `Task ${id} was not found in ${root}. To create it, use /task new ${id}.`,
-            );
           if (existsSync(artifactDir))
             throw new Error(
               `Artifact directory already exists without task state: ${artifactDir}`,
@@ -4538,7 +4488,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             completedSteps: [],
             sessions: {},
           };
-          await selectPhaseModel(pi, ctx, state, "research", 1);
+          await selectPhaseModel(pi, ctx, "research", 1);
           const file = createPhaseSession(
             state,
             "research",
@@ -4698,12 +4648,8 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
           if (command === "next" && assessment.pendingProposal.trim()) {
             ctx.ui.notify(
-              "The phase is unchanged. A proposal still needs approval:",
+              `The phase is unchanged. A proposal still needs approval: ${assessment.pendingProposal}. Use /task accept if you agree.`,
               "warning",
-            );
-            ctx.ui.notify(
-              `${assessment.pendingProposal}. Use /task accept if you agree.`,
-              "info",
             );
             return;
           }
