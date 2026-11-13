@@ -95,7 +95,7 @@ type PhaseModel = {
   thinkingLevel?:
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 };
-type SkillPhase = "research" | "roadmap" | "review";
+type SkillPhase = "research" | "roadmap" | "implement" | "review";
 type Config = {
   mode?: "manual" | "semi-auto";
   autoCommit?: boolean;
@@ -410,7 +410,11 @@ function readConfig(): Config {
     )
       throw new Error(`skills must be an object: ${path}`);
     for (const [phase, skill] of Object.entries(values.skills)) {
-      if (!(["research", "roadmap", "review"] as string[]).includes(phase))
+      if (
+        !(["research", "roadmap", "implement", "review"] as string[]).includes(
+          phase,
+        )
+      )
         throw new Error(`Unknown skills phase ${phase}: ${path}`);
       if (
         skill !== null &&
@@ -516,12 +520,12 @@ function configuredPhaseSkill(
   const skill = config.skills?.[phase];
   if (skill !== undefined) return skill;
   if (phase !== "review") return undefined;
-  return config.reviewSkill === undefined ? "task-review" : config.reviewSkill;
+  return config.reviewSkill ?? null;
 }
 
 function reviewSkillName(config: Config): string {
   const skill = configuredPhaseSkill(config, "review");
-  return skill === undefined ? "task-review" : (skill ?? "(disabled)");
+  return skill ?? "(disabled)";
 }
 
 function configuredHotkeys(): Array<{ command: string; key: string }> {
@@ -3942,6 +3946,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
     const phaseSkill =
       state.phase === "research" ||
       state.phase === "roadmap" ||
+      state.phase === "implement" ||
       state.phase === "review"
         ? configuredPhaseSkill(config, state.phase)
         : undefined;
