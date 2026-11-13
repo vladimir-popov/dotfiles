@@ -558,6 +558,60 @@ function reviewSkillName(config: Config): string {
   return skill ?? "(disabled)";
 }
 
+function configuredSkillInstructions(
+  state: TaskState,
+  skillName: string,
+): string | undefined {
+  const roots = [
+    join(state.projectRoot, ".agents", "skills"),
+    join(state.projectRoot, ".pi", "skills"),
+    join(
+      process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
+      "skills",
+    ),
+    join(homedir(), ".agents", "skills"),
+  ];
+  const visited = new Set<string>();
+  const find = (directory: string): string | undefined => {
+    let resolvedDirectory: string;
+    try {
+      resolvedDirectory = realpathSync(directory);
+      if (visited.has(resolvedDirectory)) return undefined;
+      visited.add(resolvedDirectory);
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const child = join(directory, entry.name);
+        const skillFile = join(child, "SKILL.md");
+        if (existsSync(skillFile)) {
+          try {
+            if (!lstatSync(skillFile).isFile()) continue;
+            const content = readFileSync(skillFile, "utf8");
+            const declaredName = content
+              .match(/^name:\s*["']?([^\r\n"'#]+)["']?\s*$/m)?.[1]
+              ?.trim();
+            if ((declaredName || entry.name) === skillName)
+              return content
+                .replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n?/, "")
+                .trim();
+          } catch {
+            continue;
+          }
+        }
+        const nested = find(child);
+        if (nested) return nested;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  };
+  for (const root of roots) {
+    const found = find(root);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function configuredHotkeys(): Array<{ command: string; key: string }> {
   const configured = { ...DEFAULT_HOTKEYS, ...readConfig().hotkeys };
   const keys = new Set<string>();
@@ -2132,11 +2186,21 @@ async function draftCommitMessage(
     ],
     timestamp: Date.now(),
   };
+  const skillName = configuredPhaseSkill(effectiveConfig(state), "commit");
+  const skillInstructions = skillName
+    ? configuredSkillInstructions(state, skillName)
+    : undefined;
   const response = await ctx.modelRegistry.complete(
     ctx.model,
     {
-      systemPrompt:
+      systemPrompt: [
         "Write an English Git commit message for exactly the supplied changes. Return only a JSON object with string fields title and body. Use a concise, specific imperative title. The body should explain the changes and their purpose in useful detail. Mention checks only when the supplied summary supports them. Do not invent behavior, motivation, or test outcomes.",
+        skillInstructions
+          ? `Apply the configured Pi skill "${skillName}" when drafting the message. Its instructions follow; keep the required JSON response format above.\n\n${skillInstructions}`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       messages: [user],
     },
     { cacheRetention: "none", sessionId: uuidv7() },
