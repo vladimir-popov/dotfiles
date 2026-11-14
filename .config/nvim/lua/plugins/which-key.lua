@@ -199,10 +199,6 @@ return {
                 desc = "Yank local file path"
             },
             {
-                "<F1>",
-                "K",
-            },
-            {
                 "<F2>",
                 ":set wrap!<bar>set linebreak!<CR>",
                 desc = "Toggle the wrapping a text"
