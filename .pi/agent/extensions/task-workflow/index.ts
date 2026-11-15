@@ -162,8 +162,8 @@ const HELP = `Task workflow
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
 /task config                Show effective settings for the current task
-/task config init project   Create project config with current effective settings
-/task config init task      Save current effective settings as task overrides
+/task config init project   Create an empty project config
+/task config init task      Create empty task overrides
 /task resume                Return to an active task; resume an interrupted run
 /task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
@@ -197,9 +197,9 @@ Task data uses the fixed path <project>/.agents/task-workflow/<task-id>/, with a
 Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 <project>/.agents/task-workflow/config.json; task overrides live in that task's
 state.json. Resolution order is task, project, global, then defaults.
-Use /task config init project|task to create/materialize the scoped settings;
-edit the resulting files to change values. Project initialization refuses to
-overwrite an existing config. Project and task initialization materialize the current effective settings at that scope.
+Use /task config init project|task to create empty scoped settings; edit the
+resulting JSON object to add only the overrides you need. Project initialization
+refuses to overwrite an existing config.
 Settings resolve from task, project, global, then defaults; nested phase maps resolve by key, while lists and scalar values are replaced by the more local scope. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
@@ -374,33 +374,6 @@ function effectiveConfig(state: TaskState): Config {
       ...project.statusColors,
       ...task.statusColors,
     },
-  };
-}
-
-function materializedConfig(config: Config): Config {
-  return {
-    ...config,
-    mode: config.mode ?? "manual",
-    autoCommit: config.autoCommit ?? false,
-    phaseModels: config.phaseModels ?? {},
-    skills: {
-      research: config.skills?.research ?? null,
-      roadmap: config.skills?.roadmap ?? null,
-      implement: config.skills?.implement ?? null,
-      review: config.skills?.review ?? null,
-      commit: config.skills?.commit ?? null,
-    },
-    reviewTools: config.reviewTools ?? [],
-    allowTreeNavigation: config.allowTreeNavigation ?? false,
-    hotkeys: { ...DEFAULT_HOTKEYS, ...config.hotkeys },
-    statusColors: {
-      taskName: config.statusColors?.taskName ?? "brightGreen",
-      currentSettings: config.statusColors?.currentSettings ?? "brightBlack",
-      currentPhase: config.statusColors?.currentPhase ?? "blue",
-      phaseDescription: config.statusColors?.phaseDescription ?? "blue",
-    },
-    snapshotMaxFiles: config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
-    snapshotMaxMiB: config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB,
   };
 }
 
@@ -4236,17 +4209,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             const root = projectRoot(ctx.cwd);
             const path = projectConfigPath(root);
             mkdirSync(dirname(path), { recursive: true });
-            const project = readProjectConfig(root);
-            const global = readConfig();
-            const values = {
-              ...global,
-              ...project,
-              phaseModels: { ...global.phaseModels, ...project.phaseModels },
-              skills: { ...global.skills, ...project.skills },
-              hotkeys: { ...global.hotkeys, ...project.hotkeys },
-              statusColors: { ...global.statusColors, ...project.statusColors },
-            };
-            Object.assign(values, materializedConfig(values));
+            const values: Config = {};
             writeFileSync(path, `${JSON.stringify(values, null, 2)}\n`, {
               encoding: "utf8",
               flag: "wx",
@@ -4260,9 +4223,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             return;
           }
           const state = requireTask(ctx, false);
-          state.configOverrides = materializedConfig(effectiveConfig(state));
-          state.workflowMode = undefined;
-          state.autoCommit = undefined;
+          state.configOverrides = {};
           saveState(state);
           await showArtifact(
             ctx,
