@@ -1,0 +1,16 @@
+{
+  "lastChangelogVersion": "1.5.2",
+  "deviceId": "2f9a3d36-ee0a-4212-942d-05e5e7b0a381",
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-6.1-sol",
+  "fullscreenExitOutput": "resume-hint",
+  "packages": [
+    "npm:pi-web-access"
+  ],
+  "extensions": [
+    "~/Projects/nvim/pi-nvim/pi/pi-nvim.ts"
+  ],
+  "extensionChangelogVersions": {
+    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0"
+  }
+}
