@@ -13,7 +13,6 @@
 	defaultBranch = main
 [core]
 	editor = nvim
-	pager = delta
 [pager]
 	branch = false
 	log = false

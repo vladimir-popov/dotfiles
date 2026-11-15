@@ -155,7 +155,8 @@ const DEFAULT_HOTKEYS: Record<string, string> = {
 };
 const HELP = `Task workflow
 
-/task TASK-ID              Start or continue a task after confirmation
+/task new TASK-ID          Create a task with this ID
+/task TASK-ID              Open an existing task
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
@@ -173,7 +174,7 @@ Default hotkeys: Alt+N = next, Alt+A = accept, Alt+S = status, Alt+W = show.
 Configure or disable them with hotkeys in task-workflow.json; use /hotkeys to inspect active bindings.
 
 Quote an ID containing spaces, for example: /task "TASK 100500".
-Starting or opening a specific task requires an explicit ID.
+Use /task new TASK-ID to create a task. /task TASK-ID opens an existing task.
 /task delete removes its artifact directory and saved sessions; code outside it remains.
 Research gathers task context and investigates the code in one saved Pi session. Later phases use their own sessions.
 Each implementation session begins with final discussion of its current step; /task next finalizes that step and starts coding in the same session.
@@ -3076,7 +3077,7 @@ async function resumeFromCurrentProject(
   );
   if (!tasks.length)
     throw new Error(
-      `No active tasks found in ${root}. Use /task TASK-ID to start one.`,
+      `No active tasks found in ${root}. Create one with /task new TASK-ID.`,
     );
 
   let selected: DiscoveredTask | undefined;
@@ -4071,6 +4072,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
     description: "Guided task workflow; use /task help for commands",
     getArgumentCompletions: (prefix) => {
       const commands = [
+        "new",
         "list",
         "delete",
         "status",
@@ -4149,6 +4151,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 !parsed[0].quoted &&
                 [
                   "help",
+                  "new",
                   "list",
                   "delete",
                   "status",
@@ -4168,7 +4171,9 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           .slice(requestedCommand ? 1 : 0)
           .map((arg) => arg.value);
         if (command === "start")
-          throw new Error(`Use /task TASK-ID instead of /task ${command}.`);
+          throw new Error(`Use /task new TASK-ID instead of /task ${command}.`);
+        if (command === "new" && args.length !== 1)
+          throw new Error("Usage: /task new TASK-ID");
         if (command === "log" || command === "abort")
           throw new Error(
             "The task now uses normal Pi sessions. Use Pi's native progress and cancellation controls.",
@@ -4296,7 +4301,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             "Task list",
             tasks.length
               ? `# Tasks in ${root}\n\n| Task ID | State | Context |\n| --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.`
-              : `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.`,
+              : `# Tasks in ${root}\n\nNo tasks found. Start one with /task new TASK-ID.`,
           );
           return;
         }
@@ -4484,9 +4489,13 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
           return;
         }
-        if (!command) {
+        if (!command || command === "new") {
           if (args.length !== 1 || !args[0] || args[0].startsWith("--"))
-            throw new Error("A task ID is required. Usage: /task TASK-ID");
+            throw new Error(
+              command === "new"
+                ? "Usage: /task new TASK-ID"
+                : "A task ID is required. Usage: /task TASK-ID",
+            );
           const root = projectRoot(ctx.cwd);
           const id = args[0];
           validateTaskId(id);
@@ -4527,6 +4536,10 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             await continueTaskSession(ctx, state);
             return;
           }
+          if (!command)
+            throw new Error(
+              `Task ${id} was not found in ${root}. To create it, use /task new ${id}.`,
+            );
           if (existsSync(artifactDir))
             throw new Error(
               `Artifact directory already exists without task state: ${artifactDir}`,
@@ -4559,7 +4572,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             completedSteps: [],
             sessions: {},
           };
-          await selectPhaseModel(pi, ctx, "research", 1);
+          await selectPhaseModel(pi, ctx, state, "research", 1);
           const file = createPhaseSession(
             state,
             "research",
