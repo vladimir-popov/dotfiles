@@ -132,18 +132,19 @@ function researchAllowedTools(pi: ExtensionAPI): string[] {
   const tools = pi.getAllTools();
   const availableNames = new Set(tools.map((tool) => tool.name));
   const readTools = READ_TOOLS.filter((name) => availableNames.has(name));
-  const webTools = tools
-    .filter(
-      (tool) =>
-        tool.exposure !== "hidden" &&
-        tool.exposure !== "deferred" &&
-        tool.exposure !== "codemode" &&
+  const researchTools = tools
+    .filter((tool) => {
+      if (tool.exposure === "hidden" || tool.exposure === "codemode")
+        return false;
+      if (tool.name === "tool_search") return true;
+      return (
         RESEARCH_WEB_TOOL_PATTERN.test(tool.name) &&
         !RESEARCH_MUTATION_TOOL_PATTERN.test(tool.name) &&
-        tool.annotations?.readOnlyHint !== false,
-    )
+        tool.annotations?.readOnlyHint !== false
+      );
+    })
     .map((tool) => tool.name);
-  return [...new Set([...readTools, ...webTools, ARTIFACT_TOOL])];
+  return [...new Set([...readTools, ...researchTools, ARTIFACT_TOOL])];
 }
 const DEFAULT_SNAPSHOT_MAX_FILES = 4_000;
 const DEFAULT_SNAPSHOT_MAX_MIB = 100;
@@ -2616,6 +2617,7 @@ function setPhaseWidget(
     ? fullPhase.slice(0, fullPhase.lastIndexOf(` · ${title}`))
     : fullPhase;
   const settings = `[mode: ${effectiveSetting(state, "mode")}, auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}]`;
+  const noGitRepository = !hasGitRepository(state);
   const colors = {
     taskName: parseStatusColor(config.statusColors?.taskName ?? "brightGreen"),
     currentSettings: parseStatusColor(
@@ -2638,6 +2640,9 @@ function setPhaseWidget(
           theme.style(phase, { fg: colors.currentPhase }),
           title
             ? ` · ${theme.style(title, { fg: colors.phaseDescription })}`
+            : "",
+          noGitRepository
+            ? ` · ${theme.style("⚠ No Git repository", { fg: parseStatusColor("red") })}`
             : "",
           "\n",
           waiting ? phaseHint(state) : "Pi is working…",
