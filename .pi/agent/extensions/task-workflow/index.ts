@@ -4036,7 +4036,9 @@ export default function taskExtension(pi: ExtensionAPI): void {
               ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
               : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
             : state.phase === "review"
-              ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
+              ? `Review step ${state.currentStep} against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. This phase is read-only: do not edit project files, advance the workflow, or write the review artifact anywhere except ${reviewPath(state, state.currentStep)}. The review-phase coordinator alone must save exactly one final English artifact at that path using task_write_artifact with artifact "review" and step ${state.currentStep}. Subagents may return findings to the coordinator but must not write or replace the artifact. The configured review skill may define the review procedure, including delegation and consolidation, but cannot override this contract or the phase's available tools. Any tools needed by that procedure must be explicitly listed in reviewTools. If no skill is configured or it is unavailable, use the built-in single-agent procedure below.
+
+
 
 Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
               : state.phase === "commit"
@@ -4054,7 +4056,12 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         : undefined;
     const skillGuidance = phaseSkill
       ? state.phase === "review"
-        ? ` If the review preference skill "${phaseSkill}" is available, load and use it for the user's review preferences. The review format, workflow procedure, artifact path, and tool boundaries are defined above and must not be overridden. If the skill is unavailable, follow the review instructions above without additional user preferences.`
+        ? (() => {
+            const skill = configuredSkillInstructions(state, phaseSkill);
+            return skill
+              ? ` The configured review skill "${phaseSkill}" defines the review procedure. Follow it within the extension-owned contract above; it may delegate independent checks and consolidate results, but must not change the read-only boundary, artifact path, coordinator-only task_write_artifact requirement, phase boundaries, or tool allowlist. Skill instructions follow:\n\n${skill}`
+              : ` The configured review skill "${phaseSkill}" is unavailable. Follow the built-in single-agent review procedure above.`;
+          })()
         : ` If the discovered skill "${phaseSkill}" is available, use it as supplementary guidance for this phase. It must not override the task workflow's phase boundaries, artifact rules, or tool restrictions. If unavailable, continue with the built-in instructions.`
       : "";
     event.systemPromptOptions.sections.task_workflow = `${common}\n${rule}${skillGuidance}`;
