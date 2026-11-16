@@ -46,7 +46,19 @@ Task paths are fixed under `.agents/task-workflow/`; project `config.json` lives
 
 ### Optional phase skills
 
-The extension owns the review contract: the approved scope is reviewed read-only, the workflow cannot advance, and the coordinator saves exactly one final artifact at the extension-selected path using `task_write_artifact`. The existing report structure and single-agent procedure are the defaults. An available skill configured in `skills.review` may define the review procedure, including delegating checks to subagents and consolidating their findings, but cannot override that contract or allow subagents to write the artifact. Tools needed by a procedure must be explicitly enabled with `reviewTools`; this does not grant them in other phases. If the skill is missing or unavailable, the built-in procedure applies. A configured commit skill is loaded into the separate commit-message generation request when its `SKILL.md` is discoverable in project or user skill directories. Other phase skills are optional; a missing skill does not block the workflow.
+The extension owns the review contract: the approved scope is reviewed read-only, the workflow
+cannot advance, and the coordinator saves exactly one final artifact at the extension-selected
+path using `task_write_artifact`. The existing report structure and single-agent procedure are
+the defaults. An available skill configured in `skills.review` may define the review procedure,
+including delegating checks to subagents and consolidating their findings, but cannot override
+that contract or allow subagents to write the artifact. Tools needed by a procedure must be
+explicitly enabled with `reviewTools`; this does not grant them in other phases. If the skill is
+missing or unavailable, the built-in procedure applies.
+
+The commit session may use `skills.commit`, but the separate commit-message generation request
+does not receive the skill contents. Its built-in prompt requests body lines of at most 70
+characters, and the extension wraps generated lines to enforce the limit. Other phase skills
+are optional; a missing skill does not block the workflow.
 
 ## 🚀 Usage
 

@@ -1978,6 +1978,54 @@ function openReviewFindings(state: TaskState, step: number): number {
 
 type DraftedCommitMessage = { title: string; body: string; fallback?: boolean };
 
+// Enforce the commit-message skill's body-line limit even if the model ignores the prompt.
+const COMMIT_BODY_LINE_LIMIT = 70;
+
+function wrapCommitBody(body: string): string {
+  return body
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      if (line.length <= COMMIT_BODY_LINE_LIMIT || !line.trim()) return [line];
+
+      const indentation = line.match(/^\s*/)?.[0] || "";
+      const content = line.slice(indentation.length);
+      const marker = content.match(/^(?:[-*+]|\d+[.)])\s+/)?.[0] || "";
+      const firstPrefix = `${indentation}${marker}`;
+      const continuationPrefix = `${indentation}${" ".repeat(marker.length)}`;
+      const words = content.slice(marker.length).trim().split(/\s+/);
+      const wrapped: string[] = [];
+      let current = firstPrefix;
+
+      for (const word of words) {
+        const separator = current === firstPrefix ? "" : " ";
+        if (`${current}${separator}${word}`.length <= COMMIT_BODY_LINE_LIMIT) {
+          current += `${separator}${word}`;
+          continue;
+        }
+
+        if (current !== firstPrefix) wrapped.push(current);
+        current = continuationPrefix;
+        let remaining = word;
+        while (
+          `${current}${current === continuationPrefix ? "" : " "}${remaining}`
+            .length > COMMIT_BODY_LINE_LIMIT
+        ) {
+          const available = COMMIT_BODY_LINE_LIMIT - current.length;
+          const characters = Array.from(remaining);
+          wrapped.push(`${current}${characters.slice(0, available).join("")}`);
+          remaining = characters.slice(available).join("");
+          current = continuationPrefix;
+        }
+        current += `${current === continuationPrefix ? "" : " "}${remaining}`;
+      }
+
+      if (current !== firstPrefix || wrapped.length === 0)
+        wrapped.push(current);
+      return wrapped;
+    })
+    .join("\n");
+}
+
 function fallbackCommitMessage(
   state: TaskState,
   step: number,
@@ -1989,9 +2037,10 @@ function fallbackCommitMessage(
       : `Update reviewed changes for step ${step}`;
   return {
     title: title.slice(0, 72),
-    body:
+    body: wrapCommitBody(
       state.pendingSummary?.trim().slice(0, 4000) ||
-      `Apply the reviewed changes for step ${step}.`,
+        `Apply the reviewed changes for step ${step}.`,
+    ),
     fallback: true,
   };
 }
@@ -2018,10 +2067,12 @@ function parseCommitMessage(
     if (!cleanTitle) return null;
     return {
       title: cleanTitle,
-      body:
-        typeof body === "string" && body.trim()
-          ? body.trim().slice(0, 4000)
-          : fallbackBody,
+      body: wrapCommitBody(
+        (typeof body === "string" && body.trim()
+          ? body.trim()
+          : fallbackBody
+        ).slice(0, 4000),
+      ),
     };
   };
   const value = text
@@ -2136,7 +2187,7 @@ async function draftCommitMessage(
     ctx.model,
     {
       systemPrompt:
-        "Write an English Git commit message for exactly the supplied changes. Return only a JSON object with string fields title and body. Use a concise, specific imperative title. The body should explain the changes and their purpose in useful detail. Mention checks only when the supplied summary supports them. Do not invent behavior, motivation, or test outcomes.",
+        "Write an English Git commit message for exactly the supplied changes. Return only a JSON object with string fields title and body. Use a concise, specific imperative title. Keep the body concise while explaining the substantive changes and their purpose. Every body line must be at most 70 characters; wrap at word boundaries. Mention checks only when the supplied summary supports them. Do not invent behavior, motivation, or test outcomes.",
       messages: [user],
     },
     { cacheRetention: "none", sessionId: uuidv7() },
