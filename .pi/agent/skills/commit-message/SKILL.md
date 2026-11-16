@@ -9,6 +9,8 @@ Write the title and description in English. Keep the title concise, specific, an
 
 Before returning the message, check the character count of every description line. Each line must contain no more than 70 characters, excluding the line break. If any line is too long, rewrap it at a sensible word boundary without changing the meaning, then check all lines again. Do not return the message until every description line passes this check. The limit does not apply to the title.
 
+Do not indent title and description lines, including wrapped lines.
+
 Describe only changes supported by the supplied or inspected diff and relevant context. Mention behavior changes and tests only when supported by evidence. Do not invent motivation, implementation details, checks, or outcomes. Avoid duplicating information between the title and description.
 
 Return only the proposed title and description unless the user asks for additional explanation. Do not create a commit or modify files unless explicitly requested.
