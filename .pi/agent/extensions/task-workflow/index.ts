@@ -156,6 +156,7 @@ const DEFAULT_HOTKEYS: Record<string, string> = {
 const HELP = `Task workflow
 
 /task TASK-ID              Start or continue a task after confirmation
+/task new TASK-ID           Create a new task
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
@@ -4052,6 +4053,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
     getArgumentCompletions: (prefix) => {
       const commands = [
         "list",
+        "new",
         "delete",
         "status",
         "resume",
@@ -4130,6 +4132,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 [
                   "help",
                   "list",
+                  "new",
                   "delete",
                   "status",
                   "config",
@@ -4454,7 +4457,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
           return;
         }
-        if (!command) {
+        if (!command || command === "new") {
           if (args.length !== 1 || !args[0] || args[0].startsWith("--"))
             throw new Error("A task ID is required. Usage: /task TASK-ID");
           const root = projectRoot(ctx.cwd);
