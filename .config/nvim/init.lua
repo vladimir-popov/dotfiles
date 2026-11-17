@@ -47,6 +47,22 @@ vim.api.nvim_create_autocmd({ 'BufLeave', 'FocusLost', 'InsertEnter', 'WinLeave'
     end,
 })
 
+-- Re-enter Terminal-mode whenever a terminal window becomes active again.
+vim.api.nvim_create_autocmd('WinEnter', {
+    group = vim.api.nvim_create_augroup('terminal_insert_on_enter', { clear = true }),
+    callback = function()
+        if vim.bo.buftype == 'terminal' then
+            local win = vim.api.nvim_get_current_win()
+            vim.schedule(function()
+                if vim.api.nvim_win_is_valid(win) and vim.api.nvim_get_current_win() == win
+                    and vim.bo[vim.api.nvim_win_get_buf(win)].buftype == 'terminal' then
+                    vim.cmd.startinsert()
+                end
+            end)
+        end
+    end,
+})
+
 -- turn on undo history
 vim.cmd([[
 set undodir=~/.vim/undodir
