@@ -43,7 +43,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.1.1";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -2594,7 +2594,7 @@ function setPhaseWidget(
   const phase = title
     ? fullPhase.slice(0, fullPhase.lastIndexOf(` · ${title}`))
     : fullPhase;
-  const settings = `[mode: ${effectiveSetting(state, "mode")}, auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}]`;
+  const settings = `[mode: ${effectiveSetting(state, "mode")}, auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}, version: ${APP_VERSION}]`;
   const colors = {
     taskName: parseStatusColor(config.statusColors?.taskName ?? "brightGreen"),
     currentSettings: parseStatusColor(
