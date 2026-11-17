@@ -4,6 +4,9 @@
   "defaultProvider": "openai",
   "defaultModel": "gpt-6.1-sol",
   "fullscreenExitOutput": "resume-hint",
+  "pi-fast": {
+    "enabledByDefault": true
+  },
   "packages": [
     "npm:pi-web-access",
     "npm:pi-fast"
