@@ -7,7 +7,15 @@ description: Draft or edit Git commit messages from a diff or change summary. Us
 
 Write the title and description in English. Keep the title concise, specific, and preferably imperative. Explain the substantive changes and their purpose in the description using short paragraphs or bullets.
 
-Before returning the message, check the character count of every description line. Each line must contain no more than 70 characters, excluding the line break. If any line is too long, rewrap it at a sensible word boundary without changing the meaning, then check all lines again. Do not return the message until every description line passes this check. The limit does not apply to the title.
+Draft the description as continuous prose or bullets without manual line breaks,
+then wrap it at word boundaries, filling lines as close to 70 characters as
+practical. Each description line must contain no more than 70 characters,
+excluding the line break. Prefer 55–70 characters for non-final lines; avoid
+short fragments, isolated words, and breaks inside hyphenated terms. If a line
+is under 45 characters and is not the final line, reflow or rephrase it with
+adjacent text. After wrapping, check every line's character count and reread
+the description for natural flow. Do not return it until it meets both the
+length and readability requirements. The limit does not apply to the title. The limit does not apply to the title.
 
 Do not indent title and description lines, including wrapped lines.
 
