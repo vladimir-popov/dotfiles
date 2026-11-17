@@ -12,6 +12,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -43,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.1.1";
+const APP_VERSION = "2.1.2";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -1345,6 +1346,32 @@ function taskDescription(state: TaskState): string {
     /* The task can still be listed without its context. */
   }
   return "No description yet";
+}
+
+function taskLastWorked(state: TaskState): string {
+  const sessions = [
+    state.sessions?.research,
+    state.sessions?.roadmap,
+    ...Object.values(state.sessions?.implement || {}),
+    ...Object.values(state.sessions?.review || {}).flat(),
+    ...Object.values(state.sessions?.commit || {}),
+    state.interruptedSession,
+  ].filter((file): file is string => !!file);
+  let latest: number | undefined;
+  for (const file of sessions) {
+    try {
+      const modified = statSync(file).mtimeMs;
+      if (latest === undefined || modified > latest) latest = modified;
+    } catch {
+      /* Missing session files do not prevent listing the task. */
+    }
+  }
+  return latest === undefined
+    ? "unknown"
+    : new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(latest);
 }
 
 function taskProgress(state: TaskState): string {
@@ -4233,7 +4260,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           if (ctx.mode === "tui" && tasks.length) {
             const options = tasks.map((task) => {
               const state = taskDisplayState(task, root);
-              return `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}${task.relocatedFrom ? ` · moved from ${task.relocatedFrom}` : ""}`;
+              return `${state.id} · ${taskProgress(state)} · last worked ${taskLastWorked(state)} · ${taskDescription(state)}${task.relocatedFrom ? ` · moved from ${task.relocatedFrom}` : ""}`;
             });
             const selected = await ctx.ui.select("Continue task:", options);
             if (selected === undefined) return;
@@ -4254,13 +4281,13 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
           const rows = tasks.map((task) => {
             const state = taskDisplayState(task, root);
-            return `| \`${state.id}\` | ${taskProgress(state)}${task.relocatedFrom ? ` (moved from ${task.relocatedFrom})` : ""} | ${taskDescription(state).replaceAll("|", "\\|")} |`;
+            return `| \`${state.id}\` | ${taskProgress(state)}${task.relocatedFrom ? ` (moved from ${task.relocatedFrom})` : ""} | ${taskLastWorked(state)} | ${taskDescription(state).replaceAll("|", "\\|")} |`;
           });
           await showArtifact(
             ctx,
             "Task list",
             tasks.length
-              ? `# Tasks in ${root}\n\n| Task ID | State | Context |\n| --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.`
+              ? `# Tasks in ${root}\n\n| Task ID | State | Last worked | Context |\n| --- | --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.`
               : `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.`,
           );
           return;
