@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.1.2**
+**Version: 2.1.3**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
@@ -55,10 +55,10 @@ that contract or allow subagents to write the artifact. Tools needed by a proced
 explicitly enabled with `reviewTools`; this does not grant them in other phases. If the skill is
 missing or unavailable, the built-in procedure applies.
 
-The commit session may use `skills.commit`, but the separate commit-message generation request
-does not receive the skill contents. Its built-in prompt requests body lines of at most 70
-characters, and the extension wraps generated lines to enforce the limit. Other phase skills
-are optional; a missing skill does not block the workflow.
+The commit session may use `skills.commit`. The separate commit-message generation request
+does not receive the skill contents. Its built-in prompt provides the commit-message rules
+regardless of configuration, and references the configured commit skill by name when one is
+set. A missing skill does not block the workflow.
 
 ## 🚀 Usage
 

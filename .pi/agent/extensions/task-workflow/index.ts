@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.1.2";
+const APP_VERSION = "2.1.3";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -2186,6 +2186,7 @@ async function draftCommitMessage(
   ctx: ExtensionContext,
   state: TaskState,
   step: number,
+  config: Config,
 ): Promise<DraftedCommitMessage> {
   if (!ctx.model)
     throw new Error("Select a model before drafting the commit message.");
@@ -2206,8 +2207,7 @@ async function draftCommitMessage(
   const response = await ctx.modelRegistry.complete(
     ctx.model,
     {
-      systemPrompt:
-        "Write an English Git commit message for exactly the supplied changes. Return only a JSON object with string fields title and body. Use a concise, specific imperative title. Keep the body concise while explaining the substantive changes and their purpose. Every body line must be at most 70 characters; wrap at word boundaries. Mention checks only when the supplied summary supports them. Do not invent behavior, motivation, or test outcomes.",
+      systemPrompt: `Draft an English Git commit message for exactly the supplied changes. Return only a JSON object with string fields title and body. The title must be concise, specific, and preferably imperative. Explain substantive changes and purpose in natural, concise prose or bullets, without duplicating the title. Do not manually break prose lines in the body; line wrapping is applied afterward at word boundaries, with a maximum of 70 characters per line. Do not indent title or body lines. Describe only changes supported by the diff and summary. Mention behavior changes, tests, or checks only when supported by evidence; never invent details or outcomes. Reread the message for natural flow before returning it.${configuredPhaseSkill(config, "commit") ? ` Follow the configured ${configuredPhaseSkill(config, "commit")}...` : ""}`,
       messages: [user],
     },
     { cacheRetention: "none", sessionId: uuidv7() },
@@ -3458,7 +3458,7 @@ async function prepareCommitPhase(
     result =
       "No code changes were produced, so there is no commit message to propose.";
   } else {
-    const message = await draftCommitMessage(ctx, state, n);
+    const message = await draftCommitMessage(ctx, state, n, readConfig());
     if (effectiveSetting(state, "autoCommit")) {
       if (message.fallback)
         throw new Error(
