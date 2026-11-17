@@ -33,9 +33,9 @@ return {
         name = 'pi-nvim',
         lazy = false,
         keys = {
-            { "<F1>",      "<cmd>Pi<cr>",            desc = "Open or focus Pi" },
-            { "<F1>",      "<C-\\><C-n><cmd>Pi<cr>", mode = "t",                 desc = "Return from Pi" },
-            { "<F1>",      ":<C-U>'<,'>Pi<CR>",      mode = "x",                 desc = "Send selection to Pi" },
+            { "<F1>", "<cmd>Pi<cr>",            desc = "Open or focus Pi" },
+            { "<F1>", "<C-\\><C-n><cmd>Pi<cr>", mode = "t",               desc = "Return from Pi" },
+            { "<F1>", ":<C-U>'<,'>Pi<CR>",      mode = "x",               desc = "Send selection to Pi" },
         },
         config = function()
             require('pi-nvim').setup({
@@ -269,6 +269,25 @@ GitConflictHelp — Show this help
                 }
             })
         end
+    },
+    {
+        "georgeguimaraes/review.nvim",
+        version = "*",
+        dependencies = {
+            "esmuellert/codediff.nvim",
+            "MunifTanjim/nui.nvim",
+        },
+        event = "VeryLazy",
+        keys = {
+            { "<leader>rr", "<cmd>Review<cr>",         desc = "Review working tree" },
+            { "<leader>rc", "<cmd>Review commits<cr>", desc = "Review commits" },
+            { "<leader>rb", "<cmd>Review branch<cr>",  desc = "Review branch" },
+            { "<leader>rn", ":Review note<cr>",        mode = { "n", "v" },            desc = "Review: note here" },
+            { "<leader>re", "<cmd>Review edit<cr>",    desc = "Review: edit comment" },
+            { "<leader>rd", "<cmd>Review delete<cr>",  desc = "Review: delete comment" },
+            { "<leader>rx", "<cmd>Review export<cr>",  desc = "Review: export" },
+        },
+        opts = {},
     },
     -- Markdown
     {
