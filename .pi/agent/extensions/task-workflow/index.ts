@@ -43,7 +43,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const CURRENT_STRUCTURE_VERSION = "3.0";
+const APP_VERSION = "2.1.0";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -56,7 +56,6 @@ type SessionRefs = {
 };
 type TaskState = {
   version: 1;
-  structureVersion: string;
   id: string;
   projectRoot: string;
   contextPath: string;
@@ -630,12 +629,9 @@ function validateTaskId(id: string): void {
   }
 }
 
-function checkStructureVersion(path: string): string | undefined {
+function checkTaskLayout(path: string): string | undefined {
   if (!existsSync(path)) return undefined;
   const data = JSON.parse(readFileSync(path, "utf8")) as TaskState;
-  const detected: unknown = data.structureVersion;
-  if (detected !== CURRENT_STRUCTURE_VERSION)
-    return `Task ${data.id} uses an unsupported structure version: ${JSON.stringify(detected)}.`;
   const expectedContext = join(
     defaultArtifactDir(data.projectRoot, data.id),
     "context.md",
@@ -658,10 +654,6 @@ function loadState(path: string, maintainLegacyFiles = true): TaskState {
   }
   if (data.configOverrides !== undefined)
     data.configOverrides = validateConfig(data.configOverrides, path);
-  if (data.structureVersion !== CURRENT_STRUCTURE_VERSION)
-    throw new Error(
-      `Task structure version must be ${CURRENT_STRUCTURE_VERSION}: ${path}`,
-    );
   return data;
 }
 
@@ -1467,7 +1459,7 @@ function taskStatusText(
     state.phase === "implement" && !state.implementationStarted
       ? "implementation preparation"
       : state.phase;
-  return `Task: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nMode: ${effectiveSetting(state, "mode")}\nAuto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nResearch tools available: ${researchAllowedTools(pi).join(", ") || "none"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
+  return `Task workflow version: ${APP_VERSION}\nTask: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nMode: ${effectiveSetting(state, "mode")}\nAuto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nResearch tools available: ${researchAllowedTools(pi).join(", ") || "none"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
 }
 
 function roadmapPath(state: TaskState): string {
@@ -4247,7 +4239,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             if (selected === undefined) return;
             const task = tasks[options.indexOf(selected)];
             if (task) {
-              const mismatch = checkStructureVersion(task.path);
+              const mismatch = checkTaskLayout(task.path);
               if (mismatch) {
                 ctx.ui.notify(
                   `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${task.state.contextPath} as its context; this will not be done automatically.`,
@@ -4316,7 +4308,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
         }
         if (versionPath) {
-          const mismatch = checkStructureVersion(versionPath);
+          const mismatch = checkTaskLayout(versionPath);
           if (mismatch) {
             const state = JSON.parse(
               readFileSync(versionPath, "utf8"),
@@ -4387,7 +4379,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           }
           if (!target) return;
           const targetPath = target.path;
-          const mismatch = checkStructureVersion(targetPath);
+          const mismatch = checkTaskLayout(targetPath);
           if (mismatch)
             throw new Error(
               `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${target.state.contextPath} as its context; this will not be done automatically.`,
@@ -4467,7 +4459,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           const taskRuntime = parseRuntimeDir(root, id);
           const path = statePath(taskRuntime);
           if (existsSync(path)) {
-            const mismatch = checkStructureVersion(path);
+            const mismatch = checkTaskLayout(path);
             if (mismatch)
               throw new Error(
                 `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${JSON.parse(readFileSync(path, "utf8")).contextPath} as its context; this will not be done automatically.`,
@@ -4523,7 +4515,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           writeFileSync(contextPath, `# ${id}\n`, "utf8");
           const state: TaskState = {
             version: 1,
-            structureVersion: CURRENT_STRUCTURE_VERSION,
             id,
             projectRoot: root,
             contextPath,
@@ -4532,7 +4523,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             completedSteps: [],
             sessions: {},
           };
-          await selectPhaseModel(pi, ctx, "research", 1);
+          await selectPhaseModel(pi, ctx, state, "research", 1);
           const file = createPhaseSession(
             state,
             "research",
