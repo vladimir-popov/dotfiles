@@ -33,9 +33,10 @@ return {
         name = 'pi-nvim',
         lazy = false,
         keys = {
-            { "<F1>", "<cmd>Pi<cr>",            desc = "Open or focus Pi" },
-            { "<F1>", "<C-\\><C-n><cmd>Pi<cr>", mode = "t",               desc = "Return from Pi" },
-            { "<F1>", ":<C-U>'<,'>Pi<CR>",      mode = "x",               desc = "Send selection to Pi" },
+            { "<F1>",   "<cmd>Pi<cr>",            desc = "Open or focus Pi" },
+            { "<F1>",   "<C-\\><C-n><cmd>Pi<cr>", mode = "t",               desc = "Return from Pi" },
+            { "<F1>",   ":<C-U>'<,'>Pi ",         mode = "x",               desc = "Send selection to Pi" },
+            { "<S-F1>", ":<C-U>'<,'>Pi<CR>",      mode = "x",               desc = "Add prompt for selection" },
         },
         config = function()
             require('pi-nvim').setup({
