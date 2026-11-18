@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.1.3";
+const APP_VERSION = "2.2.0";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -104,6 +104,8 @@ type Config = {
     Record<"research" | "roadmap" | "implement" | "review", PhaseModel | null>
   >;
   skills?: Partial<Record<SkillPhase, string | null>>;
+  phaseTools?: Partial<Record<SkillPhase, string[]>>;
+  additionalPhaseTools?: Partial<Record<SkillPhase, string[]>>;
   reviewTools?: string[];
   allowTreeNavigation?: boolean;
   snapshotMaxFiles?: number;
@@ -127,6 +129,32 @@ const READ_TOOLS = ["read", "grep", "find", "ls"];
 const RESEARCH_WEB_TOOL_PATTERN = /web|browser|internet|search|fetch|url/i;
 const RESEARCH_MUTATION_TOOL_PATTERN =
   /write|edit|delete|remove|submit|click|post|put|patch|execute|run|shell|bash/i;
+
+function configuredPhaseTools(
+  pi: ExtensionAPI,
+  config: Config,
+  phase: Phase,
+): string[] {
+  if (phase === "complete") return [];
+  const defaults =
+    phase === "commit"
+      ? READ_TOOLS
+      : phase === "research"
+        ? researchAllowedTools(pi)
+        : [
+            ...READ_TOOLS,
+            ARTIFACT_TOOL,
+            ...(phase === "review" ? config.reviewTools || [] : []),
+          ];
+  const baseTools = config.phaseTools?.[phase] ?? defaults;
+  return [
+    ...new Set([
+      ...baseTools,
+      ...(phase === "commit" ? [] : [ARTIFACT_TOOL]),
+      ...(config.additionalPhaseTools?.[phase] || []),
+    ]),
+  ];
+}
 
 function researchAllowedTools(pi: ExtensionAPI): string[] {
   const tools = pi.getAllTools();
@@ -367,6 +395,16 @@ function effectiveConfig(state: TaskState): Config {
       ...task.phaseModels,
     },
     skills: { ...global.skills, ...project.skills, ...task.skills },
+    phaseTools: {
+      ...global.phaseTools,
+      ...project.phaseTools,
+      ...task.phaseTools,
+    },
+    additionalPhaseTools: {
+      ...global.additionalPhaseTools,
+      ...project.additionalPhaseTools,
+      ...task.additionalPhaseTools,
+    },
     hotkeys: { ...global.hotkeys, ...project.hotkeys, ...task.hotkeys },
     statusColors: {
       ...global.statusColors,
@@ -457,6 +495,56 @@ function readConfig(): Config {
           skill.length > 64)
       )
         throw new Error(`Invalid skills.${phase}: ${path}`);
+    }
+  }
+  if (values.phaseTools !== undefined) {
+    if (
+      !values.phaseTools ||
+      typeof values.phaseTools !== "object" ||
+      Array.isArray(values.phaseTools)
+    )
+      throw new Error(`phaseTools must be an object: ${path}`);
+    for (const [phase, tools] of Object.entries(values.phaseTools)) {
+      if (
+        !(
+          ["research", "roadmap", "implement", "review", "commit"] as string[]
+        ).includes(phase)
+      )
+        throw new Error(`Unknown phaseTools phase ${phase}: ${path}`);
+      if (
+        !Array.isArray(tools) ||
+        tools.some(
+          (tool) => typeof tool !== "string" || !/^[A-Za-z0-9_:-]+$/.test(tool),
+        )
+      )
+        throw new Error(
+          `phaseTools.${phase} must be an array of tool names: ${path}`,
+        );
+    }
+  }
+  if (values.additionalPhaseTools !== undefined) {
+    if (
+      !values.additionalPhaseTools ||
+      typeof values.additionalPhaseTools !== "object" ||
+      Array.isArray(values.additionalPhaseTools)
+    )
+      throw new Error(`additionalPhaseTools must be an object: ${path}`);
+    for (const [phase, tools] of Object.entries(values.additionalPhaseTools)) {
+      if (
+        !(
+          ["research", "roadmap", "implement", "review", "commit"] as string[]
+        ).includes(phase)
+      )
+        throw new Error(`Unknown additionalPhaseTools phase ${phase}: ${path}`);
+      if (
+        !Array.isArray(tools) ||
+        tools.some(
+          (tool) => typeof tool !== "string" || !/^[A-Za-z0-9_:-]+$/.test(tool),
+        )
+      )
+        throw new Error(
+          `additionalPhaseTools.${phase} must be an array of tool names: ${path}`,
+        );
     }
   }
   if (
@@ -3894,17 +3982,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
       };
     if (state.phase === "implement" && state.implementationStarted) return;
     const allowed = new Set(
-      state.phase === "commit"
-        ? READ_TOOLS
-        : state.phase === "research"
-          ? researchAllowedTools(pi)
-          : [
-              ...READ_TOOLS,
-              ARTIFACT_TOOL,
-              ...(state.phase === "review"
-                ? effectiveConfig(state).reviewTools || []
-                : []),
-            ],
+      configuredPhaseTools(pi, effectiveConfig(state), state.phase),
     );
     if (allowed.has(event.toolName)) return;
     return {
@@ -4010,28 +4088,20 @@ export default function taskExtension(pi: ExtensionAPI): void {
     }
     const writable = state.phase === "implement" && state.implementationStarted;
     const config = effectiveConfig(state);
-    event.systemPromptOptions.selectedTools =
-      state.phase === "commit"
-        ? [...READ_TOOLS]
-        : writable
-          ? [
-              ...new Set([
-                ...pi.getActiveTools(),
-                "read",
-                "bash",
-                "edit",
-                "write",
-                ...READ_TOOLS,
-                ARTIFACT_TOOL,
-              ]),
-            ]
-          : state.phase === "research"
-            ? researchAllowedTools(pi)
-            : [
-                ...READ_TOOLS,
-                ARTIFACT_TOOL,
-                ...(state.phase === "review" ? config.reviewTools || [] : []),
-              ];
+    event.systemPromptOptions.selectedTools = writable
+      ? [
+          ...new Set([
+            ...pi.getActiveTools(),
+            "read",
+            "bash",
+            "edit",
+            "write",
+            ...READ_TOOLS,
+            ARTIFACT_TOOL,
+            ...(config.additionalPhaseTools?.implement || []),
+          ]),
+        ]
+      : configuredPhaseTools(pi, config, state.phase);
     const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
       state.phase === "research"

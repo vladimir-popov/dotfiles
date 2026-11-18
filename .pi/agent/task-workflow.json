@@ -3,5 +3,12 @@
     "implement": "public-api-docs",
     "review": "task-review",
     "commit": "commit-message"
+  },
+  "additionalPhaseTools": {
+    "research": ["list_buffers", "open_file"],
+    "roadmap": ["list_buffers", "open_file"],
+    "implement": ["list_buffers", "open_file"],
+    "review": ["list_buffers", "open_file"],
+    "commit": ["list_buffers", "open_file"]
   }
 }

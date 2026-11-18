@@ -13,8 +13,7 @@
     "npm:@pi-plugins/usage"
   ],
   "extensions": [
-    "~/Projects/nvim/pi-nvim/pi/pi-nvim.ts",
-    "~/Projects/pi-subrab"
+    "~/Projects/nvim/pi-nvim/pi/pi-nvim.ts"
   ],
   "extensionChangelogVersions": {
     "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.48.0",
