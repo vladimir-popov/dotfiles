@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.2.3";
+const APP_VERSION = "2.2.4";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -76,6 +76,7 @@ type TaskState = {
   commitPendingFiles?: string[];
   commitPendingHashes?: Record<string, string | null>;
   commitReady?: boolean;
+  manualReviewPending?: boolean;
   commitResult?: string;
   reviewRound?: number;
   reviewPending?: boolean;
@@ -1349,7 +1350,7 @@ async function confirmTaskRelocation(
   if (!task.relocatedFrom) return task.state;
   if (!ctx.isIdle()) {
     ctx.ui.notify(
-      "Wait for Pi to finish or cancel its current run before relocating a task.",
+      "⚠️ Wait for Pi to finish or cancel its current run before relocating a task.",
       "warning",
     );
     return undefined;
@@ -1362,14 +1363,14 @@ async function confirmTaskRelocation(
         pathWithin(resolve(runtimeDir(task.state)), resolve(currentSession))))
   ) {
     ctx.ui.notify(
-      "Start a fresh Pi session in the renamed project before relocating this task; do not migrate an open task session.",
+      "⚠️ Start a fresh Pi session in the renamed project before relocating this task; do not migrate an open task session.",
       "warning",
     );
     return undefined;
   }
   if (ctx.mode !== "tui") {
     ctx.ui.notify(
-      `Task ${task.state.id} appears to have moved from ${task.relocatedFrom} to ${currentRoot}. Open it in Pi's terminal UI to confirm relocation.`,
+      `⚠️ Task ${task.state.id} appears to have moved from ${task.relocatedFrom} to ${currentRoot}. Open it in Pi's terminal UI to confirm relocation.`,
       "warning",
     );
     return undefined;
@@ -1380,7 +1381,7 @@ async function confirmTaskRelocation(
   );
   if (!confirmed) {
     ctx.ui.notify(
-      `Task ${task.state.id} was not changed; continuation was cancelled.`,
+      `⚠️ Task ${task.state.id} was not changed; continuation was cancelled.`,
       "warning",
     );
     return undefined;
@@ -3169,7 +3170,7 @@ async function continueTaskSession(
   }
   const result = await ctx.switchSession(file);
   if (result.cancelled)
-    ctx.ui.notify("Session switch was cancelled.", "warning");
+    ctx.ui.notify("⚠️ Session switch was cancelled.", "warning");
 }
 
 function resumeKickoff(state: TaskState): string {
@@ -3302,7 +3303,7 @@ async function resumeTaskSession(
   });
   if (result.cancelled)
     ctx.ui.notify(
-      "Session switch was cancelled; the task was not resumed.",
+      "⚠️ Session switch was cancelled; the task was not resumed.",
       "warning",
     );
 }
@@ -3556,6 +3557,7 @@ async function acceptReviewedStep(
   state.commitReady = false;
   state.phase = "commit";
   state.currentStep = n;
+  state.manualReviewPending = effectiveSetting(state, "mode") === "semi-auto";
   const file = createPhaseSession(
     state,
     "commit",
@@ -3566,6 +3568,19 @@ async function acceptReviewedStep(
   setSessionFor(state, "commit", file, n);
   saveState(state);
   await switchPhase(ctx, state, "commit", n, "", file, async (fresh) => {
+    if (state.manualReviewPending) {
+      await fresh.sendMessage(
+        {
+          customType: "task-commit",
+          content:
+            "🔔 Manual review reminder: the automated review found no remaining issues. Please review the code yourself before committing this step. Use /task accept to continue.",
+          display: true,
+        },
+        { triggerTurn: false },
+      );
+      setPhaseWidget(fresh, state, true);
+      return;
+    }
     try {
       await prepareCommitPhase(fresh, state, (content) =>
         fresh.sendMessage(
@@ -3975,14 +3990,14 @@ export default function taskExtension(pi: ExtensionAPI): void {
             return;
           }
           ctx.ui.notify(
-            `Wait for Pi to finish before using /task ${command}.`,
+            `⚠️ Wait for Pi to finish before using /task ${command}.`,
             "warning",
           );
           return;
         }
         if (ctx.ui.getEditorText().trim()) {
           ctx.ui.notify(
-            `The editor has unsent text. Submit or clear it before /task ${command}.`,
+            `⚠️ The editor has unsent text. Submit or clear it before /task ${command}.`,
             "warning",
           );
           return;
@@ -4071,7 +4086,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
     const state = visibleTask(ctx);
     if (state && effectiveConfig(state).allowTreeNavigation === true) return;
     ctx.ui.notify(
-      "/tree is blocked in task sessions because artifacts are shared across branches. Set allowTreeNavigation to true to allow it.",
+      "⚠️ /tree is blocked in task sessions because artifacts are shared across branches. Set allowTreeNavigation to true to allow it.",
       "warning",
     );
     return { cancel: true };
@@ -4136,7 +4151,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
         await advanceSemiAutomatically(pi, state);
       } catch (error) {
         ctx.ui.notify(
-          `Semi-auto transition stopped: ${error instanceof Error ? error.message : String(error)}. Continue manually with /task next when ready.`,
+          `⚠️ Semi-auto transition stopped: ${error instanceof Error ? error.message : String(error)}. Continue manually with /task next when ready.`,
           "warning",
         );
       }
@@ -4838,6 +4853,27 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               `The review is incomplete. Run /task resume to continue and save ${reviewPath(state, reviewStep)} before advancing.`,
             );
           if (state.phase === "commit") {
+            if (state.manualReviewPending && command === "next") {
+              ctx.ui.notify(
+                "⚠️ The automated review found no remaining issues. Are you sure you want to skip your manual code review? Review the changes, then use /task accept to continue.",
+                "warning",
+              );
+              return;
+            }
+            if (state.manualReviewPending && command === "accept") {
+              state.manualReviewPending = false;
+              saveState(state);
+              await prepareCommitPhase(ctx, state, (content) =>
+                pi.sendMessage(
+                  { customType: "task-commit", content, display: true },
+                  { triggerTurn: false },
+                ),
+              );
+              if (effectiveSetting(state, "autoCommit") && state.commitReady)
+                await finishCommitPhase(pi, ctx, state);
+              sessionReplaced = true;
+              return;
+            }
             if (command === "accept" && note)
               throw new Error(
                 "The commit phase does not accept approval notes. Use /task next when ready to continue.",
@@ -4849,16 +4885,16 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           const assessment = await assessTransition(ctx, state, command, note);
           if (assessment.openQuestions.length) {
             ctx.ui.notify(
-              "The phase is unchanged. Resolve these open questions first:",
+              "❔ The phase is unchanged. Resolve these open questions first:",
               "warning",
             );
             for (const question of assessment.openQuestions)
-              ctx.ui.notify(question, "info");
+              ctx.ui.notify(`❔ ${question}`, "info");
             return;
           }
           if (command === "next" && assessment.pendingProposal.trim()) {
             ctx.ui.notify(
-              `The phase is unchanged. A proposal still needs approval: ${assessment.pendingProposal}. Use /task accept if you agree.`,
+              `⚠️ The phase is unchanged. A proposal still needs approval: ${assessment.pendingProposal}. Use /task accept if you agree.`,
               "warning",
             );
             return;
