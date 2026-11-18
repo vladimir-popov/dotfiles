@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.2.1**
+**Version: 2.2.2**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 

@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.2.1";
+const APP_VERSION = "2.2.2";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -1574,7 +1574,69 @@ function taskStatusText(
     state.phase === "implement" && !state.implementationStarted
       ? "implementation preparation"
       : state.phase;
-  return `Task workflow version: ${APP_VERSION}\nTask: ${state.id}\nPhase: ${phaseStatus}\nCurrent step: ${state.currentStep}\nImplementation started: ${state.phase === "implement" ? (state.implementationStarted ? "yes" : "no") : "n/a"}\nActive session: ${sessionFor(state) || "none"}\nThis session: ${ctx.sessionManager.getSessionFile() || "ephemeral"}\nSessions directory: ${sessionDirectory(state)}\nArtifacts: ${taskDir(state)}\nGit repository: ${hasGitRepository(state) ? "yes" : "no"}\nCompleted steps: ${state.completedSteps.join(", ") || "none"}\nAwaiting review: ${state.awaitingReview || "none"}\nOpen review findings: ${state.phase === "review" && !state.reviewPending && existsSync(reviewPath(state, state.currentStep)) ? openReviewFindings(state, state.currentStep) : state.reviewPending ? "review artifact pending" : "none"}\nCommit result: ${state.phase === "commit" ? (state.commitReady ? "ready" : "pending") : "none"}\nPending commit files: ${state.commitPendingFiles?.join(", ") || (state.phase === "commit" ? state.pendingFiles?.join(", ") : undefined) || "none"}\nResearch skill: ${configuredPhaseSkill(config, "research") || "none"}\nRoadmap skill: ${configuredPhaseSkill(config, "roadmap") || "none"}\nReview skill: ${reviewSkillName(config)}\nMode: ${effectiveSetting(state, "mode")}\nAuto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}\n/tree: ${config.allowTreeNavigation === true ? "allowed" : "blocked"}\nPhase model: ${model ? `${model.provider}/${model.model}` : "Inherited Pi model"}\nResearch tools available: ${researchAllowedTools(pi).join(", ") || "none"}\nSnapshot limits: ${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`;
+  const lines = [
+    ["Version", APP_VERSION],
+    ["Task", state.id],
+    ["Phase", phaseStatus],
+    ["Current step", String(state.currentStep)],
+    [
+      "Implementation started",
+      state.phase === "implement"
+        ? state.implementationStarted
+          ? "yes"
+          : "no"
+        : "n/a",
+    ],
+    ["Active session", sessionFor(state) || "none"],
+    ["This session", ctx.sessionManager.getSessionFile() || "ephemeral"],
+    ["Sessions directory", sessionDirectory(state)],
+    ["Artifacts", taskDir(state)],
+    ["Git repository", hasGitRepository(state) ? "yes" : "no"],
+    ["Completed steps", state.completedSteps.join(", ") || "none"],
+    ["Awaiting review", state.awaitingReview || "none"],
+    [
+      "Open review findings",
+      state.phase === "review" &&
+      !state.reviewPending &&
+      existsSync(reviewPath(state, state.currentStep))
+        ? openReviewFindings(state, state.currentStep)
+        : state.reviewPending
+          ? "review artifact pending"
+          : "none",
+    ],
+    [
+      "Commit result",
+      state.phase === "commit"
+        ? state.commitReady
+          ? "ready"
+          : "pending"
+        : "none",
+    ],
+    [
+      "Pending commit files",
+      state.commitPendingFiles?.join(", ") ||
+        (state.phase === "commit"
+          ? state.pendingFiles?.join(", ")
+          : undefined) ||
+        "none",
+    ],
+    ["Research skill", configuredPhaseSkill(config, "research") || "none"],
+    ["Roadmap skill", configuredPhaseSkill(config, "roadmap") || "none"],
+    ["Review skill", reviewSkillName(config)],
+    ["Mode", effectiveSetting(state, "mode")],
+    ["Auto-commit", effectiveSetting(state, "autoCommit") ? "on" : "off"],
+    ["/tree", config.allowTreeNavigation === true ? "allowed" : "blocked"],
+    [
+      "Phase model",
+      model ? `${model.provider}/${model.model}` : "Inherited Pi model",
+    ],
+    ["Research tools available", researchAllowedTools(pi).join(", ") || "none"],
+    [
+      "Snapshot limits",
+      `${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`,
+    ],
+  ];
+  return lines.map(([label, value]) => `**${label}:** \`${value}\``).join("\n");
 }
 
 function roadmapPath(state: TaskState): string {
@@ -4285,7 +4347,11 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             await showArtifact(
               ctx,
               "Effective task configuration",
-              JSON.stringify(effectiveSettings, null, 2),
+              [
+                "```json",
+                JSON.stringify(effectiveSettings, null, 2),
+                "```",
+              ].join("\n"),
             );
             return;
           }
