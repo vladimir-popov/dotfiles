@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.2.1";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -4273,6 +4273,8 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 review: configuredPhaseSkill(global, "review") ?? null,
                 commit: configuredPhaseSkill(global, "commit") ?? null,
               },
+              phaseTools: global.phaseTools ?? {},
+              additionalPhaseTools: global.additionalPhaseTools ?? {},
               reviewTools: global.reviewTools ?? [],
               allowTreeNavigation: global.allowTreeNavigation ?? false,
               hotkeys: { ...DEFAULT_HOTKEYS, ...global.hotkeys },
