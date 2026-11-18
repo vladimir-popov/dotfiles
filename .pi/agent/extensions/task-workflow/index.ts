@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.2.2";
+const APP_VERSION = "2.2.3";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -3799,6 +3799,16 @@ async function finishCommitPhase(
         `Refusing to remove a non-regular implementation diff: ${diffPath}`,
       );
     rmSync(diffPath);
+  }
+  for (const name of readdirSync(taskDir(state))) {
+    if (!new RegExp(`^review-${n}-round-\\d+\\.md$`).test(name)) continue;
+    const reviewPath = join(taskDir(state), name);
+    const info = lstatSync(reviewPath);
+    if (info.isSymbolicLink() || !info.isFile())
+      throw new Error(
+        `Refusing to remove a non-regular review artifact: ${reviewPath}`,
+      );
+    rmSync(reviewPath);
   }
   state.reviewRound = undefined;
   if (more) {
