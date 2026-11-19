@@ -9,7 +9,8 @@ vim.opt.spelllang = { 'ru', 'en' }
 vim.opt.sps = { 'best', 5 }
 
 -- keys mapping
-vim.opt.langmap = "ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖ;ABCDEFGHIJKLMNOPQRSTUVWXYZ:,фисвуапршолдьтщзйкыегмцчня;abcdefghijklmnopqrstuvwxyz"
+vim.opt.langmap =
+"ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯЖ;ABCDEFGHIJKLMNOPQRSTUVWXYZ:,фисвуапршолдьтщзйкыегмцчня;abcdefghijklmnopqrstuvwxyz"
 
 -- highlight the current line
 vim.opt.cursorline = true
@@ -140,10 +141,45 @@ vim.api.nvim_create_autocmd({ 'BufEnter', 'CursorHold', 'CursorHoldI', 'FocusGai
     end,
 })
 
+-- Setup tabline
+_G.MyTabLine = function()
+    local current_tab = vim.api.nvim_get_current_tabpage()
+    local labels = {}
+
+    for i, tab in ipairs(vim.api.nvim_list_tabpages()) do
+        local win = vim.api.nvim_tabpage_get_win(tab)
+        local buf = vim.api.nvim_win_get_buf(win)
+        local name = vim.api.nvim_buf_get_name(buf)
+        local label
+
+        if vim.bo[buf].buftype == "terminal" then
+            -- Убрать term://...//PID: и оставить только имя команды
+            local terminal_name = name:match(".*:(.*)$") or name
+            label = vim.fn.fnamemodify(terminal_name, ":t")
+        else
+            label = vim.fn.pathshorten(vim.fn.fnamemodify(name, ":~"))
+        end
+
+        if label == "" then
+            label = "[No Name]"
+        end
+
+        -- Удвоить %, чтобы tabline не воспринял его как форматный символ
+        label = label:gsub("%%", "%%%%")
+
+        local highlight = tab == current_tab and "%#TabLineSel#" or "%#TabLine#"
+        labels[#labels + 1] = highlight .. "%" .. i .. "T " .. label .. " %T"
+    end
+
+    return table.concat(labels) .. "%#TabLineFill#"
+end
+vim.o.showtabline = 2
+vim.o.tabline = "%!v:lua.MyTabLine()"
+
 -- setup plugins
 local lazypath = vim.fn.stdpath('data') .. '/lazy/lazy.nvim'
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
-    local out =vim.fn.system({
+    local out = vim.fn.system({
         'git',
         'clone',
         '--filter=blob:none',
@@ -205,7 +241,7 @@ require('langmapper').automapping({ global = true, buffer = true })
 
 -- configure colorscheme according to GLOBAL_THEME tmux variable
 GLOBAL_THEME = vim.fn.system('tmux show-environment -g GLOBAL_THEME'):gsub('GLOBAL_THEME=(%w+).*', '%1') or
-vim.env.GLOBAL_THEME
+    vim.env.GLOBAL_THEME
 if GLOBAL_THEME == 'light' then
     vim.cmd [[set background=light]]
     vim.cmd.colorscheme "edge"

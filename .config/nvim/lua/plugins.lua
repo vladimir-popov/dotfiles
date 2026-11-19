@@ -146,6 +146,7 @@ return {
     -- lazygit
     {
         'kdheepak/lazygit.nvim',
+        enabled = false, -- custom function on hotkey is used now
         keys = { { '<leader>lg', '<cmd>LazyGit<cr>', desc = 'Run LazyGit' } },
     },
     -- Colorize

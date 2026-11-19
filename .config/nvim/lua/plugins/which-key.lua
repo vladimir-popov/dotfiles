@@ -18,6 +18,38 @@ local function gitlabLine()
     return url and (url .. '#L' .. vim.api.nvim_win_get_cursor(0)[1])
 end
 
+local function showLazyGit()
+    if lazygit_tab and vim.api.nvim_tabpage_is_valid(lazygit_tab) then
+        vim.api.nvim_set_current_tabpage(lazygit_tab)
+        vim.cmd("startinsert")
+        return
+    end
+
+    vim.cmd("tabnew")
+    lazygit_tab = vim.api.nvim_get_current_tabpage()
+    local tab = lazygit_tab
+
+    vim.fn.jobstart("lazygit", {
+        term = true,
+        on_exit = function()
+            vim.schedule(function()
+                if vim.api.nvim_tabpage_is_valid(tab)
+                    and #vim.api.nvim_list_tabpages() > 1
+                then
+                    vim.api.nvim_set_current_tabpage(tab)
+                    vim.cmd("tabclose!")
+                end
+
+                if lazygit_tab == tab then
+                    lazygit_tab = nil
+                end
+            end)
+        end,
+    })
+    vim.cmd("startinsert")
+end
+
+
 return {
     "folke/which-key.nvim",
     lazy = false,
@@ -34,12 +66,43 @@ return {
             delay = 500,
         })
         local wk = require("which-key")
-        -- wk.register({
-        -- 	["'"] = { "`", "Use ' to go to a marked position" },
-        -- 	["`"] = { "'", "Use ` to go to a marked line" },
-        -- }, { mode = "" })
+        -- fast switch between tabs
+        local mappings = {}
+        for i = 1, 9 do
+            local tab = i -- сохранить номер для callback
 
+            mappings[#mappings + 1] = {
+                "<leader>" .. tab,
+                function()
+                    vim.cmd("tabnext " .. tab)
+                end,
+                mode = { "n", "t" },
+                desc = "Перейти во вкладку " .. tab,
+            }
+        end
+        wk.add(mappings)
         wk.add({
+            {
+                "<F2>",
+                ":set wrap!<bar>set linebreak!<CR>",
+                desc = "Toggle the wrapping a text"
+            },
+            {
+                "<F3>",
+                ":set hlsearch!<CR>",
+                desc = "Toggle search highlighting"
+            },
+            {
+                -- "<leader>lg",
+                "<F4>",
+                showLazyGit,
+                desc = "Open LazyGit in a new tab",
+            },
+            {
+                "<F5>",
+                ":Lazy<cr>",
+                desc = "Run Lazy UI"
+            },
             {
                 "qq",
                 ":bp<bar>bd#<CR>",
@@ -197,26 +260,6 @@ return {
                 '<space>yl',
                 ":let @\"=fnamemodify(expand('%'), ':~:.') | echo @\" .. ' was copied to the register \".'<cr>",
                 desc = "Yank local file path"
-            },
-            {
-                "<F2>",
-                ":set wrap!<bar>set linebreak!<CR>",
-                desc = "Toggle the wrapping a text"
-            },
-            {
-                "<F3>",
-                ":set hlsearch!<CR>",
-                desc = "Toggle search highlighting"
-            },
-            {
-                "<F4>",
-                ":Lazy<cr>",
-                desc = "Run Lazy UI"
-            },
-            {
-                "<F5>",
-                ":so % <bar> echo 'script has been invoked' <CR>",
-                desc = "Run current script"
             },
             -- Visual mode
             {

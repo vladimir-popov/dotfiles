@@ -29,26 +29,26 @@ return {
             ':Neotree focus reveal_force_cwd<cr>',
             desc = 'Show the current file in the NeoTree, and change cwd',
         },
-        {
-            '<leader>1',
-            ':Neotree show reveal<cr>',
-            desc = 'Show the current file in the Files'
-        },
-        {
-            '<leader>2',
-            ':Neotree show buffers<cr>',
-            desc = 'Show the current file in the Buffers',
-        },
-        {
-            '<leader>3',
-            ':Neotree show document_symbols<cr>',
-            desc = 'Show the symbols in the current document obtained by the LSP',
-        },
-        {
-            '<leader>4',
-            ':Neotree show git_status<cr>',
-            desc = 'Show the current file in the Git',
-        },
+        -- {
+        --     '<leader>1',
+        --     ':Neotree show reveal<cr>',
+        --     desc = 'Show the current file in the Files'
+        -- },
+        -- {
+        --     '<leader>2',
+        --     ':Neotree show buffers<cr>',
+        --     desc = 'Show the current file in the Buffers',
+        -- },
+        -- {
+        --     '<leader>3',
+        --     ':Neotree show document_symbols<cr>',
+        --     desc = 'Show the symbols in the current document obtained by the LSP',
+        -- },
+        -- {
+        --     '<leader>4',
+        --     ':Neotree show git_status<cr>',
+        --     desc = 'Show the current file in the Git',
+        -- },
     },
     dependencies = {
         'nvim-lua/plenary.nvim',
