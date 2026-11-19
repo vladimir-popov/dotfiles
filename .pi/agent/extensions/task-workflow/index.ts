@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.2.4";
+const APP_VERSION = "2.2.5";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -4885,7 +4885,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           const assessment = await assessTransition(ctx, state, command, note);
           if (assessment.openQuestions.length) {
             ctx.ui.notify(
-              "❔ The phase is unchanged. Resolve these open questions first:",
+              "The phase is unchanged. Resolve these open questions first:",
               "warning",
             );
             for (const question of assessment.openQuestions)
