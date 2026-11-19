@@ -33,11 +33,13 @@ local function showLazyGit()
         term = true,
         on_exit = function()
             vim.schedule(function()
-                if vim.api.nvim_tabpage_is_valid(tab)
-                    and #vim.api.nvim_list_tabpages() > 1
-                then
+                if vim.api.nvim_tabpage_is_valid(tab) then
                     vim.api.nvim_set_current_tabpage(tab)
-                    vim.cmd("tabclose!")
+                    if #vim.api.nvim_list_tabpages() > 1 then
+                        vim.cmd("tabclose!")
+                    else
+                        vim.cmd("qa!")
+                    end
                 end
 
                 if lazygit_tab == tab then
