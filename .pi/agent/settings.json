@@ -4,6 +4,9 @@
   "defaultProvider": "openai",
   "defaultModel": "gpt-6.1-sol",
   "fullscreenExitOutput": "resume-hint",
+  "nyathing": {
+    "animation": "random"
+  },
   "pi-fast": {
     "enabledByDefault": true
   },
@@ -13,7 +16,8 @@
     "npm:@pi-plugins/usage"
   ],
   "extensions": [
-    "~/Projects/nvim/pi-nvim/pi/pi-nvim.ts"
+    "~/Projects/nvim/pi-nvim/pi/pi-nvim.ts",
+    "~/.pi/agent/extensions/nyathing/index.ts"
   ],
   "extensionChangelogVersions": {
     "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.48.0",
