@@ -44,15 +44,22 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.2.6";
+const APP_VERSION = "2.3.0";
 
 type Phase =
-  "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
+  | "research"
+  | "roadmap"
+  | "implement"
+  | "review"
+  | "manual-review"
+  | "commit"
+  | "complete";
 type SessionRefs = {
   research?: string;
   roadmap?: string;
   implement?: Record<string, string>;
   review?: Record<string, string[]>;
+  manualReview?: Record<string, string[]>;
   commit?: Record<string, string>;
 };
 type TaskState = {
@@ -76,6 +83,7 @@ type TaskState = {
   commitPendingFiles?: string[];
   commitPendingHashes?: Record<string, string | null>;
   commitReady?: boolean;
+  /** Legacy marker migrated to the manual-review phase when loading state. */
   manualReviewPending?: boolean;
   commitResult?: string;
   reviewRound?: number;
@@ -98,6 +106,7 @@ type PhaseModel = {
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 };
 type SkillPhase = "research" | "roadmap" | "implement" | "review" | "commit";
+type ToolPhase = SkillPhase | "manual-review";
 type Config = {
   mode?: "manual" | "semi-auto";
   autoCommit?: boolean;
@@ -105,8 +114,8 @@ type Config = {
     Record<"research" | "roadmap" | "implement" | "review", PhaseModel | null>
   >;
   skills?: Partial<Record<SkillPhase, string | null>>;
-  phaseTools?: Partial<Record<SkillPhase, string[]>>;
-  additionalPhaseTools?: Partial<Record<SkillPhase, string[]>>;
+  phaseTools?: Partial<Record<ToolPhase, string[]>>;
+  additionalPhaseTools?: Partial<Record<ToolPhase, string[]>>;
   reviewTools?: string[];
   allowTreeNavigation?: boolean;
   snapshotMaxFiles?: number;
@@ -140,18 +149,22 @@ function configuredPhaseTools(
   const defaults =
     phase === "commit"
       ? READ_TOOLS
-      : phase === "research"
-        ? researchAllowedTools(pi)
-        : [
-            ...READ_TOOLS,
-            ARTIFACT_TOOL,
-            ...(phase === "review" ? config.reviewTools || [] : []),
-          ];
+      : phase === "manual-review"
+        ? [...READ_TOOLS, ...(config.reviewTools || [])]
+        : phase === "research"
+          ? researchAllowedTools(pi)
+          : [
+              ...READ_TOOLS,
+              ARTIFACT_TOOL,
+              ...(phase === "review" ? config.reviewTools || [] : []),
+            ];
   const baseTools = config.phaseTools?.[phase] ?? defaults;
   return [
     ...new Set([
       ...baseTools,
-      ...(phase === "commit" ? [] : [ARTIFACT_TOOL]),
+      ...(phase === "commit" || phase === "manual-review"
+        ? []
+        : [ARTIFACT_TOOL]),
       ...(config.additionalPhaseTools?.[phase] || []),
     ]),
   ];
@@ -209,14 +222,20 @@ Each implementation session begins with final discussion of its current step; /t
 The implementation session stays open for the step and is reused for repairs.
 Each review round uses a fresh read-only session. Reports use review-N-round-M.md, starting at round 0.
 Step status in step-N.md is planned, in_progress, or completed.
-An accepted review enters a separate commit phase before the next implementation step.
-Commit-message generation failures stay in that phase; /task next retries them.
+An accepted review enters a manual-review phase first in semi-auto mode; manual mode
+moves directly to commit after review. Manual-review findings return to implementation;
+an empty review proceeds to commit. Use /task next for settled discussion and /task accept
+to approve a proposed solution.
+Commit-message generation failures stay in commit; /task next retries them.
 Without Git, /task next retries detection; /task accept skips the commit and continues.
 With manual commits, /task next verifies the reviewed files were committed.
 Use /task resume to return to the active task in this project. It resumes an interrupted run or pending review; otherwise it just opens the saved session.
 After discussion, /task next returns open findings to implementation or accepts
-a clear review. Accepted reviews enter a separate commit phase; /task next leaves it
-when the commit is complete. Without Git, /task accept skips the commit and continues.
+a clear review. In semi-auto mode, a clear review enters manual review; findings return
+to implementation and an empty review proceeds to commit. /task accept accepts a proposed
+solution before routing. In manual mode, the user reviews during Review, then proceeds
+directly to commit. /task next leaves commit when its requirements are met. Without
+Git, /task accept skips the commit and continues.
 Use Pi's normal progress and cancellation controls during implementation and review.
 Use /task next when discussion is settled; use /task accept to agree to proposals and advance.
 Agreement is implied by /task accept; add a note only to clarify a choice or decision.
@@ -509,7 +528,14 @@ function readConfig(): Config {
     for (const [phase, tools] of Object.entries(values.phaseTools)) {
       if (
         !(
-          ["research", "roadmap", "implement", "review", "commit"] as string[]
+          [
+            "research",
+            "roadmap",
+            "implement",
+            "review",
+            "manual-review",
+            "commit",
+          ] as string[]
         ).includes(phase)
       )
         throw new Error(`Unknown phaseTools phase ${phase}: ${path}`);
@@ -534,7 +560,14 @@ function readConfig(): Config {
     for (const [phase, tools] of Object.entries(values.additionalPhaseTools)) {
       if (
         !(
-          ["research", "roadmap", "implement", "review", "commit"] as string[]
+          [
+            "research",
+            "roadmap",
+            "implement",
+            "review",
+            "manual-review",
+            "commit",
+          ] as string[]
         ).includes(phase)
       )
         throw new Error(`Unknown additionalPhaseTools phase ${phase}: ${path}`);
@@ -745,6 +778,16 @@ function loadState(path: string, maintainLegacyFiles = true): TaskState {
   }
   if (data.configOverrides !== undefined)
     data.configOverrides = validateConfig(data.configOverrides, path);
+  if (data.phase === "commit" && data.manualReviewPending) {
+    const step = String(data.currentStep);
+    const legacySession = data.sessions?.commit?.[step];
+    data.phase = "manual-review";
+    if (legacySession) {
+      const sessions = ((data.sessions ??= {}).manualReview ??= {});
+      sessions[step] = [...(sessions[step] || []), legacySession];
+    }
+    delete data.manualReviewPending;
+  }
   return data;
 }
 
@@ -987,6 +1030,14 @@ function rebaseSessionRefs(
     review: sessions.review
       ? Object.fromEntries(
           Object.entries(sessions.review).map(([key, paths]) => [
+            key,
+            paths.map((path) => rebaseMovedPath(path, oldRoot, newRoot)),
+          ]),
+        )
+      : undefined,
+    manualReview: sessions.manualReview
+      ? Object.fromEntries(
+          Object.entries(sessions.manualReview).map(([key, paths]) => [
             key,
             paths.map((path) => rebaseMovedPath(path, oldRoot, newRoot)),
           ]),
@@ -1273,6 +1324,8 @@ function relocateTask(
     relocated.sessions?.commit,
   ])
     for (const path of Object.values(sessions || {})) addPath(path);
+  for (const paths of Object.values(relocated.sessions?.manualReview || {}))
+    for (const path of paths) addPath(path);
   for (const paths of Object.values(relocated.sessions?.review || {}))
     for (const path of paths) addPath(path);
   addPath(relocated.interruptedSession);
@@ -1444,6 +1497,7 @@ function taskLastWorked(state: TaskState): string {
     state.sessions?.roadmap,
     ...Object.values(state.sessions?.implement || {}),
     ...Object.values(state.sessions?.review || {}).flat(),
+    ...Object.values(state.sessions?.manualReview || {}).flat(),
     ...Object.values(state.sessions?.commit || {}),
     state.interruptedSession,
   ].filter((file): file is string => !!file);
@@ -1479,6 +1533,8 @@ function taskProgress(state: TaskState): string {
     return state.implementationStarted
       ? `Implementing step ${state.currentStep}${total ? `/${total}` : ""}`
       : `Preparing step ${state.currentStep}${total ? `/${total}` : ""}`;
+  if (state.phase === "manual-review")
+    return `Manual review step ${state.currentStep}${total ? `/${total}` : ""}`;
   if (state.phase === "commit")
     return `Commit step ${state.currentStep}${total ? `/${total}` : ""}`;
   if (state.phase === "complete")
@@ -1575,7 +1631,9 @@ function taskStatusText(
   const phaseStatus =
     state.phase === "implement" && !state.implementationStarted
       ? "implementation preparation"
-      : state.phase;
+      : state.phase === "manual-review"
+        ? "manual review"
+        : state.phase;
   const lines = [
     ["Version", APP_VERSION],
     ["Task", state.id],
@@ -1617,7 +1675,7 @@ function taskStatusText(
     [
       "Pending commit files",
       state.commitPendingFiles?.join(", ") ||
-        (state.phase === "commit"
+        (state.phase === "commit" || state.phase === "manual-review"
           ? state.pendingFiles?.join(", ")
           : undefined) ||
         "none",
@@ -2380,6 +2438,7 @@ async function draftCommitMessage(
 type TransitionAssessment = {
   openQuestions: string[];
   pendingProposal: string;
+  manualReviewFindings?: string[];
   reason: string;
 };
 
@@ -2402,9 +2461,12 @@ async function assessTransition(
     if (entry.type !== "message") continue;
     if (
       entry.message.role === "custom" &&
-      ["task-review", "task-implementation", "task-commit"].includes(
-        (entry.message as { customType?: string }).customType || "",
-      )
+      [
+        "task-review",
+        "task-implementation",
+        "task-commit",
+        "task-manual-review",
+      ].includes((entry.message as { customType?: string }).customType || "")
     )
       boundary = index + 1;
     if (entry.message.role === "user") {
@@ -2474,11 +2536,11 @@ async function assessTransition(
     const response = await ctx.modelRegistry.complete(
       ctx.model,
       {
-        systemPrompt: `You decide whether a task phase can advance. Analyze only the current phase's recent discussion and current review artifact. During implementation preparation (implementation has not started), the current roadmap item and the kickoff's summary of it are already approved; do not count them as a pending proposal. Check only newly discussed implementation details for unresolved questions or proposals. Return only JSON with fields openQuestions (array of strings), pendingProposal (string), reason (string). Keep each field concise.
+        systemPrompt: `You decide whether a task phase can advance. Analyze only the current phase's recent discussion and current review artifact. During implementation preparation (implementation has not started), the current roadmap item and the kickoff's summary of it are already approved; do not count them as a pending proposal. Check only newly discussed implementation details for unresolved questions or proposals. Return only JSON with fields openQuestions (array of strings), pendingProposal (string), manualReviewFindings (array of strings), and reason (string). Keep each field concise. For manual-review, manualReviewFindings must list concrete defects or requested code changes raised in the current phase discussion; do not count generic questions, resolved concerns, or optional suggestions. Include an accepted proposal that requires code changes. For all other phases, return an empty manualReviewFindings array.
 
 /task accept is an explicit user decision: agree to the assistant's latest concrete proposal as stated, including its recommended/default choices. No agreement note is needed. If the assistant asks "Keep this proposed version, or add optional feature X?", accept chooses the proposed version and declines X. The question is resolved, so openQuestions must be empty unless another independent decision is still required. Summarize the accepted version in pendingProposal. If there is no pending proposal, accept behaves like /task next.
 
-Example: Assistant says "I propose a game that picks 1–100, gives higher/lower hints, and ends when guessed. Keep that, or add an attempt limit?" Command /task accept with no note -> {"openQuestions":[],"pendingProposal":"Game with a number from 1 to 100, higher/lower hints, and no attempt limit; ends when guessed.","reason":"The user accepted the proposed version and declined the optional limit."}. This rule applies regardless of the discussion language.
+Example: Assistant says "I propose a game that picks 1–100, gives higher/lower hints, and ends when guessed. Keep that, or add an attempt limit?" Command /task accept with no note -> {"openQuestions":[],"pendingProposal":"Game with a number from 1 to 100, higher/lower hints, and no attempt limit; ends when guessed.","manualReviewFindings":[],"reason":"The user accepted the proposed version and declined the optional limit."}. This rule applies regardless of the discussion language.
 
 An open question is a material uncertainty that still needs user input after applying the command's decision. If the assistant presents mutually exclusive alternatives without proposing or recommending one, /task accept alone cannot choose; report that choice as open unless the command note selects it. Missing information that cannot be inferred from an accepted proposal also stays open. Do not count optional invitations for more context, approval requests answered by /task accept, or optional alternatives to an accepted default. For /task next, do not treat the command as approval of a pending proposal. A pending proposal is an unapproved concrete assistant recommendation, plan, or decision; summarize all compatible proposals. Do not count proposals clearly accepted in an earlier ordinary user message. Review findings and suggested changes use a separate repair workflow; do not count the findings themselves as open questions or pending proposals. A later parent-assistant proposal about handling a finding can be pending. Do not invent questions or proposals from earlier phases.`,
         messages: [user],
@@ -2513,6 +2575,13 @@ An open question is a material uncertainty that still needs user input after app
       !Array.isArray(result.openQuestions) ||
       result.openQuestions.some((item) => typeof item !== "string") ||
       typeof result.pendingProposal !== "string" ||
+      (result.manualReviewFindings !== undefined &&
+        (!Array.isArray(result.manualReviewFindings) ||
+          result.manualReviewFindings.some(
+            (item) => typeof item !== "string",
+          ))) ||
+      (state.phase === "manual-review" &&
+        !Array.isArray(result.manualReviewFindings)) ||
       typeof result.reason !== "string"
     )
       throw new Error(
@@ -2526,6 +2595,13 @@ An open question is a material uncertainty that still needs user input after app
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 2000),
+      ...(Array.isArray(result.manualReviewFindings)
+        ? {
+            manualReviewFindings: result.manualReviewFindings
+              .slice(0, 10)
+              .map((item) => item.replace(/\s+/g, " ").slice(0, 1000)),
+          }
+        : {}),
       reason: result.reason.replace(/\s+/g, " ").slice(0, 1000),
     };
   } finally {
@@ -2692,10 +2768,13 @@ function phaseLabel(state: TaskState): string {
             : "Step preparation"
           : state.phase === "review"
             ? "Review"
-            : state.phase === "commit"
-              ? "Commit"
-              : "Complete";
-  if (!["implement", "review", "commit"].includes(state.phase)) return phase;
+            : state.phase === "manual-review"
+              ? "Manual review"
+              : state.phase === "commit"
+                ? "Commit"
+                : "Complete";
+  if (!["implement", "review", "manual-review", "commit"].includes(state.phase))
+    return phase;
   let total: number | undefined;
   try {
     total = stepCount(state);
@@ -2711,7 +2790,9 @@ function sessionDisplayName(
   phase = state.phase,
   step = state.currentStep,
 ): string {
-  const title = ["implement", "review", "commit"].includes(phase)
+  const title = ["implement", "review", "manual-review", "commit"].includes(
+    phase,
+  )
     ? stepTitle(state, step)
     : undefined;
   const part =
@@ -2719,9 +2800,11 @@ function sessionDisplayName(
       ? "research"
       : phase === "implement"
         ? `${state.implementationStarted ? "implement" : "prepare"} ${step}`
-        : phase === "review" || phase === "commit"
-          ? `${phase} ${step}`
-          : phase;
+        : phase === "manual-review"
+          ? `manual review ${step}`
+          : phase === "review" || phase === "commit"
+            ? `${phase} ${step}`
+            : phase;
   return `${state.id} · ${part}${phase === "review" ? ` · r${state.reviewRound ?? 0}` : ""}${title ? ` · ${title}` : ""}`;
 }
 
@@ -2740,6 +2823,8 @@ function phaseHint(state: TaskState): string {
     return state.reviewPending
       ? "Review is pending; use /task resume or save the review before /task next."
       : "Discuss findings; when ready, use /task next.";
+  if (state.phase === "manual-review")
+    return "Discuss manual-review findings; /task next advances when settled, /task accept approves a proposal.";
   if (state.phase === "commit")
     return !state.commitReady
       ? "Commit proposal pending; /task next retries, /task accept skips if Git is unavailable."
@@ -2766,7 +2851,9 @@ function setPhaseWidget(
   waiting: boolean,
 ): void {
   const config = effectiveConfig(state);
-  const title = ["implement", "review", "commit"].includes(state.phase)
+  const title = ["implement", "review", "manual-review", "commit"].includes(
+    state.phase,
+  )
     ? stepTitle(state)
     : undefined;
   const fullPhase = phaseLabel(state);
@@ -2924,6 +3011,7 @@ function sessionReferencesExist(state: TaskState): boolean {
     state.sessions?.roadmap,
     state.interruptedSession,
     ...Object.values(state.sessions?.implement || {}),
+    ...Object.values(state.sessions?.manualReview || {}).flat(),
     ...Object.values(state.sessions?.commit || {}),
     ...Object.values(state.sessions?.review || {}).flat(),
   ].filter((file): file is string => !!file);
@@ -2940,6 +3028,8 @@ function sessionFor(
   if (phase === "research") return sessions.research;
   if (phase === "roadmap") return sessions.roadmap;
   if (phase === "implement") return sessions.implement?.[String(step)];
+  if (phase === "manual-review")
+    return sessions.manualReview?.[String(step)]?.at(-1);
   if (phase === "commit") return sessions.commit?.[String(step)];
   if (phase === "complete")
     return (
@@ -2965,6 +3055,11 @@ function setSessionFor(
       ...(sessions.review?.[String(step)] || []),
       file,
     ];
+  else if (phase === "manual-review")
+    (sessions.manualReview ??= {})[String(step)] = [
+      ...(sessions.manualReview?.[String(step)] || []),
+      file,
+    ];
   else if (phase === "commit") (sessions.commit ??= {})[String(step)] = file;
 }
 
@@ -2979,6 +3074,9 @@ function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
     link.id === state.id &&
     link.statePath === taskStatePath(state) &&
     (link.phase === state.phase ||
+      (link.phase === "commit" &&
+        state.phase === "manual-review" &&
+        resolve(current) === resolve(expected)) ||
       ((link.phase as string) === "collect" && state.phase === "research")) &&
     (link.step || 1) === state.currentStep &&
     resolve(current) === resolve(expected)
@@ -2990,7 +3088,8 @@ function configuredModel(
   state?: TaskState,
 ): PhaseModel | null | undefined {
   const config = state ? effectiveConfig(state) : readConfig();
-  if (phase === "complete" || phase === "commit") return undefined;
+  if (phase === "complete" || phase === "commit" || phase === "manual-review")
+    return undefined;
   return config.phaseModels?.[phase];
 }
 
@@ -3034,6 +3133,7 @@ function createPhaseSession(
   step: number,
   parent?: string,
   visibleMessage?: string,
+  visibleMessageType = "task-commit",
 ): string {
   mkdirSync(sessionDirectory(state), { recursive: true });
   const session = SessionManager.create(
@@ -3062,7 +3162,7 @@ function createPhaseSession(
     false,
   );
   if (visibleMessage)
-    session.appendCustomMessageEntry("task-commit", visibleMessage, true);
+    session.appendCustomMessageEntry(visibleMessageType, visibleMessage, true);
   const file = session.getSessionFile();
   if (!file || !existsSync(file))
     throw new Error("Pi did not save the new task session.");
@@ -3080,6 +3180,8 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
       roadmapStepSummary(state, step) || "the current roadmap item";
     return `This is the preparation session for step ${step}${total ? ` of ${total}` : ""}. Planned work: ${summary}. Begin by briefly explaining this scope and making clear that this is the final discussion before coding. Read ${state.contextPath} and ${roadmapPath(state)}; read ${stepPath(state, step)} if it already exists. Discuss remaining implementation details and checks, and keep the agreed current-step design in ${stepPath(state, step)}. Do not edit project code yet. /task next checks for unresolved questions or proposals, finalizes ${stepPath(state, step)}, captures the implementation baseline, and starts coding.`;
   }
+  if (phase === "manual-review")
+    return `The automated review found no remaining issues. This is the manual review phase for step ${step}. Inspect implementation-${step}.diff and the changed project files. Do not edit code or task artifacts. Use /task next when the discussion is settled; use /task accept to approve a proposed solution. Findings return to implementation; an empty review proceeds to commit.`;
   if (phase === "commit")
     return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue. If Git is unavailable, /task next retries detection and /task accept skips the commit and continues.`;
   return `Review step ${step}. Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against the approved scope and inspect relevant project code. Save the review at ${reviewPath(state, step)} using task_write_artifact with artifact "review" and step ${step}. Do not edit project code or advance the workflow. Discuss findings with me and update their statuses only after we agree.`;
@@ -3177,6 +3279,8 @@ async function continueTaskSession(
 function resumeKickoff(state: TaskState): string {
   if (state.phase === "implement" && !state.implementationStarted)
     return `Resume final preparation for step ${state.currentStep}. Continue discussing the roadmap summary and agreed implementation/checks; update ${stepPath(state, state.currentStep)}. Do not edit project code until /task next finalizes the design and captures the baseline.`;
+  if (state.phase === "manual-review")
+    return `Resume the manual review phase for step ${state.currentStep}. Inspect implementation-${state.currentStep}.diff and the changed project files. Do not edit code or task artifacts. Use /task next when discussion is settled; use /task accept to approve a proposal. Findings return to implementation; an empty review proceeds to commit.`;
   if (state.phase === "commit")
     return state.commitReady
       ? `Resume the separate commit phase for step ${state.currentStep}. Revisit the saved commit result, do not change project code or task artifacts, and wait for /task next before continuing.`
@@ -3556,32 +3660,79 @@ async function acceptReviewedStep(
   delete state.commitPendingHashes;
   delete state.commitResult;
   state.commitReady = false;
+  if (effectiveSetting(state, "mode") === "semi-auto") {
+    state.phase = "manual-review";
+    state.currentStep = n;
+    const diffPath = join(taskDir(state), `implementation-${n}.diff`);
+    const files = state.pendingFiles?.length
+      ? `Files changed: ${state.pendingFiles.join(", ")}. `
+      : "";
+    const file = createPhaseSession(
+      state,
+      "manual-review",
+      n,
+      ctx.sessionManager.getSessionFile(),
+      `Automated review found no remaining issues. This is the manual review phase for step ${n}. Inspect ${diffPath} and the changed project files. ${files}Use /task next when the discussion is settled; use /task accept to approve a proposed solution. Findings return to implementation; an empty review proceeds to commit.`,
+      "task-manual-review",
+    );
+    setSessionFor(state, "manual-review", file, n);
+    saveState(state);
+    await switchPhase(ctx, state, "manual-review", n, "", file, async (fresh) =>
+      setPhaseWidget(fresh, state, true),
+    );
+    return;
+  }
+  await beginCommitPhase(pi, ctx, state, n);
+}
+
+async function returnToImplementationAfterManualReview(
+  ctx: ExtensionCommandContext,
+  state: TaskState,
+  findings: string[],
+): Promise<void> {
+  const step = state.currentStep;
+  state.completedSteps = state.completedSteps.filter((item) => item !== step);
+  state.implementationStarted = true;
+  const existing = state.sessions?.implement?.[String(step)];
+  if (!existing || !existsSync(existing)) {
+    const file = createPhaseSession(
+      state,
+      "implement",
+      step,
+      ctx.sessionManager.getSessionFile(),
+    );
+    setSessionFor(state, "implement", file, step);
+  }
+  const report = findings.map((finding) => `- ${finding}`).join("\n");
+  await switchPhase(
+    ctx,
+    state,
+    "implement",
+    step,
+    `The manual review identified changes to make. Return to implementation, address these findings within the approved scope, and run focused checks. Do not commit. Use /task next when ready for another automated review.\n\nManual-review findings:\n${report}`,
+    state.sessions!.implement![String(step)],
+  );
+}
+
+async function beginCommitPhase(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  state: TaskState,
+  step: number,
+): Promise<void> {
   state.phase = "commit";
-  state.currentStep = n;
-  state.manualReviewPending = effectiveSetting(state, "mode") === "semi-auto";
+  state.currentStep = step;
+  delete state.manualReviewPending;
   const file = createPhaseSession(
     state,
     "commit",
-    n,
+    step,
     ctx.sessionManager.getSessionFile(),
-    `Review accepted for step ${n}. This is the separate commit phase. The commit result will appear here; use /task next to generate or retry it if needed.`,
+    `Review accepted for step ${step}. This is the separate commit phase. The commit result will appear here; use /task next to generate or retry it if needed.`,
   );
-  setSessionFor(state, "commit", file, n);
+  setSessionFor(state, "commit", file, step);
   saveState(state);
-  await switchPhase(ctx, state, "commit", n, "", file, async (fresh) => {
-    if (state.manualReviewPending) {
-      await fresh.sendMessage(
-        {
-          customType: "task-commit",
-          content:
-            "🔔 Manual review reminder: the automated review found no remaining issues. Please review the code yourself before committing this step. Use /task accept to continue.",
-          display: true,
-        },
-        { triggerTurn: false },
-      );
-      setPhaseWidget(fresh, state, true);
-      return;
-    }
+  await switchPhase(ctx, state, "commit", step, "", file, async (fresh) => {
     try {
       await prepareCommitPhase(fresh, state, (content) =>
         fresh.sendMessage(
@@ -4199,7 +4350,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           ]),
         ]
       : configuredPhaseTools(pi, config, state.phase);
-    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
+    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : state.phase === "manual-review" ? "This is the separate manual review phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
       state.phase === "research"
         ? `Gather and clarify task context, then inspect project files and use available read-only web search/fetch tools to research feasibility. If none is directly listed, use tool_search to discover an available read-only web tool. You may read project files but must not edit them. Write only context.md using task_write_artifact; do not write roadmap, step, or review artifacts in Research. Keep context.md concise and current with confirmed facts; add agreed findings and code references, and leave unresolved doubts out. Research tools enabled for this turn: ${researchAllowedTools(pi).join(", ") || "none"}.`
@@ -4213,11 +4364,13 @@ export default function taskExtension(pi: ExtensionAPI): void {
               ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
 
 Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
-              : state.phase === "commit"
-                ? state.commitReady
-                  ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
-                  : "The commit result is not ready. Do not invent one or modify files. Tell the user that /task next retries Git detection and commit-message generation, while /task accept skips the commit and continues if Git is unavailable. This is the separate commit phase."
-                : "The task is complete. Do not edit project files through this task session.";
+              : state.phase === "manual-review"
+                ? `This is the manual review phase for step ${state.currentStep}. The automated review found no remaining issues. Direct the user to inspect ${join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files. Do not conduct another automated review, edit code, modify artifacts, or commit. Use the standard /task next and /task accept transition checks. Manual-review findings route to implementation; an empty review proceeds to commit.`
+                : state.phase === "commit"
+                  ? state.commitReady
+                    ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
+                    : "The commit result is not ready. Do not invent one or modify files. Tell the user that /task next retries Git detection and commit-message generation, while /task accept skips the commit and continues if Git is unavailable. This is the separate commit phase."
+                  : "The task is complete. Do not edit project files through this task session.";
     const phaseSkill =
       state.phase === "research" ||
       state.phase === "roadmap" ||
@@ -4843,39 +4996,13 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               throw new Error(
                 "The commit phase does not accept approval notes.",
               );
-            if (
-              state.manualReviewPending &&
-              command === "next" &&
-              hasGitRepository(state)
-            ) {
-              ctx.ui.notify(
-                "⚠️ The automated review found no remaining issues. Are you sure you want to skip your manual code review? Review the changes, then use /task accept to continue.",
-                "warning",
-              );
-              return;
-            }
             if (command === "accept" && !hasGitRepository(state)) {
-              state.manualReviewPending = false;
               state.commitPendingFiles = undefined;
               state.commitPendingHashes = undefined;
               state.commitReady = true;
               state.commitResult = `Commit intentionally skipped by user for step ${state.currentStep}.`;
               saveState(state);
               await finishCommitPhase(pi, ctx, state);
-              sessionReplaced = true;
-              return;
-            }
-            if (state.manualReviewPending && command === "accept") {
-              state.manualReviewPending = false;
-              saveState(state);
-              await prepareCommitPhase(ctx, state, (content) =>
-                pi.sendMessage(
-                  { customType: "task-commit", content, display: true },
-                  { triggerTurn: false },
-                ),
-              );
-              if (effectiveSetting(state, "autoCommit") && state.commitReady)
-                await finishCommitPhase(pi, ctx, state);
               sessionReplaced = true;
               return;
             }
@@ -4898,6 +5025,19 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               `⚠️ The phase is unchanged. A proposal still needs approval: ${assessment.pendingProposal}. Use /task accept if you agree.`,
               "warning",
             );
+            return;
+          }
+          if (state.phase === "manual-review") {
+            if (assessment.manualReviewFindings?.length) {
+              await returnToImplementationAfterManualReview(
+                ctx,
+                state,
+                assessment.manualReviewFindings || [],
+              );
+            } else {
+              await beginCommitPhase(pi, ctx, state, state.currentStep);
+            }
+            sessionReplaced = true;
             return;
           }
           const approval =
