@@ -17,7 +17,7 @@
   ],
   "extensions": [
     "~/Projects/nvim/pi-nvim/pi/pi-nvim.ts",
-    "~/.pi/agent/extensions/nyathing/index.ts"
+    "~/Projects/pi-nyathing/src/index.ts"
   ],
   "extensionChangelogVersions": {
     "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.48.0",

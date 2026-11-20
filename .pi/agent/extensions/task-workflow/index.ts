@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.2.5";
+const APP_VERSION = "2.2.6";
 
 type Phase =
   "research" | "roadmap" | "implement" | "review" | "commit" | "complete";
@@ -195,7 +195,6 @@ const HELP = `Task workflow
 /task resume                Return to an active task; resume an interrupted run
 /task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
-/task skip-commit           Explicitly skip the current commit phase
 /task show [FILE.md]        Select or view an existing Markdown artifact without adding it to the session
 /task help                  Show this help
 
@@ -212,10 +211,12 @@ Each review round uses a fresh read-only session. Reports use review-N-round-M.m
 Step status in step-N.md is planned, in_progress, or completed.
 An accepted review enters a separate commit phase before the next implementation step.
 Commit-message generation failures stay in that phase; /task next retries them.
+Without Git, /task next retries detection; /task accept skips the commit and continues.
 With manual commits, /task next verifies the reviewed files were committed.
 Use /task resume to return to the active task in this project. It resumes an interrupted run or pending review; otherwise it just opens the saved session.
 After discussion, /task next returns open findings to implementation or accepts
-a clear review. Accepted reviews enter a separate commit phase; /task next leaves it.
+a clear review. Accepted reviews enter a separate commit phase; /task next leaves it
+when the commit is complete. Without Git, /task accept skips the commit and continues.
 Use Pi's normal progress and cancellation controls during implementation and review.
 Use /task next when discussion is settled; use /task accept to agree to proposals and advance.
 Agreement is implied by /task accept; add a note only to clarify a choice or decision.
@@ -2741,7 +2742,7 @@ function phaseHint(state: TaskState): string {
       : "Discuss findings; when ready, use /task next.";
   if (state.phase === "commit")
     return !state.commitReady
-      ? "Commit proposal pending; use /task next to generate or retry it."
+      ? "Commit proposal pending; /task next retries, /task accept skips if Git is unavailable."
       : state.commitPendingFiles?.length
         ? "Commit the reviewed files; /task next verifies the commit before continuing."
         : "Commit action complete or skipped; use /task next to continue.";
@@ -3080,7 +3081,7 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
     return `This is the preparation session for step ${step}${total ? ` of ${total}` : ""}. Planned work: ${summary}. Begin by briefly explaining this scope and making clear that this is the final discussion before coding. Read ${state.contextPath} and ${roadmapPath(state)}; read ${stepPath(state, step)} if it already exists. Discuss remaining implementation details and checks, and keep the agreed current-step design in ${stepPath(state, step)}. Do not edit project code yet. /task next checks for unresolved questions or proposals, finalizes ${stepPath(state, step)}, captures the implementation baseline, and starts coding.`;
   }
   if (phase === "commit")
-    return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue.`;
+    return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue. If Git is unavailable, /task next retries detection and /task accept skips the commit and continues.`;
   return `Review step ${step}. Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against the approved scope and inspect relevant project code. Save the review at ${reviewPath(state, step)} using task_write_artifact with artifact "review" and step ${step}. Do not edit project code or advance the workflow. Discuss findings with me and update their statuses only after we agree.`;
 }
 
@@ -3179,7 +3180,7 @@ function resumeKickoff(state: TaskState): string {
   if (state.phase === "commit")
     return state.commitReady
       ? `Resume the separate commit phase for step ${state.currentStep}. Revisit the saved commit result, do not change project code or task artifacts, and wait for /task next before continuing.`
-      : `Resume the separate commit phase for step ${state.currentStep}. The commit result is not ready; use /task next to generate or retry it.`;
+      : `Resume the separate commit phase for step ${state.currentStep}. The commit result is not ready; use /task next to generate or retry it. If Git is unavailable, /task accept skips the commit and continues.`;
   const step = state.awaitingReview || state.currentStep;
   const reviewReport = reviewPath(state, step);
   const reviewReminder =
@@ -3615,7 +3616,7 @@ async function prepareCommitPhase(
   let commitPendingHashes: Record<string, string | null> | undefined;
   if (!hasGitRepository(state)) {
     await sendResult(
-      `Git repository not detected. The commit phase is still open. Create or initialize a Git repository, then run /task next to retry commit-message generation. If you intentionally want to skip committing this step, run /task skip-commit.`,
+      `Git repository not detected. The commit phase remains open. Run /task next to retry Git detection and commit-message generation; if Git is still unavailable, the phase remains open. Run /task accept to skip this commit and continue. The step will be recorded as intentionally skipped.`,
     );
     setPhaseWidget(ctx, state, true);
     return;
@@ -3801,11 +3802,20 @@ async function finishCommitPhase(
     }
   }
   const more = n < stepCount(state);
+  const commitResult = state.commitResult;
   delete state.commitPendingFiles;
   delete state.commitPendingHashes;
   delete state.commitReady;
   delete state.commitResult;
-  updateStepExecutionRecord(state, n, state.commitResult);
+  updateStepExecutionRecord(state, n, commitResult);
+  if (state.pendingBaselineDir)
+    rmSync(state.pendingBaselineDir, { recursive: true, force: true });
+  state.pendingBaselineDir = undefined;
+  state.pendingFiles = undefined;
+  state.pendingHashes = undefined;
+  state.pendingSummary = undefined;
+  state.pendingAutoCommitEligible = undefined;
+  state.pendingGitRepository = undefined;
   updateStepStatus(state, n, "completed");
   const diffPath = join(taskDir(state), `implementation-${n}.diff`);
   if (existsSync(diffPath)) {
@@ -4206,7 +4216,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               : state.phase === "commit"
                 ? state.commitReady
                   ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
-                  : "The commit result is not ready. Do not invent one or modify files; tell the user to run /task next to generate or retry it. If Git is unavailable and the user deliberately wants to skip this commit, they can run /task skip-commit. This is the separate commit phase."
+                  : "The commit result is not ready. Do not invent one or modify files. Tell the user that /task next retries Git detection and commit-message generation, while /task accept skips the commit and continues if Git is unavailable. This is the separate commit phase."
                 : "The task is complete. Do not edit project files through this task session.";
     const phaseSkill =
       state.phase === "research" ||
@@ -4235,7 +4245,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         "resume",
         "next",
         "accept",
-        "skip-commit",
         "show",
         "config",
         "help",
@@ -4315,6 +4324,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                   "resume",
                   "next",
                   "accept",
+                  "skip-commit",
                   "show",
                   "start",
                   "log",
@@ -4328,6 +4338,10 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           .map((arg) => arg.value);
         if (command === "start")
           throw new Error(`Use /task TASK-ID instead of /task ${command}.`);
+        if (command === "skip-commit")
+          throw new Error(
+            "/task skip-commit was removed. During commit, use /task next to retry Git detection or /task accept to skip the commit and continue.",
+          );
         if (command === "log" || command === "abort")
           throw new Error(
             "The task now uses normal Pi sessions. Use Pi's native progress and cancellation controls.",
@@ -4795,34 +4809,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           await showArtifact(ctx, name, readFileSync(path, "utf8"));
           return;
         }
-        if (command === "skip-commit") {
-          transitionStatus = true;
-          ctx.ui.setStatus(
-            "task-transition",
-            "Recording intentional commit skip…",
-          );
-          if (!sessionMatches(ctx, state))
-            throw new Error(
-              `This is not the active task session. Use /task ${state.id} to continue ${state.phase}.`,
-            );
-          if (state.phase !== "commit")
-            throw new Error(
-              "/task skip-commit is only available during the commit phase.",
-            );
-          if (args.length)
-            throw new Error("/task skip-commit does not accept arguments.");
-          if (state.commitResult?.startsWith("Committed step"))
-            throw new Error(
-              "This step was already committed automatically; /task skip-commit cannot undo it.",
-            );
-          state.commitPendingFiles = undefined;
-          state.commitPendingHashes = undefined;
-          state.commitReady = true;
-          state.commitResult = `Commit intentionally skipped by user for step ${state.currentStep}.`;
-          saveState(state);
-          await finishCommitPhase(pi, ctx, state);
-          return;
-        }
         if (command === "next" || command === "accept") {
           transitionStatus = true;
           ctx.ui.setStatus(
@@ -4853,11 +4839,30 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               `The review is incomplete. Run /task resume to continue and save ${reviewPath(state, reviewStep)} before advancing.`,
             );
           if (state.phase === "commit") {
-            if (state.manualReviewPending && command === "next") {
+            if (command === "accept" && note)
+              throw new Error(
+                "The commit phase does not accept approval notes.",
+              );
+            if (
+              state.manualReviewPending &&
+              command === "next" &&
+              hasGitRepository(state)
+            ) {
               ctx.ui.notify(
                 "⚠️ The automated review found no remaining issues. Are you sure you want to skip your manual code review? Review the changes, then use /task accept to continue.",
                 "warning",
               );
+              return;
+            }
+            if (command === "accept" && !hasGitRepository(state)) {
+              state.manualReviewPending = false;
+              state.commitPendingFiles = undefined;
+              state.commitPendingHashes = undefined;
+              state.commitReady = true;
+              state.commitResult = `Commit intentionally skipped by user for step ${state.currentStep}.`;
+              saveState(state);
+              await finishCommitPhase(pi, ctx, state);
+              sessionReplaced = true;
               return;
             }
             if (state.manualReviewPending && command === "accept") {
@@ -4874,10 +4879,6 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               sessionReplaced = true;
               return;
             }
-            if (command === "accept" && note)
-              throw new Error(
-                "The commit phase does not accept approval notes. Use /task next when ready to continue.",
-              );
             await finishCommitPhase(pi, ctx, state);
             sessionReplaced = true;
             return;

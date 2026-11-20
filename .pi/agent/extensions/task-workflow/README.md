@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.2.5**
+**Version: 2.2.6**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
@@ -23,7 +23,16 @@ flowchart LR
     G -->|final step| H["Task complete"]
 ```
 
-Research gathers task context and investigates code in one saved conversation. Each step's preparation discussion and implementation share one saved session; after review finds issues, repairs return to that same session. Each review round opens a fresh session. A clear review opens a separate commit phase; the next step cannot start until that phase is explicitly completed. In Git projects, manual mode requires the reviewed files to be committed before `/task next`; `autoCommit: true` commits them automatically. If Git is not detected, the commit phase remains open and `/task next` retries detection and message generation; create or initialize the repository, then retry. Use `/task skip-commit` only to explicitly skip this phase; the step execution record notes that choice. Projects without Git remain in commit until Git is created or the user explicitly skips.
+Research gathers task context and investigates code in one saved conversation. Each step's
+preparation discussion and implementation share one saved session; after review finds
+issues, repairs return to that same session. Each review round opens a fresh session. A
+clear review opens a separate commit phase; the next step cannot start until that phase is
+explicitly completed. In Git projects, manual mode requires the reviewed files to be
+committed before `/task next`; `autoCommit: true` commits them automatically. If Git is not
+detected, the commit phase remains open. `/task next` retries Git detection and
+commit-message generation; `/task accept` skips this commit and continues, recording the
+intentional skip in the step execution record. Projects without Git remain in commit until
+Git is created or the user accepts the skip.
 
 All task files use a fixed project-local layout:
 
@@ -82,9 +91,8 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task config init task`    | Initialize empty task overrides (`{}`) in the active task's `state.json`; inherited settings remain effective.                                                                                                                                                        |
 | `/task resume`              | Return to the active task in this project. If multiple tasks are available, choose one in the terminal UI; outside it, use `/task TASK-ID` to select. An interrupted run or pending review resumes automatically; otherwise the saved task session simply opens. |
 | `/task show [FILE.md]`      | Select an existing Markdown artifact or show the named file without adding it to the conversation. File names have completion.                                                                                                                                   |
-| `/task next`                | Advance after checking the current discussion. In implementation preparation, finalize the current step design, capture a baseline, and begin work. In the commit phase, verify the reviewed files are committed before continuing.                              |
-| `/task accept [NOTE]`       | Agree to pending proposals and advance. With no proposal, act like `/task next`. A note is optional.                                                                                                                                                             |
-| `/task skip-commit`         | Explicitly skip the current commit phase and continue the task. Available only during commit; records the intentional skip in the step execution record.                                                                                                         |
+| `/task next`                | Advance after checking the current discussion. In implementation preparation, finalize the current step design, capture a baseline, and begin work. In the commit phase, verify files are committed, or retry Git detection if no repository is found. |
+| `/task accept [NOTE]`       | Agree to pending proposals and advance. With no proposal, act like `/task next`. During a commit phase without Git, explicitly skip the commit and continue; the step record notes the skip. A note is optional. |
 | `/task help`                | Show a short command summary outside the conversation.                                                                                                                                                                                                           |
 
 ### Hotkeys
@@ -110,7 +118,15 @@ Set `hotkeys` in `~/.pi/agent/task-workflow.json` to change a binding or give an
 
 ### Task ID parsing
 
-An ID is required to create or open a particular task; `/task` alone opens the list. An unquoted ID ends at a space; quote an ID with internal spaces: `/task "TASK 100500"` or `/task 'TASK 100500'`. `/task TASK 100500` is invalid. IDs may contain ASCII letters, digits, dots, underscores, hyphens, and internal spaces. They must begin with a letter or digit and have no leading or trailing spaces. Slashes and quote characters are invalid. The unquoted command words `help`, `list`, `delete`, `status`, `log`, `abort`, `next`, `accept`, `show`, `start`, `config`, and `resume` are reserved; quote one to use it as an ID. Task storage paths are fixed.
+An ID is required to create or open a particular task; `/task` alone opens the list. An
+unquoted ID ends at a space; quote an ID with internal spaces: `/task "TASK 100500"` or
+`/task 'TASK 100500'`. `/task TASK 100500` is invalid. IDs may contain ASCII letters,
+digits, dots, underscores, hyphens, and internal spaces. They must begin with a letter or
+digit and have no leading or trailing spaces. Slashes and quote characters are invalid.
+The unquoted command words `help`, `list`, `delete`, `status`, `log`, `abort`, `next`,
+`accept`, `show`, `start`, `config`, and `resume` are reserved; quote one to use it as an
+ID. The retired word `skip-commit` is rejected; quote it if you want to use it as a task
+ID. Task storage paths are fixed.
 
 `/task delete` lists tasks in the current project for selection. `/task delete TASK-100500` selects one directly; quote IDs with spaces as above. Both routes ask you to confirm the artifact and runtime directories before deleting. The command removes both directories, including task artifacts, local state, baselines, and saved Pi sessions; project files outside them remain. If the task is open, Pi first switches to a normal session outside the task directory. Finish or cancel a running Pi response before deleting. Outside the terminal UI, provide an explicit ID because there is no selector.
 
@@ -125,7 +141,19 @@ An ID is required to create or open a particular task; `/task` alone opens the l
 | **Commit**         | A distinct phase after review acceptance. After the commit is verified, the extension records review outcomes in `step-N.md`, marks it `completed`, and removes `implementation-N.diff` and all `review-N-round-M.md` files for that step.                                                                                                                                                                                                                                    | The compact execution record in `step-N.md` preserves review summaries, accepted decisions, and finding dispositions.                                                                                                                                                                                       |
 | **Commit**         | A distinct phase after review acceptance, with its own saved session and visible commit result. With `autoCommit: false`, commit the reviewed files manually; `/task next` verifies they are committed before continuing. With `autoCommit: true`, the extension commits them automatically.                                                                                                                                | Commit title/body are shown in the commit session; no separate Markdown artifact.                                                                                                                                                           |
 
-On accepting a clear review, the extension enters a separate commit phase and opens its own saved session before generating the commit result. With `autoCommit: true`, it commits the reviewed files automatically and shows the result there. Otherwise it proposes a commit title and body; `/task next` remains blocked until the reviewed file contents have been committed. If Git is not detected, the phase remains open and `/task next` retries detection and message generation; create or initialize the repository, then retry. Use `/task skip-commit` only to explicitly skip this phase; the step execution record notes that choice. If commit-message generation fails, the task remains in the commit phase and `/task next` retries generation. If the model response is unstructured, manual mode uses a labeled fallback based on the changed file names and implementation summary; auto-commit mode skips the commit and asks for a retry. Once the commit phase ends, the next step's preparation session opens with a short summary of its roadmap scope. After the final step's commit phase, the task is complete. Steps with no code changes still pass through without a commit action.
+On accepting a clear review, the extension enters a separate commit phase and opens its
+own saved session before generating the commit result. With `autoCommit: true`, it commits
+the reviewed files automatically and shows the result there. Otherwise it proposes a commit
+title and body; `/task next` remains blocked until the reviewed file contents have been
+committed. If Git is not detected, the phase remains open. `/task next` retries Git
+detection and commit-message generation; `/task accept` skips this commit and continues,
+recording the intentional skip in the step execution record. If commit-message generation
+fails, the task remains in the commit phase and `/task next` retries generation. If the
+model response is unstructured, manual mode uses a labeled fallback based on the changed
+file names and implementation summary; auto-commit mode skips the commit and asks for a
+retry. Once the commit phase ends, the next step's preparation session opens with a short
+summary of its roadmap scope. After the final step's commit phase, the task is complete.
+Steps with no code changes still pass through without a commit action.
 
 `/task resume` returns to the active task in the current project, including from a fresh `/new` session. If several active tasks exist, the terminal UI offers a selector; outside it, use `/task TASK-ID` to choose one. It also detects confirmed project-directory renames for project-local tasks. An aborted run resumes in its saved session with current phase instructions. A review with no saved `review-N-round-M.md` for the active round also resumes; `/task next` remains blocked until that artifact is saved. If no run needs resuming, the command simply opens the saved task session. It does not advance the phase or clear pending artifacts.
 
