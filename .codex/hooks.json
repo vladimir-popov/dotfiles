@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "type": "command",
+        "command": "id=$(jq -r .turn_id) && nyathing client -a ~/.codex/animations/chatgpt_64x64.png start --activity-id \"$id\" --keepalive-interval 90 >/dev/null"
+      }]
+    }],
+    "PostModelRequest": [{
+      "hooks": [{
+        "type": "command",
+        "command": "id=$(jq -r .turn_id) && nyathing client keepalive \"$id\""
+      }]
+    }],
+    "PreToolUse": [{
+      "hooks": [{
+        "type": "command",
+        "command": "id=$(jq -r .turn_id) && nyathing client keepalive \"$id\""
+      }]
+    }],
+    "PostToolUse": [{
+      "hooks": [{
+        "type": "command",
+        "command": "id=$(jq -r .turn_id) && nyathing client keepalive \"$id\""
+      }]
+    }],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "id=$(jq -r .turn_id) && nyathing client stop \"$id\""
+      }]
+    }],
+    "Interrupt": [{
+      "hooks": [{
+        "type": "command",
+        "command": "id=$(jq -r .turn_id) && nyathing client stop \"$id\"",
+        "timeout": 3
+      }]
+    }]
+  }
+}
