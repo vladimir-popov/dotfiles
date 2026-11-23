@@ -4,11 +4,16 @@ import readOnlyModeExtension from "./index.ts";
 
 type Handler = (...args: any[]) => any;
 
-function createHarness(options: { tools?: string[]; confirm?: () => Promise<boolean> } = {}) {
+function createHarness(options: {
+  tools?: string[];
+  activeTools?: string[];
+  confirm?: () => Promise<boolean>;
+} = {}) {
   const events = new Map<string, Handler>();
   let commandHandler: Handler | undefined;
-  let activeTools = ["read", "bash", "write", "custom"];
+  let activeTools = options.activeTools ?? ["read", "bash", "write", "custom"]; 
   const notifications: string[] = [];
+  const statuses = new Map<string, string | undefined>();
   let confirmations = 0;
 
   const pi = {
@@ -35,6 +40,7 @@ function createHarness(options: { tools?: string[]; confirm?: () => Promise<bool
     hasUI: true,
     ui: {
       notify: (message: string) => notifications.push(message),
+      setStatus: (key: string, value: string | undefined) => statuses.set(key, value),
       confirm: async () => {
         confirmations++;
         return options.confirm ? options.confirm() : true;
@@ -45,9 +51,12 @@ function createHarness(options: { tools?: string[]; confirm?: () => Promise<bool
   readOnlyModeExtension(pi as never);
   return {
     command: async (args = "") => commandHandler!(args, context),
-    event: (name: string) => events.get(name)!,
+    event: (name: string) => name === "session_start"
+      ? (...args: any[]) => events.get(name)!(args[0] ?? {}, context)
+      : events.get(name)!,
     context,
     notifications,
+    statuses,
     activeTools: () => [...activeTools],
     confirmations: () => confirmations,
   };
@@ -58,11 +67,13 @@ test("/ro command toggles, sets, reports, and rejects invalid arguments", async 
   await harness.event("session_start")();
   await harness.command();
   assert.deepEqual(harness.activeTools(), ["read", "grep", "find", "ls"]);
+  assert.equal(harness.statuses.get("pi-modes"), "👀");
   await harness.command(" STATUS ");
   assert.match(harness.notifications.at(-1)!, /is on/);
 
   await harness.command("off");
   assert.deepEqual(harness.activeTools(), ["read", "bash", "write", "custom"]);
+  assert.equal(harness.statuses.get("pi-modes"), "⁉️ (custom)");
   await harness.command("ON");
   assert.deepEqual(harness.activeTools(), ["read", "grep", "find", "ls"]);
   const stateBeforeInvalid = harness.activeTools();
@@ -70,6 +81,19 @@ test("/ro command toggles, sets, reports, and rejects invalid arguments", async 
   await harness.command("off extra");
   assert.deepEqual(harness.activeTools(), stateBeforeInvalid);
   assert.match(harness.notifications.at(-1)!, /Usage:/);
+});
+
+test("status classifies active tools and lists unknown tools", async () => {
+  const knownTools = ["read", "write", "bash", "custom", "other"];
+  const writableHarness = createHarness({ tools: knownTools, activeTools: ["read", "write"] });
+  await writableHarness.event("session_start")();
+  assert.equal(writableHarness.statuses.get("pi-modes"), "🚀");
+
+  const harness = createHarness({ tools: knownTools });
+  await harness.event("session_start")();
+  assert.equal(harness.statuses.get("pi-modes"), "⁉️ (custom)");
+  await harness.command("on");
+  assert.equal(harness.statuses.get("pi-modes"), "👀");
 });
 
 test("read-only mode permits configured research tools and blocks other tools", async () => {

@@ -10,12 +10,15 @@ restricted research tool set. Mode state is session-runtime-local, starts off, a
 - `/ro status` reports the current mode.
 
 Arguments are case-insensitive. Invalid or extra arguments display usage without changing mode.
+The footer status shows `🚀` when an editing tool is active, `👀` when all active tools are
+read-only, or `⁉️ (tool_a, tool_b)` when active tools are missing from both configured lists.
 
 ## Read-only tools
 
 The `pi-modes` section in `~/.pi/agent/settings.json` defines complete `readOnlyTools` and
 `editingTools` arrays. Read-only mode allows only tools listed in `readOnlyTools` that are
-available in the current session; every other tool is blocked.
+available in the current session; every other tool is blocked. These lists also classify active
+tools for the footer status indicator.
 Bash is blocked by default. Each Bash call requires an interactive confirmation for the exact
 command and, if approved, that call only. Without an interactive UI, Bash remains blocked.
 

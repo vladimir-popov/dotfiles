@@ -15,12 +15,17 @@
       "ls",
       "web_search",
       "fetch_content",
-      "get_search_content"
+      "get_search_content",
+      "list_buffers",
+      "open_file",
+      "web_enable",
+      "source_check"
     ],
     "editingTools": [
       "write",
       "edit",
-      "bash"
+      "bash",
+      "subagent"
     ]
   },
   "packages": [

@@ -24,6 +24,18 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
   let allowedTools = new Set<string>();
   let blockedTools = new Set<string>();
 
+  function updateStatus(ctx: ExtensionContext): void {
+    const activeTools = pi.getActiveTools();
+    const knownTools = new Set([...allowedTools, ...blockedTools]);
+    const unknownTools = activeTools.filter((name) => !knownTools.has(name));
+    const indicator = unknownTools.length > 0
+      ? `⁉️ (${unknownTools.join(", ")})`
+      : activeTools.some((name) => blockedTools.has(name))
+        ? "🚀"
+        : "👀";
+    ctx.ui.setStatus("pi-modes", indicator);
+  }
+
   function setMode(enabled: boolean, ctx: ExtensionContext): void {
     readOnly = enabled;
     if (readOnly) {
@@ -32,16 +44,18 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
     } else {
       pi.setActiveTools(defaultTools ?? pi.getActiveTools());
     }
+    updateStatus(ctx);
     ctx.ui.notify(`Read-only mode ${readOnly ? "on" : "off"}.`, "info");
   }
 
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
     const settings = pi.getSettings() as Record<string, unknown>;
     const modesSettings = (settings["pi-modes"] ?? {}) as PiModesSettings;
     allowedTools = new Set(readToolList(modesSettings.readOnlyTools, "readOnlyTools"));
     blockedTools = new Set(readToolList(modesSettings.editingTools, "editingTools"));
     readOnly = false;
     defaultTools = pi.getActiveTools();
+    updateStatus(ctx);
   });
 
   pi.registerCommand("ro", {
