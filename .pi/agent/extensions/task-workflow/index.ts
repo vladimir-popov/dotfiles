@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import picomatch from "picomatch";
 import {
   constants as fsConstants,
   cpSync,
@@ -44,7 +45,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.5.4";
+const APP_VERSION = "2.6.0";
 
 type Phase =
   | "research"
@@ -1984,6 +1985,28 @@ async function projectFiles(
   return files;
 }
 
+function createFileFilter(
+  includes: string[] | undefined,
+  excludes: string[],
+): (file: string) => boolean {
+  const includeMatchers = includes?.map((pattern) => picomatch(pattern));
+  const excludeMatchers = excludes.map((pattern) => ({
+    negated: pattern.startsWith("!"),
+    matcher: picomatch(pattern.startsWith("!") ? pattern.slice(1) : pattern),
+  }));
+  return (file) => {
+    const normalized = file.split(sep).join("/");
+    const included =
+      !includeMatchers ||
+      includeMatchers.some((matches) => matches(normalized));
+    let excluded = false;
+    for (const { negated, matcher } of excludeMatchers) {
+      if (matcher(normalized)) excluded = !negated;
+    }
+    return included && !excluded;
+  };
+}
+
 function changedPaths(state: TaskState): string[] {
   const paths = [
     ...git(state.projectRoot, [
@@ -2018,9 +2041,14 @@ async function captureBaseline(
   const config = effectiveConfig(state);
   const maxFiles = config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES;
   const maxMiB = config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB;
-  const files = gitRepository
-    ? changedPaths(state)
-    : [...(await projectFiles(state, onProgress, maxFiles))];
+  const includes = config.include?.length ? config.include : undefined;
+  const excludes = config.exclude ?? [];
+  const matchesFilters = createFileFilter(includes, excludes);
+  const files = (
+    gitRepository
+      ? changedPaths(state)
+      : [...(await projectFiles(state, onProgress))]
+  ).filter(matchesFilters);
   let copyCount = 0;
   let totalBytes = 0;
   for (const [index, file] of files.entries()) {
@@ -2163,12 +2191,18 @@ async function implementationDiff(
 ): Promise<{ diff: string; files: string[] }> {
   const parts: string[] = [];
   const files: string[] = [];
+  const config = effectiveConfig(state);
+  const includes = config.include?.length ? config.include : undefined;
+  const excludes = config.exclude ?? [];
+  const matchesFilters = createFileFilter(includes, excludes);
   const currentFiles = baseline.gitRepository
     ? undefined
     : await projectFiles(state, onProgress);
-  const candidates = baseline.gitRepository
-    ? changedPaths(state)
-    : [...new Set([...baseline.paths.keys(), ...currentFiles!])];
+  const candidates = (
+    baseline.gitRepository
+      ? changedPaths(state)
+      : [...new Set([...baseline.paths.keys(), ...currentFiles!])]
+  ).filter(matchesFilters);
   for (const [index, file] of candidates.entries()) {
     const current = join(state.projectRoot, file);
     let patch: string;
