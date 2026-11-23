@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.4.0**
+**Version: 2.5.0**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
@@ -48,9 +48,10 @@ All task files use a fixed project-local layout:
 
 ```text
 .agents/task-workflow/
-├── config.json                     # Project-level mode and autoCommit overrides
+├── config.json                     # Optional project settings
 └── <task-id>/
-    ├── state.json                  # Workflow state and task-level overrides
+    ├── config.json                 # Optional task settings
+    ├── state.json                  # Workflow state
     ├── sessions/
     ├── baselines/
     └── context/
@@ -97,9 +98,9 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task delete [TASK-ID]`    | Permanently delete a task after a separate confirmation. Without an ID, choose from a selector in the terminal UI.                                                                                                                                               |
 | `/task status`              | Show the phase, step, session paths, review status, and settings without adding text to the conversation.                                                                                                                                                        |
 | `/task config`              | Show the full effective configuration for the active task without changing it.                                                                                                                                                                                  |
-| `/task config change`       | Edit mode and auto-commit in the terminal UI. Changes are saved as task-level overrides.                                                                                                                                                                          |
-| `/task config init project` | Create an empty `.agents/task-workflow/config.json` (`{}`); refuses to overwrite an existing file.                                                                                                                       |
-| `/task config init task`    | Initialize empty task overrides (`{}`) in the active task's `state.json`; inherited settings remain effective.                                                                                                                                                        |
+| `/task config change`       | Edit mode and auto-commit in the terminal UI and save them in the active task's `config.json`.                                                                                                                                                                   |
+| `/task config init project` | Create an empty `.agents/task-workflow/config.json` (`{}`); refuses to overwrite an existing file.                                                                                                                                                                |
+| `/task config init task`    | Create an empty `.agents/task-workflow/<task-id>/config.json` (`{}`); refuses to overwrite an existing file.                                                                                                                                                      |
 | `/task resume`              | Return to the active task in this project. If multiple tasks are available, choose one in the terminal UI; outside it, use `/task TASK-ID` to select. An interrupted run or pending review resumes automatically; otherwise the saved task session simply opens. |
 | `/task show [FILE.md]`      | Select an existing Markdown artifact or show the named file without adding it to the conversation. File names have completion.                                                                                                                                   |
 | `/task next`                | Advance after checking the current discussion. In implementation preparation, finalize the design and begin work. Manual-review findings return to implementation; an empty review proceeds to commit. In commit, verify files or retry Git detection. |
@@ -189,19 +190,20 @@ Returning from review restores that step's implementation session, including pre
 
 The extension reads `~/.pi/agent/task-workflow.json` (or `task-workflow.json` in
 `PI_CODING_AGENT_DIR`). Project overrides live in
-`<projectRoot>/.agents/task-workflow/config.json`; task overrides live in that task's
-`state.json`. Settings resolve in task → project → global → built-in-default order. For
+`<projectRoot>/.agents/task-workflow/config.json`; task settings live in
+`<projectRoot>/.agents/task-workflow/<task-id>/config.json`. Settings in existing task
+state files are ignored and are not migrated.
+Settings resolve in task → project → global → built-in-default order. For
 `skills`, `phaseModels`, `phaseTools`, `additionalPhaseTools`, `hotkeys`, and
 `statusColors`, entries resolve by key; other values, including arrays, are replaced by
 the most local setting. Missing keys inherit; `null` explicitly disables skills and
 phase models, and can disable default hotkeys. The global file is optional; omitted
-properties use the defaults below. Run `/task config init project` to create an empty
-project config (it refuses to overwrite an existing file), or `/task config init task`
-to initialize empty task overrides. Both keep inheriting settings from broader scopes
-until you add specific overrides. Use `/task config` to view the effective settings.
-Use `/task config change` in the terminal UI to change mode and auto-commit for the
-active task; those values are saved as task-level overrides. Edit the resulting JSON
-or `state.json` to change other values. Here is a complete example
+properties use the defaults below. Run `/task config init project` or `/task config init task`
+to create an empty config without overwriting an existing file. Both keep inheriting settings
+from broader scopes until you add specific entries. Use `/task config` to view the effective
+settings. Use `/task config change` in the terminal UI to change mode and auto-commit for the
+active task; it creates or updates the task's `config.json` and preserves its other settings.
+Edit the config file directly to change other values. Here is a complete example
 with different models for implementation and review:
 
 ```json
@@ -281,7 +283,7 @@ Add any supported phase to `phaseModels` using the same object shape. For exampl
 
 The research model is selected when its session opens. Other overrides apply when their new phase session opens. Reopening a session with an already applied override keeps its saved model; changing configuration does not retroactively replace it. You can also change a session's model with Pi's normal controls.
 
-Task artifacts live in `.agents/task-workflow/<task-id>/context/`; `implementation-N.diff` and review round files exist only while the step is active. `state.json`, `sessions/`, and `baselines/` live directly under `.agents/task-workflow/<task-id>/`. Task discovery scans these fixed task directories and a small index under `~/.pi/agent/task-workflow-index/`.
+Task artifacts live in `.agents/task-workflow/<task-id>/context/`; `implementation-N.diff` and review round files exist only while the step is active. `config.json`, `state.json`, `sessions/`, and `baselines/` live directly under `.agents/task-workflow/<task-id>/`. Task discovery scans these fixed task directories and a small index under `~/.pi/agent/task-workflow-index/`.
 
 ## 🔧 Implementation notes
 

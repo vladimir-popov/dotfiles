@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.5.0";
 
 type Phase =
   | "research"
@@ -75,9 +75,6 @@ type TaskState = {
   pendingHashes?: Record<string, string | null>;
   pendingSummary?: string;
   pendingAutoCommitEligible?: boolean;
-  workflowMode?: "manual" | "semi-auto";
-  autoCommit?: boolean;
-  configOverrides?: Config;
   pendingGitRepository?: boolean;
   pendingBaselineDir?: string;
   commitPendingFiles?: string[];
@@ -205,7 +202,7 @@ const HELP = `Task workflow
 /task config                Show effective settings for the current task
 /task config change         Change task mode and auto-commit in the terminal UI
 /task config init project   Create an empty project config ({})
-/task config init task      Initialize empty task overrides ({})
+/task config init task      Create an empty task config ({})
 /task resume                Return to an active task; resume an interrupted run
 /task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
@@ -244,16 +241,15 @@ Text ending in /task next is not parsed as a command.
 Task artifacts may be updated in any phase; project code changes run only in implement.
 Task data uses the fixed path <project>/.agents/task-workflow/<task-id>/, with artifacts under context/.
 Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
-<project>/.agents/task-workflow/config.json; task overrides live in that task's
-state.json. Resolution order is task, project, global, then defaults.
+<project>/.agents/task-workflow/config.json; task settings live in
+<project>/.agents/task-workflow/<task-id>/config.json.
 Use /task config to view effective settings. Use /task config change in the terminal UI
-to change mode and auto-commit for the active task; these become task-level overrides.
-Use /task config init project|task to create empty scoped settings ({}) and inherit
-values from broader scopes. Project initialization refuses to overwrite an existing config.
+to save mode and auto-commit to the active task's config.json.
+Use /task config init project|task to create an empty config ({}) and inherit values
+from broader scopes. Neither command overwrites an existing config.
 Settings resolve from task, project, global, then defaults; nested phase maps resolve by key, while lists and scalar values are replaced by the more local scope. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
-Global settings live in task-workflow.json; project settings live in .agents/task-workflow/config.json; task overrides live in state.json.
 Set global statusColors keys taskName, currentSettings, currentPhase, and phaseDescription to ANSI color names
 (black, red, green, yellow, blue, purple, cyan, white, or bright-prefixed variants), palette indices 0-255,
 or hex colors such as #RRGGBB. Defaults: brightGreen, brightBlack, blue, blue. Example:
@@ -393,21 +389,36 @@ function projectConfigPath(root: string): string {
   return join(root, ".agents", "task-workflow", "config.json");
 }
 
-function readProjectConfig(root: string): Config {
-  const path = projectConfigPath(root);
+function taskConfigPath(state: TaskState): string {
+  return join(runtimeDir(state), "config.json");
+}
+
+function readScopedConfig(path: string): Config {
   if (!existsSync(path)) return {};
-  const config = validateConfig(JSON.parse(readFileSync(path, "utf8")), path);
-  return config;
+  return validateConfig(JSON.parse(readFileSync(path, "utf8")), path);
+}
+
+function writeScopedConfig(
+  path: string,
+  config: Config,
+  createOnly = false,
+): void {
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: createOnly ? "wx" : "w",
+    mode: 0o600,
+  });
+}
+
+function updateTaskConfig(state: TaskState, changes: Config): void {
+  const path = taskConfigPath(state);
+  writeScopedConfig(path, { ...readScopedConfig(path), ...changes });
 }
 
 function effectiveConfig(state: TaskState): Config {
   const global = readConfig();
-  const project = readProjectConfig(state.projectRoot);
-  const task = {
-    ...state.configOverrides,
-    ...(state.workflowMode !== undefined ? { mode: state.workflowMode } : {}),
-    ...(state.autoCommit !== undefined ? { autoCommit: state.autoCommit } : {}),
-  };
+  const project = readScopedConfig(projectConfigPath(state.projectRoot));
+  const task = readScopedConfig(taskConfigPath(state));
   return {
     ...global,
     ...project,
@@ -468,9 +479,8 @@ function effectiveSetting<K extends "mode" | "autoCommit">(
   state: TaskState,
   key: K,
 ): K extends "mode" ? "manual" | "semi-auto" : boolean {
-  const legacy = key === "mode" ? state.workflowMode : state.autoCommit;
   const fallback = key === "mode" ? "manual" : false;
-  return (legacy ?? effectiveConfig(state)[key] ?? fallback) as K extends "mode"
+  return (effectiveConfig(state)[key] ?? fallback) as K extends "mode"
     ? "manual" | "semi-auto"
     : boolean;
 }
@@ -778,8 +788,6 @@ function loadState(path: string, maintainLegacyFiles = true): TaskState {
   ) {
     throw new Error(`Invalid task state: ${path}`);
   }
-  if (data.configOverrides !== undefined)
-    data.configOverrides = validateConfig(data.configOverrides, path);
   if (data.phase === "commit" && data.manualReviewPending) {
     const step = String(data.currentStep);
     const legacySession = data.sessions?.commit?.[step];
@@ -4529,12 +4537,9 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                   "semi-auto",
                 ]);
                 if (!mode) continue;
-                state.configOverrides = {
-                  ...state.configOverrides,
+                updateTaskConfig(state, {
                   mode: mode as "manual" | "semi-auto",
-                };
-                state.workflowMode = undefined;
-                saveState(state);
+                });
               } else {
                 const autoCommit = await ctx.ui.select("Auto-commit:", [
                   "off",
@@ -4550,12 +4555,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                   ))
                 )
                   continue;
-                state.configOverrides = {
-                  ...state.configOverrides,
-                  autoCommit: autoCommit === "on",
-                };
-                state.autoCommit = undefined;
-                saveState(state);
+                updateTaskConfig(state, { autoCommit: autoCommit === "on" });
               }
             }
             return;
@@ -4610,33 +4610,16 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             throw new Error(
               "Usage: /task config [change | init (project|task)]",
             );
-          const scope = args[1];
-          if (scope === "project") {
-            const root = projectRoot(ctx.cwd);
-            const path = projectConfigPath(root);
-            mkdirSync(dirname(path), { recursive: true });
-            const values = {};
-            writeFileSync(path, `${JSON.stringify(values, null, 2)}\n`, {
-              encoding: "utf8",
-              flag: "wx",
-              mode: 0o600,
-            });
-            await showArtifact(
-              ctx,
-              "Project configuration",
-              `Created ${path}\n\n${JSON.stringify(values, null, 2)}`,
-            );
-            return;
-          }
-          const state = requireTask(ctx, false);
-          state.configOverrides = {};
-          state.workflowMode = undefined;
-          state.autoCommit = undefined;
-          saveState(state);
+          const project = args[1] === "project";
+          const path = project
+            ? projectConfigPath(projectRoot(ctx.cwd))
+            : taskConfigPath(requireTask(ctx, false));
+          mkdirSync(dirname(path), { recursive: true });
+          writeScopedConfig(path, {}, true);
           await showArtifact(
             ctx,
-            "Task configuration",
-            `Saved task overrides in ${taskStatePath(state)}\n\n${JSON.stringify(state.configOverrides, null, 2)}`,
+            project ? "Project configuration" : "Task configuration",
+            `Created ${path}\n\n{}`,
           );
           return;
         }

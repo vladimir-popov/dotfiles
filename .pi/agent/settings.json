@@ -4,9 +4,6 @@
   "defaultProvider": "openai",
   "defaultModel": "gpt-6.1-sol",
   "fullscreenExitOutput": "resume-hint",
-  "nyathing": {
-    "animation": "random"
-  },
   "pi-fast": {
     "enabledByDefault": true
   },
