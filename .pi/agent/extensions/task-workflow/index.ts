@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.5.2";
 
 type Phase =
   | "research"
@@ -107,6 +107,8 @@ type ToolPhase = SkillPhase | "manual-review";
 type Config = {
   mode?: "manual" | "semi-auto";
   autoCommit?: boolean;
+  include?: string[] | null;
+  exclude?: string[];
   phaseModels?: Partial<
     Record<"research" | "roadmap" | "implement" | "review", PhaseModel | null>
   >;
@@ -201,8 +203,8 @@ const HELP = `Task workflow
 /task status                Show task state, current session, and artifact paths
 /task config                Show effective settings for the current task
 /task config change         Change task mode and auto-commit in the terminal UI
-/task config init project   Create an empty project config ({})
-/task config init task      Create an empty task config ({})
+/task config init project   Create a project config with inherited settings
+/task config init task      Create a task config with inherited settings
 /task resume                Return to an active task; resume an interrupted run
 /task next                  Advance the current phase when it is ready
 /task accept [NOTE]         Agree to pending proposals and advance; otherwise act like /task next
@@ -245,8 +247,8 @@ Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 <project>/.agents/task-workflow/<task-id>/config.json.
 Use /task config to view effective settings. Use /task config change in the terminal UI
 to save mode and auto-commit to the active task's config.json.
-Use /task config init project|task to create an empty config ({}) and inherit values
-from broader scopes. Neither command overwrites an existing config.
+Use /task config init project|task to copy the inherited mode, autoCommit, include,
+and exclude values into a new config. Neither command overwrites an existing config.
 Settings resolve from task, project, global, then defaults; nested phase maps resolve by key, while lists and scalar values are replaced by the more local scope. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
@@ -349,6 +351,18 @@ function validateConfig(config: unknown, path: string): Config {
     throw new Error(`mode must be manual or semi-auto: ${path}`);
   if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean")
     throw new Error(`autoCommit must be a boolean: ${path}`);
+  for (const key of ["include", "exclude"] as const) {
+    const patterns = values[key];
+    if (patterns === undefined || (key === "include" && patterns === null))
+      continue;
+    if (
+      !Array.isArray(patterns) ||
+      patterns.some((item) => typeof item !== "string")
+    )
+      throw new Error(
+        `${key} must be an array of strings${key === "include" ? " or null" : ""}: ${path}`,
+      );
+  }
   if (values.statusColors !== undefined) {
     if (
       !values.statusColors ||
@@ -4610,16 +4624,28 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             throw new Error(
               "Usage: /task config [change | init (project|task)]",
             );
-          const project = args[1] === "project";
-          const path = project
-            ? projectConfigPath(projectRoot(ctx.cwd))
-            : taskConfigPath(requireTask(ctx, false));
+          const state =
+            args[1] === "task" ? requireTask(ctx, false) : undefined;
+          const projectPath = projectConfigPath(
+            state?.projectRoot ?? projectRoot(ctx.cwd),
+          );
+          const path = state ? taskConfigPath(state) : projectPath;
+          const inherited = {
+            ...readConfig(),
+            ...(state ? readScopedConfig(projectPath) : {}),
+          };
+          const values = {
+            mode: inherited.mode ?? "manual",
+            autoCommit: inherited.autoCommit ?? false,
+            include: inherited.include ?? [],
+            exclude: inherited.exclude ?? [],
+          };
           mkdirSync(dirname(path), { recursive: true });
-          writeScopedConfig(path, {}, true);
+          writeScopedConfig(path, values, true);
           await showArtifact(
             ctx,
-            project ? "Project configuration" : "Task configuration",
-            `Created ${path}\n\n{}`,
+            state ? "Task configuration" : "Project configuration",
+            `Created ${path}\n\n\`\`\`json\n${JSON.stringify(values, null, 2)}\n\`\`\``,
           );
           return;
         }

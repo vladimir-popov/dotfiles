@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.5.0**
+**Version: 2.5.2**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
@@ -99,8 +99,8 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task status`              | Show the phase, step, session paths, review status, and settings without adding text to the conversation.                                                                                                                                                        |
 | `/task config`              | Show the full effective configuration for the active task without changing it.                                                                                                                                                                                  |
 | `/task config change`       | Edit mode and auto-commit in the terminal UI and save them in the active task's `config.json`.                                                                                                                                                                   |
-| `/task config init project` | Create an empty `.agents/task-workflow/config.json` (`{}`); refuses to overwrite an existing file.                                                                                                                                                                |
-| `/task config init task`    | Create an empty `.agents/task-workflow/<task-id>/config.json` (`{}`); refuses to overwrite an existing file.                                                                                                                                                      |
+| `/task config init project` | Create `.agents/task-workflow/config.json` with inherited settings; refuses to overwrite an existing file.                                                                                                                                                      |
+| `/task config init task`    | Create `.agents/task-workflow/<task-id>/config.json` with inherited settings; refuses to overwrite an existing file.                                                                                                                                           |
 | `/task resume`              | Return to the active task in this project. If multiple tasks are available, choose one in the terminal UI; outside it, use `/task TASK-ID` to select. An interrupted run or pending review resumes automatically; otherwise the saved task session simply opens. |
 | `/task show [FILE.md]`      | Select an existing Markdown artifact or show the named file without adding it to the conversation. File names have completion.                                                                                                                                   |
 | `/task next`                | Advance after checking the current discussion. In implementation preparation, finalize the design and begin work. Manual-review findings return to implementation; an empty review proceeds to commit. In commit, verify files or retry Git detection. |
@@ -199,10 +199,16 @@ Settings resolve in task → project → global → built-in-default order. For
 the most local setting. Missing keys inherit; `null` explicitly disables skills and
 phase models, and can disable default hotkeys. The global file is optional; omitted
 properties use the defaults below. Run `/task config init project` or `/task config init task`
-to create an empty config without overwriting an existing file. Both keep inheriting settings
-from broader scopes until you add specific entries. Use `/task config` to view the effective
-settings. Use `/task config change` in the terminal UI to change mode and auto-commit for the
-active task; it creates or updates the task's `config.json` and preserves its other settings.
+to create a config without overwriting an existing file. These commands copy the current
+inherited `mode` and `autoCommit` (defaults: `manual` and `false`), and the `include` and
+`exclude` pattern lists (both default to `[]`). An empty `include` means no allowlist;
+legacy `include: null` is still accepted and is written as `[]` in new configs. An empty
+`exclude` means no exclusions. The project inherits from global settings; the task inherits
+from project and global settings. Delete a copied key to resume inheriting its value. Other
+settings continue to inherit. These lists are saved but do not yet filter files. Use
+`/task config` to view the effective workflow settings.
+Use `/task config change` in the terminal UI to change mode and auto-commit for the active
+task; it creates or updates the task's `config.json` and preserves its other settings.
 Edit the config file directly to change other values. Here is a complete example
 with different models for implementation and review:
 
