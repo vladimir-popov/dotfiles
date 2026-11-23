@@ -1,28 +1,28 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const READ_ONLY_TOOLS = [
-  "read",
-  "grep",
-  "find",
-  "ls",
-  "web_search",
-  "fetch_content",
-  "get_search_content",
-] as const;
 const USAGE = "Usage: /ro [on|off|toggle|status]";
+
+type PiModesSettings = {
+  readOnlyTools?: unknown;
+  editingTools?: unknown;
+};
+
+function readToolList(value: unknown, settingName: string): string[] {
+  if (!Array.isArray(value) || !value.every((name) => typeof name === "string" && name.trim())) {
+    throw new Error(`pi-modes.${settingName} must be an array of non-empty tool names`);
+  }
+  return value.map((name) => name.trim());
+}
 
 /**
  * Adds `/ro` to switch between the initial tool set and a restricted research set.
- * Optional research tools can be added with PI_READONLY_TOOLS, a comma-separated list.
+ * Tool access is configured in the `pi-modes` section of settings.json.
  */
 export default function readOnlyModeExtension(pi: ExtensionAPI): void {
   let readOnly = false;
   let defaultTools: string[] | undefined;
-  const configuredTools = (process.env.PI_READONLY_TOOLS ?? "")
-    .split(",")
-    .map((name) => name.trim())
-    .filter(Boolean);
-  const allowedTools = new Set<string>([...READ_ONLY_TOOLS, ...configuredTools]);
+  let allowedTools = new Set<string>();
+  let blockedTools = new Set<string>();
 
   function setMode(enabled: boolean, ctx: ExtensionContext): void {
     readOnly = enabled;
@@ -36,6 +36,10 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
   }
 
   pi.on("session_start", async () => {
+    const settings = pi.getSettings() as Record<string, unknown>;
+    const modesSettings = (settings["pi-modes"] ?? {}) as PiModesSettings;
+    allowedTools = new Set(readToolList(modesSettings.readOnlyTools, "readOnlyTools"));
+    blockedTools = new Set(readToolList(modesSettings.editingTools, "editingTools"));
     readOnly = false;
     defaultTools = pi.getActiveTools();
   });
@@ -92,7 +96,7 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
       return;
     }
 
-    if (!allowedTools.has(event.toolName)) {
+    if (blockedTools.has(event.toolName) || !allowedTools.has(event.toolName)) {
       return {
         block: true,
         reason: `Tool '${event.toolName}' is blocked in read-only mode. Use /ro off to restore default tools.`,

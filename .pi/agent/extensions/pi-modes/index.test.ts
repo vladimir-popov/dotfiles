@@ -19,6 +19,12 @@ function createHarness(options: { tools?: string[]; confirm?: () => Promise<bool
       commandHandler = command.handler;
     },
     getActiveTools: () => [...activeTools],
+    getSettings: () => ({
+      "pi-modes": {
+        readOnlyTools: ["read", "grep", "find", "ls", "web_search", "fetch_content", "get_search_content", "docs_search", "missing_custom"],
+        editingTools: ["write", "edit", "bash"],
+      },
+    }),
     setActiveTools: (tools: string[]) => {
       activeTools = [...tools];
     },
@@ -66,9 +72,7 @@ test("/ro command toggles, sets, reports, and rejects invalid arguments", async 
   assert.match(harness.notifications.at(-1)!, /Usage:/);
 });
 
-test("read-only mode permits built-in and configured research tools, blocks other tools", async () => {
-  process.env.PI_READONLY_TOOLS = "docs_search";
-  try {
+test("read-only mode permits configured research tools and blocks other tools", async () => {
     const harness = createHarness({
       tools: ["read", "grep", "find", "ls", "bash", "write", "docs_search"],
     });
@@ -81,14 +85,9 @@ test("read-only mode permits built-in and configured research tools, blocks othe
     for (const toolName of ["write", "edit", "custom"]) {
       assert.equal((await toolCall({ toolName, input: {} }, harness.context))?.block, true);
     }
-  } finally {
-    delete process.env.PI_READONLY_TOOLS;
-  }
 });
 
-test("optional web tools and configured names work when present and absent", async () => {
-  process.env.PI_READONLY_TOOLS = "docs_search,missing_custom";
-  try {
+test("configured web and custom tools work when present and absent", async () => {
     const harness = createHarness({
       tools: ["read", "bash", "web_search", "fetch_content", "get_search_content", "docs_search"],
     });
@@ -103,9 +102,6 @@ test("optional web tools and configured names work when present and absent", asy
     assert.deepEqual(harness.activeTools(), [
       "read", "web_search", "fetch_content", "get_search_content", "docs_search",
     ]);
-  } finally {
-    delete process.env.PI_READONLY_TOOLS;
-  }
 });
 
 test("Bash approval is requested for each exact command and cannot authorize a changed command", async () => {

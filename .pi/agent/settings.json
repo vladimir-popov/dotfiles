@@ -7,6 +7,22 @@
   "pi-fast": {
     "enabledByDefault": true
   },
+  "pi-modes": {
+    "readOnlyTools": [
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "web_search",
+      "fetch_content",
+      "get_search_content"
+    ],
+    "editingTools": [
+      "write",
+      "edit",
+      "bash"
+    ]
+  },
   "packages": [
     "npm:pi-web-access",
     "npm:pi-fast",

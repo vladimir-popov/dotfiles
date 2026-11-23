@@ -13,16 +13,9 @@ Arguments are case-insensitive. Invalid or extra arguments display usage without
 
 ## Read-only tools
 
-When available, read-only mode allows `read`, `grep`, `find`, `ls`, `web_search`, `fetch_content`,
-and `get_search_content`. Missing optional tools are ignored. Additional tool names can be allowed
-explicitly with the `PI_READONLY_TOOLS` environment variable, as a comma-separated list, for
-example:
-
-```sh
-PI_READONLY_TOOLS="my_docs_search,fetch_page" pi
-```
-
-Only these built-in names and explicitly configured names are permitted; other tools are blocked.
+The `pi-modes` section in `~/.pi/agent/settings.json` defines complete `readOnlyTools` and
+`editingTools` arrays. Read-only mode allows only tools listed in `readOnlyTools` that are
+available in the current session; every other tool is blocked.
 Bash is blocked by default. Each Bash call requires an interactive confirmation for the exact
 command and, if approved, that call only. Without an interactive UI, Bash remains blocked.
 
