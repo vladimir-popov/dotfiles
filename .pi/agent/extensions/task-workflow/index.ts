@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.5.2";
+const APP_VERSION = "2.5.3";
 
 type Phase =
   | "research"
@@ -107,6 +107,7 @@ type ToolPhase = SkillPhase | "manual-review";
 type Config = {
   mode?: "manual" | "semi-auto";
   autoCommit?: boolean;
+  manualReview?: boolean;
   include?: string[] | null;
   exclude?: string[];
   phaseModels?: Partial<
@@ -202,7 +203,7 @@ const HELP = `Task workflow
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
 /task config                Show effective settings for the current task
-/task config change         Change task mode and auto-commit in the terminal UI
+/task config change         Change task mode, manual review, and auto-commit in the terminal UI
 /task config init project   Create a project config with inherited settings
 /task config init task      Create a task config with inherited settings
 /task resume                Return to an active task; resume an interrupted run
@@ -222,8 +223,8 @@ Each implementation session begins with final discussion of its current step; /t
 The implementation session stays open for the step and is reused for repairs.
 Each review round uses a fresh read-only session. Reports use review-N-round-M.md, starting at round 0.
 Step status in step-N.md is planned, in_progress, or completed.
-An accepted review enters a manual-review phase first in semi-auto mode; manual mode
-moves directly to commit after review. Manual-review findings return to implementation;
+An accepted review enters manual review in semi-auto mode if manualReview is enabled.
+Otherwise it proceeds directly to commit. Manual-review findings return to implementation;
 an empty review proceeds to commit. Use /task next for settled discussion and /task accept
 to approve a proposed solution.
 Commit-message generation failures stay in commit; /task next retries them.
@@ -231,11 +232,8 @@ Without Git, /task next retries detection; /task accept skips the commit and con
 With manual commits, /task next verifies the reviewed files were committed.
 Use /task resume to return to the active task in this project. It resumes an interrupted run or pending review; otherwise it just opens the saved session.
 After discussion, /task next returns open findings to implementation or accepts
-a clear review. In semi-auto mode, a clear review enters manual review; findings return
-to implementation and an empty review proceeds to commit. /task accept accepts a proposed
-solution before routing. In manual mode, the user reviews during Review, then proceeds
-directly to commit. /task next leaves commit when its requirements are met. Without
-Git, /task accept skips the commit and continues.
+a clear review. In manual mode, the user reviews during Review. /task next leaves commit
+when its requirements are met. Without Git, /task accept skips the commit and continues.
 Use Pi's normal progress and cancellation controls during implementation and review.
 Use /task next when discussion is settled; use /task accept to agree to proposals and advance.
 Agreement is implied by /task accept; add a note only to clarify a choice or decision.
@@ -246,12 +244,12 @@ Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 <project>/.agents/task-workflow/config.json; task settings live in
 <project>/.agents/task-workflow/<task-id>/config.json.
 Use /task config to view effective settings. Use /task config change in the terminal UI
-to save mode and auto-commit to the active task's config.json.
-Use /task config init project|task to copy the inherited mode, autoCommit, include,
-and exclude values into a new config. Neither command overwrites an existing config.
+to save mode, manualReview, and autoCommit to the active task's config.json.
+Use /task config init project|task to copy the inherited mode, manualReview, autoCommit,
+include, and exclude values into a new config. Neither command overwrites an existing config.
 Settings resolve from task, project, global, then defaults; nested phase maps resolve by key, while lists and scalar values are replaced by the more local scope. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
-mode defaults to manual; autoCommit defaults to false.
+mode defaults to manual; manualReview defaults to true; autoCommit defaults to false.
 Set global statusColors keys taskName, currentSettings, currentPhase, and phaseDescription to ANSI color names
 (black, red, green, yellow, blue, purple, cyan, white, or bright-prefixed variants), palette indices 0-255,
 or hex colors such as #RRGGBB. Defaults: brightGreen, brightBlack, blue, blue. Example:
@@ -351,6 +349,11 @@ function validateConfig(config: unknown, path: string): Config {
     throw new Error(`mode must be manual or semi-auto: ${path}`);
   if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean")
     throw new Error(`autoCommit must be a boolean: ${path}`);
+  if (
+    values.manualReview !== undefined &&
+    typeof values.manualReview !== "boolean"
+  )
+    throw new Error(`manualReview must be a boolean: ${path}`);
   for (const key of ["include", "exclude"] as const) {
     const patterns = values[key];
     if (patterns === undefined || (key === "include" && patterns === null))
@@ -467,6 +470,7 @@ function materializedConfig(config: Config): Config {
     ...config,
     mode: config.mode ?? "manual",
     autoCommit: config.autoCommit ?? false,
+    manualReview: config.manualReview ?? true,
     phaseModels: config.phaseModels ?? {},
     skills: {
       research: config.skills?.research ?? null,
@@ -489,11 +493,11 @@ function materializedConfig(config: Config): Config {
   };
 }
 
-function effectiveSetting<K extends "mode" | "autoCommit">(
+function effectiveSetting<K extends "mode" | "autoCommit" | "manualReview">(
   state: TaskState,
   key: K,
 ): K extends "mode" ? "manual" | "semi-auto" : boolean {
-  const fallback = key === "mode" ? "manual" : false;
+  const fallback = key === "mode" ? "manual" : key === "manualReview";
   return (effectiveConfig(state)[key] ?? fallback) as K extends "mode"
     ? "manual" | "semi-auto"
     : boolean;
@@ -1708,6 +1712,10 @@ function taskStatusText(
     ["Roadmap skill", configuredPhaseSkill(config, "roadmap") || "none"],
     ["Review skill", reviewSkillName(config)],
     ["Mode", effectiveSetting(state, "mode")],
+    [
+      "Manual review (semi-auto)",
+      effectiveSetting(state, "manualReview") ? "on" : "off",
+    ],
     ["Auto-commit", effectiveSetting(state, "autoCommit") ? "on" : "off"],
     ["/tree", config.allowTreeNavigation === true ? "allowed" : "blocked"],
     [
@@ -3684,7 +3692,10 @@ async function acceptReviewedStep(
   delete state.commitPendingHashes;
   delete state.commitResult;
   state.commitReady = false;
-  if (effectiveSetting(state, "mode") === "semi-auto") {
+  if (
+    effectiveSetting(state, "mode") === "semi-auto" &&
+    effectiveSetting(state, "manualReview")
+  ) {
     state.phase = "manual-review";
     state.currentStep = n;
     const diffPath = join(taskDir(state), `implementation-${n}.diff`);
@@ -4540,6 +4551,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 "Task settings (changes apply to this task):",
                 [
                   `Mode: ${effectiveSetting(state, "mode")}`,
+                  `Manual review (semi-auto): ${effectiveSetting(state, "manualReview") ? "on" : "off"}`,
                   `Auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}`,
                   "Done",
                 ],
@@ -4553,6 +4565,15 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 if (!mode) continue;
                 updateTaskConfig(state, {
                   mode: mode as "manual" | "semi-auto",
+                });
+              } else if (selected.startsWith("Manual review (semi-auto):")) {
+                const manualReview = await ctx.ui.select(
+                  "Manual review after automated review (semi-auto only):",
+                  ["on", "off"],
+                );
+                if (!manualReview) continue;
+                updateTaskConfig(state, {
+                  manualReview: manualReview === "on",
                 });
               } else {
                 const autoCommit = await ctx.ui.select("Auto-commit:", [
@@ -4580,6 +4601,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             const effectiveSettings = {
               mode: effectiveSetting(state, "mode"),
               autoCommit: effectiveSetting(state, "autoCommit"),
+              manualReview: effectiveSetting(state, "manualReview"),
               statusColors: {
                 taskName: global.statusColors?.taskName ?? "brightGreen",
                 currentSettings:
@@ -4637,6 +4659,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           const values = {
             mode: inherited.mode ?? "manual",
             autoCommit: inherited.autoCommit ?? false,
+            manualReview: inherited.manualReview ?? true,
             include: inherited.include ?? [],
             exclude: inherited.exclude ?? [],
           };

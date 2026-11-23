@@ -1,13 +1,13 @@
 # Task workflow
 
-**Version: 2.5.2**
+**Version: 2.5.3**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
 ![A small waterfall flowing into a river past stepping stones](assets/task-flow-waterfall.png)
 
 `/task` guides a coding task through research, roadmap, implementation, review, and commit.
-Semi-auto mode adds a distinct manual-review phase between automated review and commit.
+By default, semi-auto mode pauses for manual review between automated review and commit.
 Research covers task context, discussion, and code investigation in one saved Pi session;
 later phases use separate sessions, with compact task artifacts carrying agreed decisions
 forward. Each implementation session starts with final discussion of just its current step
@@ -22,8 +22,8 @@ flowchart LR
     C -->|/task next: finalize step; status planned → in_progress; capture baseline| D["Implement"]
     D -->|/task next: save implementation-N.diff; start review round 0| E["Review"]
     E -->|/task next: open findings; preserve round; repair| D
-    E -->|clear: semi-auto| F["Manual review"]
-    E -->|clear: manual| G["Commit phase"]
+    E -->|clear: semi-auto with manualReview enabled| F["Manual review"]
+    E -->|clear: manual mode or manualReview disabled| G["Commit phase"]
     F -->|/task next: findings| D
     F -->|/task accept: accepted fix| D
     F -->|/task next: clear| G
@@ -35,8 +35,8 @@ flowchart LR
 Research gathers task context and investigates code in one saved conversation. Each step's
 preparation discussion and implementation share one saved session; after review finds
 issues, repairs return to that same session. Each review round opens a fresh session. A
-clear review opens a separate commit phase in manual mode. In semi-auto mode, it opens a
-separate manual-review phase first; the next step cannot start until commit is completed.
+clear review opens a separate commit phase. In semi-auto mode with `manualReview` enabled,
+it opens a separate manual-review phase first. The next step cannot start until commit is completed.
 In Git projects, manual mode requires the reviewed files to be committed before
 `/task next`; `autoCommit: true` commits them automatically. If Git is not
 detected, the commit phase remains open. `/task next` retries Git detection and
@@ -98,7 +98,7 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task delete [TASK-ID]`    | Permanently delete a task after a separate confirmation. Without an ID, choose from a selector in the terminal UI.                                                                                                                                               |
 | `/task status`              | Show the phase, step, session paths, review status, and settings without adding text to the conversation.                                                                                                                                                        |
 | `/task config`              | Show the full effective configuration for the active task without changing it.                                                                                                                                                                                  |
-| `/task config change`       | Edit mode and auto-commit in the terminal UI and save them in the active task's `config.json`.                                                                                                                                                                   |
+| `/task config change`       | Edit mode, manual review, and auto-commit in the terminal UI and save them in the active task's `config.json`.                                                                                                                                                                   |
 | `/task config init project` | Create `.agents/task-workflow/config.json` with inherited settings; refuses to overwrite an existing file.                                                                                                                                                      |
 | `/task config init task`    | Create `.agents/task-workflow/<task-id>/config.json` with inherited settings; refuses to overwrite an existing file.                                                                                                                                           |
 | `/task resume`              | Return to the active task in this project. If multiple tasks are available, choose one in the terminal UI; outside it, use `/task TASK-ID` to select. An interrupted run or pending review resumes automatically; otherwise the saved task session simply opens. |
@@ -150,12 +150,13 @@ ID. Task storage paths are fixed.
 | **Roadmap**        | Discuss a numbered plan. New agreed requirements update context and cause a revised complete roadmap proposal.                                                                                                                                                                                                                                                                                                              | `context.md` and a draft `roadmap.md`; `/task next` finalizes the roadmap. Top-level steps must be numbered consecutively from 1; short bold titles and dash explanations are preferred, but ordinary numbered Markdown steps are accepted. |
 | **Implementation** | This is one workflow phase with two stages in the same saved session. **Preparation:** discuss the current step and checks; project code is read-only. `/task next` resolves open questions/proposals, finalizes `step-N.md`, marks it `in_progress`, captures a baseline, and starts implementation. **Coding:** implement the approved step; after review, repair open findings in this same session. | Only the current step needs a `step-N.md`; future step designs are deferred. `/task next` after coding writes the temporary `implementation-N.diff` and opens review. |
 | **Review**         | Each round uses a fresh read-only session. The first report is `review-N-round-0.md`; every subsequent round gets the next number.                                                                                                                                                                                                                                                             | `/task next` returns open findings to implementation or accepts a clear review.                                                                                                                                                             |
-| **Manual review**  | Semi-auto only. After automated review and before commit, a separate read-only session lets the user inspect the implementation diff and changed files. `/task next` sends findings to implementation or an empty review to commit; `/task accept` accepts a proposed solution and follows the same routing. | No artifact is required.                                                                                                                                                                                                                     |
+| **Manual review**  | Semi-auto only, when `manualReview` is enabled. After automated review and before commit, a separate read-only session lets the user inspect the implementation diff and changed files. `/task next` sends findings to implementation or an empty review to commit; `/task accept` accepts a proposed solution and follows the same routing. | No artifact is required.                                                                                                                                                                                                                     |
 | **Commit**         | A distinct phase after review acceptance. After the commit is verified, the extension records review outcomes in `step-N.md`, marks it `completed`, and removes `implementation-N.diff` and all `review-N-round-M.md` files for that step.                                                                                                                                                                                                                                    | The compact execution record in `step-N.md` preserves review summaries, accepted decisions, and finding dispositions.                                                                                                                                                                                       |
 | **Commit**         | A distinct phase after review acceptance, with its own saved session and visible commit result. With `autoCommit: false`, commit the reviewed files manually; `/task next` verifies they are committed before continuing. With `autoCommit: true`, the extension commits them automatically.                                                                                                                                | Commit title/body are shown in the commit session; no separate Markdown artifact.                                                                                                                                                           |
 
-On accepting a clear review in manual mode, the extension enters a separate commit phase.
-In semi-auto mode, it opens a separate manual-review session first. `/task next` moves
+On accepting a clear review, the extension proceeds directly to commit in manual mode or
+when `manualReview` is disabled. Otherwise, it opens a separate manual-review session first.
+Disabling the setting does not close an already-open manual review. `/task next` moves
 findings back to implementation and an empty review to commit; `/task accept` accepts a
 proposed solution before following the same routing. The commit phase has its own saved
 session and generates the commit result.
@@ -200,21 +201,23 @@ the most local setting. Missing keys inherit; `null` explicitly disables skills 
 phase models, and can disable default hotkeys. The global file is optional; omitted
 properties use the defaults below. Run `/task config init project` or `/task config init task`
 to create a config without overwriting an existing file. These commands copy the current
-inherited `mode` and `autoCommit` (defaults: `manual` and `false`), and the `include` and
+inherited `mode`, `manualReview`, and `autoCommit` (defaults: `manual`, `true`, and `false`),
+and the `include` and
 `exclude` pattern lists (both default to `[]`). An empty `include` means no allowlist;
 legacy `include: null` is still accepted and is written as `[]` in new configs. An empty
 `exclude` means no exclusions. The project inherits from global settings; the task inherits
 from project and global settings. Delete a copied key to resume inheriting its value. Other
 settings continue to inherit. These lists are saved but do not yet filter files. Use
 `/task config` to view the effective workflow settings.
-Use `/task config change` in the terminal UI to change mode and auto-commit for the active
-task; it creates or updates the task's `config.json` and preserves its other settings.
+Use `/task config change` in the terminal UI to change mode, manual review, and auto-commit
+for the active task; it creates or updates the task's `config.json` and preserves its other settings.
 Edit the config file directly to change other values. Here is a complete example
 with different models for implementation and review:
 
 ```json
 {
   "mode": "manual",
+  "manualReview": true,
   "autoCommit": false,
   "statusColors": {
     "taskName": "brightGreen",
@@ -258,8 +261,9 @@ The model IDs above are examples. Use a provider and model available in your Pi 
 
 | Property              | Type and default                                                                     | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | --------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mode`                | `manual` or `semi-auto`; `manual`                                                    | Workflow transition policy. `manual` requires `/task next` or `/task accept`; the user can perform manual code review during each Review phase. In `semi-auto`, when an agent turn settles, implementation advances to review and a saved review advances to repair or acceptance if the transition check finds no open questions or unapproved proposals. After a clear review it pauses in a distinct manual-review phase. Findings route back to implementation; an empty review proceeds to commit. `/task accept` accepts a proposed solution before routing. It pauses on uncertainty. Configure globally, per project, or per task; more local values override broader ones. |
-| `autoCommit`          | Boolean; `false`                                                                     | After a clear review in a Git project, `false` prepares an English commit title and body; `true` commits the reviewed code files when semi-auto manual-review checks route the step to commit. Automatic commit requires a clean code working tree when implementation starts. With no Git repository, neither mode creates a commit. It can be overridden per project and task.                                                                                                                                                                                                                      |
+| `mode`                | `manual` or `semi-auto`; `manual`                                                    | Workflow transition policy. `manual` requires `/task next` or `/task accept`; the user can perform manual code review during each Review phase. In `semi-auto`, when an agent turn settles, implementation advances to review and a saved review advances to repair or acceptance if the transition check finds no open questions or unapproved proposals. It pauses on uncertainty. Configure globally, per project, or per task; more local values override broader ones. |
+| `manualReview`        | Boolean; `true`                                                                      | In `semi-auto`, pause for manual review after a clear automated review. Set to `false` to enter commit directly. Has no effect in `manual` mode. |
+| `autoCommit`          | Boolean; `false`                                                                     | After a clear review in a Git project, `false` prepares an English commit title and body; `true` commits the reviewed code files when the step reaches commit. Automatic commit requires a clean code working tree when implementation starts. With no Git repository, neither mode creates a commit. It can be overridden per project and task.                                                                                                                                                                                                                      |
 | `statusColors`        | Object; bright green, bright black, blue, blue                                       | Colors for `taskName`, `currentSettings`, `currentPhase`, and `phaseDescription`, respectively. Each value accepts an ANSI color name (`black`, `red`, `green`, `yellow`, `blue`, `purple`, `cyan`, `white`, or a `bright`-prefixed variant), a 0–255 palette index, or a hex color such as `#RRGGBB`. Unspecified values use their defaults.                                                                                                                                                                                            |
 | `phaseModels`         | Object; `{}`                                                                         | Model overrides by phase. Valid keys: `research`, `roadmap`, `implement`, `review`. New tasks use `phaseModels.implement` throughout step preparation and coding. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place.                                                                                                                                                                                                                                                                     |
 | `skills`              | Object; `{}`                                                                         | Maps phase names to Pi skill names. Valid keys: `research`, `roadmap`, `implement`, `review`, `commit`. Each value is a skill name or `null`; omitted entries inherit from the broader scope, while `null` explicitly disables the skill. An available review skill may define the procedure, within the extension-owned contract. A missing skill does not block the phase. Use names such as `roadmap-planning`, not paths to `SKILL.md`.                                                                                     |
