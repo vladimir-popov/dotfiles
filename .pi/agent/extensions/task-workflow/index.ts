@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.5.3";
+const APP_VERSION = "2.5.4";
 
 type Phase =
   | "research"
@@ -2892,7 +2892,7 @@ function setPhaseWidget(
   const phase = title
     ? fullPhase.slice(0, fullPhase.lastIndexOf(` · ${title}`))
     : fullPhase;
-  const settings = `[mode: ${effectiveSetting(state, "mode")}, auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}, version: ${APP_VERSION}]`;
+  const settings = `[mode: ${effectiveSetting(state, "mode")}, auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}, manual-review: ${effectiveSetting(state, "manualReview") ? "on" : "off"}, version: ${APP_VERSION}]`;
   const colors = {
     taskName: parseStatusColor(config.statusColors?.taskName ?? "brightGreen"),
     currentSettings: parseStatusColor(
@@ -4592,6 +4592,8 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                   continue;
                 updateTaskConfig(state, { autoCommit: autoCommit === "on" });
               }
+              const displayedTask = visibleTask(ctx);
+              if (displayedTask) setPhaseWidget(ctx, displayedTask, true);
             }
             return;
           }

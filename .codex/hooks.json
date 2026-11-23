@@ -3,7 +3,7 @@
     "UserPromptSubmit": [{
       "hooks": [{
         "type": "command",
-        "command": "id=$(jq -r .turn_id) && nyathing client -a ~/.codex/animations/chatgpt_64x64.png start --activity-id \"$id\" --keepalive-interval 90 >/dev/null"
+        "command": "id=$(jq -r .turn_id) && nyathing client start -a ~/.codex/animations/chatgpt_64x64.png --activity-id \"$id\" --keepalive-interval 90 >/dev/null"
       }]
     }],
     "PostModelRequest": [{
