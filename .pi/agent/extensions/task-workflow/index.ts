@@ -44,7 +44,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.3.1";
+const APP_VERSION = "2.4.0";
 
 type Phase =
   | "research"
@@ -202,7 +202,8 @@ const HELP = `Task workflow
 /task or /task list         Select a task to continue
 /task delete [TASK-ID]      Permanently delete a task after confirmation
 /task status                Show task state, current session, and artifact paths
-/task config                Show or change settings for the current task
+/task config                Show effective settings for the current task
+/task config change         Change task mode and auto-commit in the terminal UI
 /task config init project   Create an empty project config ({})
 /task config init task      Initialize empty task overrides ({})
 /task resume                Return to an active task; resume an interrupted run
@@ -245,10 +246,10 @@ Task data uses the fixed path <project>/.agents/task-workflow/<task-id>/, with a
 Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 <project>/.agents/task-workflow/config.json; task overrides live in that task's
 state.json. Resolution order is task, project, global, then defaults.
-Use /task config in the terminal UI to change mode and auto-commit for the active
-task; these become task-level overrides. Use /task config init project|task to create
-empty scoped settings ({}) and inherit values from broader scopes. Project initialization
-refuses to overwrite an existing config.
+Use /task config to view effective settings. Use /task config change in the terminal UI
+to change mode and auto-commit for the active task; these become task-level overrides.
+Use /task config init project|task to create empty scoped settings ({}) and inherit
+values from broader scopes. Project initialization refuses to overwrite an existing config.
 Settings resolve from task, project, global, then defaults; nested phase maps resolve by key, while lists and scalar values are replaced by the more local scope. Task files are fixed under
 .agents/task-workflow/<task-id>/context/ and state/sessions under the task directory.
 mode defaults to manual; autoCommit defaults to false.
@@ -4404,8 +4405,10 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         "help",
       ];
       let items = commands.map((value) => ({ value, label: value }));
-      if (prefix.startsWith("config")) {
+      if (prefix === "config" || prefix.startsWith("config ")) {
         items = [
+          { value: "config", label: "config" },
+          { value: "config change", label: "change" },
           { value: "config init project", label: "init project" },
           { value: "config init task", label: "init task" },
         ];
@@ -4506,55 +4509,59 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           return;
         }
         if (command === "config") {
-          if (args.length === 0) {
+          if (args.length === 1 && args[0] === "change") {
+            if (ctx.mode !== "tui")
+              throw new Error("/task config change requires the terminal UI.");
             const state = requireTask(ctx, false);
-            if (ctx.mode === "tui") {
-              while (true) {
-                const selected = await ctx.ui.select(
-                  "Task settings (changes apply to this task):",
-                  [
-                    `Mode: ${effectiveSetting(state, "mode")}`,
-                    `Auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}`,
-                    "Done",
-                  ],
-                );
-                if (!selected || selected === "Done") break;
-                if (selected.startsWith("Mode:")) {
-                  const mode = await ctx.ui.select("Workflow mode:", [
-                    "manual",
-                    "semi-auto",
-                  ]);
-                  if (!mode) continue;
-                  state.configOverrides = {
-                    ...state.configOverrides,
-                    mode: mode as "manual" | "semi-auto",
-                  };
-                  state.workflowMode = undefined;
-                  saveState(state);
-                } else {
-                  const autoCommit = await ctx.ui.select("Auto-commit:", [
-                    "off",
-                    "on",
-                  ]);
-                  if (!autoCommit) continue;
-                  if (
-                    autoCommit === "on" &&
-                    !effectiveSetting(state, "autoCommit") &&
-                    !(await ctx.ui.confirm(
-                      "Enable auto-commit?",
-                      "After a clear review, the task may automatically commit reviewed code. The working tree must be clean when implementation starts.",
-                    ))
-                  )
-                    continue;
-                  state.configOverrides = {
-                    ...state.configOverrides,
-                    autoCommit: autoCommit === "on",
-                  };
-                  state.autoCommit = undefined;
-                  saveState(state);
-                }
+            while (true) {
+              const selected = await ctx.ui.select(
+                "Task settings (changes apply to this task):",
+                [
+                  `Mode: ${effectiveSetting(state, "mode")}`,
+                  `Auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}`,
+                  "Done",
+                ],
+              );
+              if (!selected || selected === "Done") break;
+              if (selected.startsWith("Mode:")) {
+                const mode = await ctx.ui.select("Workflow mode:", [
+                  "manual",
+                  "semi-auto",
+                ]);
+                if (!mode) continue;
+                state.configOverrides = {
+                  ...state.configOverrides,
+                  mode: mode as "manual" | "semi-auto",
+                };
+                state.workflowMode = undefined;
+                saveState(state);
+              } else {
+                const autoCommit = await ctx.ui.select("Auto-commit:", [
+                  "off",
+                  "on",
+                ]);
+                if (!autoCommit) continue;
+                if (
+                  autoCommit === "on" &&
+                  !effectiveSetting(state, "autoCommit") &&
+                  !(await ctx.ui.confirm(
+                    "Enable auto-commit?",
+                    "After a clear review, the task may automatically commit reviewed code. The working tree must be clean when implementation starts.",
+                  ))
+                )
+                  continue;
+                state.configOverrides = {
+                  ...state.configOverrides,
+                  autoCommit: autoCommit === "on",
+                };
+                state.autoCommit = undefined;
+                saveState(state);
               }
             }
+            return;
+          }
+          if (args.length === 0) {
+            const state = requireTask(ctx, false);
             const global = effectiveConfig(state);
             const effectiveSettings = {
               mode: effectiveSetting(state, "mode"),
@@ -4600,7 +4607,9 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             args[0] !== "init" ||
             !["project", "task"].includes(args[1])
           )
-            throw new Error("Usage: /task config init project|task");
+            throw new Error(
+              "Usage: /task config [change | init (project|task)]",
+            );
           const scope = args[1];
           if (scope === "project") {
             const root = projectRoot(ctx.cwd);
