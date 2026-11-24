@@ -42,3 +42,5 @@ keybind = super+digit_2=text:\x02\x32
 keybind = super+digit_3=text:\x02\x33
 keybind = super+digit_4=text:\x02\x34
 keybind = super+digit_5=text:\x02\x35
+
+custom-shader = ~/.config/ghostty/ghostty-dim-unfocused.glsl
