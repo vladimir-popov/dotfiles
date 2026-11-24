@@ -43,4 +43,6 @@ keybind = super+digit_3=text:\x02\x33
 keybind = super+digit_4=text:\x02\x34
 keybind = super+digit_5=text:\x02\x35
 
+#custom-shader-animation = always
+#custom-shader = ~/.config/ghostty/starfield.glsl
 custom-shader = ~/.config/ghostty/ghostty-dim-unfocused.glsl
