@@ -1,8 +1,22 @@
 # Task workflow
 
-**Version: 2.8.0**
+**Version: 2.9.0**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
+
+## Changelog
+
+### 2.9.0
+
+- Added `/task browse` and `/task delete --global [TASK-ID]` to find and delete tasks
+  across indexed project roots; the browser can also remove broken index entries.
+- Added discovery and deletion support for historical tasks under
+  `.agents/projects/<task-id>/`.
+- Added configurable deletion modes: move task data to the OS trash by default or
+  permanently delete it. If moving to trash fails, the extension can ask to retry
+  the remaining paths with permanent deletion.
+- Hardened task discovery and deletion with path and index validation; unrecognized or
+  unsafe task data is preserved, and deletion confirmations identify the selected paths.
 
 ![A small waterfall flowing into a river past stepping stones](assets/task-flow-waterfall.png)
 
@@ -44,7 +58,7 @@ commit-message generation; `/task accept` skips this commit and continues, recor
 intentional skip in the step execution record. Projects without Git remain in commit until
 Git is created or the user accepts the skip.
 
-All task files use a fixed project-local layout:
+New tasks use this project-local layout:
 
 ```text
 .agents/task-workflow/
@@ -62,7 +76,9 @@ All task files use a fixed project-local layout:
         └── implementation-N.diff   # Temporary; removed when the step completes
 ```
 
-Task paths are fixed under `.agents/task-workflow/`; project `config.json` lives alongside task directories. The full directory contains local task data; add it to `.gitignore` if desired.
+The extension also recognizes historical tasks stored under
+`.agents/projects/<task-id>/`. Project settings remain in `.agents/task-workflow/config.json`.
+The full task directories contain local data; add them to `.gitignore` if desired.
 
 ### Optional phase skills
 
@@ -82,7 +98,19 @@ set. A missing skill does not block the workflow.
 
 ## 🚀 Usage
 
-Start Pi in the project directory and enter `/task TASK-100500`. Pi asks whether to create a missing task or continue an existing one. Declining leaves the current session unchanged. `/task` and `/task list` show tasks with a short state description and their last worked time, based on the newest saved task session. Both open the same selector in the terminal UI. Existing IDs also appear in command completion. If you rename a project directory, close Pi and start it from the new path. In the terminal UI, `/task` or `/task resume` can show project-local tasks marked as moved and ask for confirmation before relocating their state and saved sessions. Declining leaves the task unchanged. Outside the terminal UI, relocation is refused. Session/state paths are rebased, but historical prose in the conversation or artifacts is not rewritten.
+Start Pi in the project directory and enter `/task TASK-100500`. Pi asks whether to create a missing
+task or continue an existing one. Declining leaves the current session unchanged. `/task` and
+`/task list` show project-local tasks with a short state description and their last worked time,
+based on the newest saved task session. Both open the same selector in the terminal UI. Use
+`/task browse` to inspect tasks across indexed projects and recognized layouts; in the terminal
+UI, this selector is for deletion only. Existing project-local IDs also appear in command
+completion.
+
+If you rename a project directory, close Pi and start it from the new path. In the terminal UI,
+`/task` or `/task resume` can show project-local tasks marked as moved and ask for confirmation
+before relocating their state and saved sessions. Declining leaves the task unchanged. Outside
+the terminal UI, relocation is refused. Session/state paths are rebased, but historical prose in
+the conversation or artifacts is not rewritten.
 
 The extension shows the current phase in a small header above the editor when a task session opens. Once Pi finishes a response, the second line tells you when `/task next` is useful; a pending proposal may instead need `/task accept`. The first line colors the task name, current settings (mode, auto-commit, manual review, and extension version), phase, and phase description separately. By default, the task name is bright green, settings are bright black, and the phase and description are blue. When the project is not inside a Git repository, the widget adds a red `⚠ No Git repository` warning. Configure the other colors with `statusColors` (see Configuration). Pi's built-in footer shows the session name. For implementation preparation, implementation, review, manual review, and commit, the extension adds a short title from the current numbered roadmap step to that name. These UI labels do not enter the model conversation.
 
@@ -95,10 +123,12 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task new TASK-ID`         | Create a task with the given ID.                                                                                                                                                                                                                                 |
 | `/task TASK-ID`             | Open an existing task.                                                                                                                                                                                                                                           |
 | `/task` or `/task list`     | Select an existing task, or show a list outside the terminal UI.                                                                                                                                                                                                 |
-| `/task delete [TASK-ID]`    | Permanently delete a task after a separate confirmation. Without an ID, choose from a selector in the terminal UI.                                                                                                                                               |
+| `/task browse`              | Browse tasks across indexed projects and select a task or broken index entry for deletion in the terminal UI.                                                                                                                                                     |
+| `/task delete [TASK-ID]`    | Delete a project-local task after a separate confirmation. Without an ID, choose from a selector in the terminal UI.                                                                                                                                              |
+| `/task delete --global [ID]` | Select and delete a task across indexed projects after a separate confirmation. An ID is required outside the terminal UI.                                                                                                                                    |
 | `/task status`              | Show the phase, step, session paths, review status, and settings without adding text to the conversation.                                                                                                                                                        |
 | `/task config`              | Show the full effective configuration for the active task without changing it.                                                                                                                                                                                  |
-| `/task config change`       | Edit mode, manual review, and auto-commit in the terminal UI and save them in the active task's `config.json`.                                                                                                                                                                   |
+| `/task config change`       | Edit mode, deletion mode, manual review, and auto-commit in the terminal UI and save them in the active task's `config.json`.                                                                                                                                                  |
 | `/task config init project` | Create `.agents/task-workflow/config.json` with inherited settings; refuses to overwrite an existing file.                                                                                                                                                      |
 | `/task config init task`    | Create `.agents/task-workflow/<task-id>/config.json` with inherited settings; refuses to overwrite an existing file.                                                                                                                                           |
 | `/task resume`              | Return to the active task in this project. If multiple tasks are available, choose one in the terminal UI; outside it, use `/task TASK-ID` to select. An interrupted run or pending review resumes automatically; otherwise the saved task session simply opens. |
@@ -146,7 +176,32 @@ The unquoted command words `help`, `list`, `delete`, `status`, `log`, `abort`, `
 ID. The retired word `skip-commit` is rejected; quote it if you want to use it as a task
 ID. Task storage paths are fixed.
 
-`/task delete` lists tasks in the current project for selection. `/task delete TASK-100500` selects one directly; quote IDs with spaces as above. Both routes ask you to confirm the artifact and runtime directories before deleting. The command removes both directories, including task artifacts, local state, baselines, and saved Pi sessions; project files outside them remain. If the task is open, Pi first switches to a normal session outside the task directory. Finish or cancel a running Pi response before deleting. Outside the terminal UI, provide an explicit ID because there is no selector.
+`/task delete` lists tasks in the current project for selection. `/task delete TASK-100500`
+selects one directly; quote IDs with spaces as above. `/task delete --global TASK-100500` selects a
+task across indexed projects. If an ID occurs in multiple projects, use `/task browse` in the
+terminal UI and choose the exact project and path. Global browsing also offers
+`/task delete --global` with no ID in the terminal UI. All routes require a separate confirmation
+that names the selected data paths; `/task browse` uses `x` to begin deletion, not to confirm it.
+Deletion is limited to validated task directories; project files outside them remain untouched.
+Finish or cancel a running Pi response before deleting.
+
+Deletion moves recognized task data to the OS trash by default. Set `deleteMode` to `permanent`
+to delete it permanently instead; permanent deletion cannot be undone. If trashing fails,
+deletion stops and the index record is retained; Pi offers a separate confirmation to set the
+task's deletion mode to permanent and retry only the remaining paths. It never switches to
+permanent deletion silently. When deleting a task that is open, Pi first switches to a normal
+session outside its task directory.
+
+Global discovery is bounded to the active project and project roots named by valid records in the
+shared task index. It checks the current `.agents/task-workflow/<task-id>/` and recognized
+historical `.agents/projects/<task-id>/` layouts; it does not recursively scan projects. Tasks or
+entries with unknown layouts or invalid data are shown in a warning color and preserved.
+`/task browse` can remove a broken index entry without touching task data. If a valid index record
+identifies a recognized task directory but its `state.json` is missing, the selector offers to
+remove only the index record or also the remaining task directory. Removing that directory
+requires explicit selection and confirmation. Malformed records or unvalidated paths never
+authorize deleting task data. Outside the terminal UI, use an explicit ID for task deletion;
+broken index entries can only be removed in the terminal UI.
 
 ### Phases and artifacts
 
@@ -204,9 +259,11 @@ Returning from review restores that step's implementation session, including pre
 
 The extension reads `~/.pi/agent/task-workflow.json` (or `task-workflow.json` in
 `PI_CODING_AGENT_DIR`). Project overrides live in
-`<projectRoot>/.agents/task-workflow/config.json`; task settings live in
-`<projectRoot>/.agents/task-workflow/<task-id>/config.json`. Settings in existing task
-state files are ignored and are not migrated.
+`<projectRoot>/.agents/task-workflow/config.json`; task settings for current-layout tasks live in
+`<projectRoot>/.agents/task-workflow/<task-id>/config.json`. For deletion-mode overrides only,
+historical tasks under `.agents/projects/<task-id>/` use
+`<projectRoot>/.agents/projects/<task-id>/config.json`. Settings in existing task state files are
+ignored and are not migrated.
 Settings resolve in task → project → global → built-in-default order. For
 `skills`, `phaseModels`, `phaseTools`, `additionalPhaseTools`, `hotkeys`, and
 `statusColors`, entries resolve by key; other values, including arrays, are replaced by
@@ -214,16 +271,17 @@ the most local setting. Missing keys inherit; `null` explicitly disables skills 
 phase models, and can disable default hotkeys. The global file is optional; omitted
 properties use the defaults below. Run `/task config init project` or `/task config init task`
 to create a config without overwriting an existing file. These commands copy the current
-inherited `mode`, `manualReview`, and `autoCommit` (defaults: `manual`, `true`, and `false`),
-and the `include` and
+inherited `mode`, `deleteMode`, `manualReview`, and `autoCommit`
+(defaults: `manual`, `trash`, `true`, and `false`), and the `include` and
 `exclude` pattern lists (both default to `[]`). An empty `include` means no allowlist;
 legacy `include: null` is still accepted and is written as `[]` in new configs. An empty
 `exclude` means no exclusions. The project inherits from global settings; the task inherits
 from project and global settings. Delete a copied key to resume inheriting its value. Other
 settings continue to inherit. These lists are saved but do not yet filter files. Use
 `/task config` to view the effective workflow settings.
-Use `/task config change` in the terminal UI to change mode, manual review, and auto-commit
-for the active task; it creates or updates the task's `config.json` and preserves its other settings.
+Use `/task config change` in the terminal UI to change mode, deletion mode, manual review, and
+auto-commit for the active task; it creates or updates the task's `config.json` and preserves
+its other settings.
 Edit the config file directly to change other values. Here is a complete example
 with different models for implementation and review:
 
@@ -277,6 +335,7 @@ The model IDs above are examples. Use a provider and model available in your Pi 
 | `mode`                | `manual` or `semi-auto`; `manual`                                                    | Workflow transition policy. `manual` requires `/task next` or `/task accept`; the user can perform manual code review during each Review phase. In `semi-auto`, when an agent turn settles, implementation advances to review and a saved review advances to repair or acceptance if the transition check finds no open questions or unapproved proposals. It pauses on uncertainty. Configure globally, per project, or per task; more local values override broader ones. |
 | `manualReview`        | Boolean; `true`                                                                      | In `semi-auto`, pause for manual review after a clear automated review. Set to `false` to enter commit directly. Has no effect in `manual` mode. |
 | `autoCommit`          | Boolean; `false`                                                                     | After a clear review in a Git project, `false` prepares an English commit title and body; `true` commits the reviewed code files when the step reaches commit. Automatic commit requires a clean code working tree when implementation starts. With no Git repository, neither mode creates a commit. It can be overridden per project and task.                                                                                                                                                                                                                      |
+| `deleteMode`          | `trash` or `permanent`; `trash`                                                      | Controls how selected task data is deleted. `trash` moves it to the OS trash; `permanent` removes it without using the trash and cannot be undone. The value resolves task → project → global → built-in default. A trash failure stops deletion; Pi asks separately before saving `permanent` for the task and retrying remaining paths. |
 | `statusColors`        | Object; bright green, bright black, blue, blue                                       | Colors for `taskName`, `currentSettings`, `currentPhase`, and `phaseDescription`, respectively. Each value accepts an ANSI color name (`black`, `red`, `green`, `yellow`, `blue`, `purple`, `cyan`, `white`, or a `bright`-prefixed variant), a 0–255 palette index, or a hex color such as `#RRGGBB`. Unspecified values use their defaults.                                                                                                                                                                                            |
 | `phaseModels`         | Object; `{}`                                                                         | Model overrides by phase. Valid keys: `research`, `roadmap`, `implement`, `review`. New tasks use `phaseModels.implement` throughout step preparation and coding. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place.                                                                                                                                                                                                                                                                     |
 | `skills`              | Object; `{}`                                                                         | Maps phase names to Pi skill names. Valid keys: `research`, `roadmap`, `implement`, `review`, `commit`. Each value is a skill name or `null`; omitted entries inherit from the broader scope, while `null` explicitly disables the skill. An available review skill may define the procedure, within the extension-owned contract. A missing skill does not block the phase. Use names such as `roadmap-planning`, not paths to `SKILL.md`.                                                                                     |
@@ -306,7 +365,12 @@ Add any supported phase to `phaseModels` using the same object shape. For exampl
 
 The research model is selected when its session opens. Other overrides apply when their new phase session opens. Reopening a session with an already applied override keeps its saved model; changing configuration does not retroactively replace it. You can also change a session's model with Pi's normal controls.
 
-Task artifacts live in `.agents/task-workflow/<task-id>/context/`; `implementation-N.diff` and review round files exist only while the step is active. `config.json`, `state.json`, `sessions/`, and `baselines/` live directly under `.agents/task-workflow/<task-id>/`. Task discovery scans these fixed task directories and a small index under `~/.pi/agent/task-workflow-index/`.
+New task artifacts live under `.agents/task-workflow/<task-id>/context/`; implementation diffs
+and review-round files exist only while a step is active. Runtime files live directly under the
+task directory. Discovery uses the known current layout, the recognized historical
+`.agents/projects/<task-id>/` layout, and records in the shared index under
+`~/.pi/agent/task-workflow-index/` (or under `PI_CODING_AGENT_DIR`). Global discovery checks only
+the active project and roots from valid index records; it does not broadly scan the filesystem.
 
 ## 🔧 Implementation notes
 

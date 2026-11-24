@@ -2,7 +2,7 @@
 
 ## Project versioning
 
-After every project change made in response to a user request, propose a specific
+After every project change (excluding changes in .agents/ directory) made in response to a user request, propose a specific
 new version. Increment the patch version for backward-compatible changes
 (for example, 2.1.0 → 2.1.1) or the major version for backward-incompatible changes
 (for example, 2.1.1 → 3.0.0).

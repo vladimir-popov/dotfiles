@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import picomatch from "picomatch";
+import trash from "trash";
 import {
   constants as fsConstants,
   cpSync,
@@ -10,10 +11,12 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   realpathSync,
   renameSync,
   rmSync,
+  rmdirSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -50,7 +53,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.8.0";
+const APP_VERSION = "2.9.0";
 
 type Phase =
   | "research"
@@ -60,6 +63,15 @@ type Phase =
   | "manual-review"
   | "commit"
   | "complete";
+const TASK_PHASES: ReadonlySet<string> = new Set([
+  "research",
+  "roadmap",
+  "implement",
+  "review",
+  "manual-review",
+  "commit",
+  "complete",
+]);
 type SessionRefs = {
   research?: string;
   roadmap?: string;
@@ -110,8 +122,10 @@ type PhaseModel = {
 };
 type SkillPhase = "research" | "roadmap" | "implement" | "review" | "commit";
 type ToolPhase = SkillPhase | "manual-review";
+type DeleteMode = "trash" | "permanent";
 type Config = {
   mode?: "manual" | "semi-auto";
+  deleteMode?: DeleteMode;
   autoCommit?: boolean;
   manualReview?: boolean;
   include?: string[] | null;
@@ -205,11 +219,13 @@ const HELP = `Task workflow
 
 /task TASK-ID              Start or continue a task after confirmation
 /task new TASK-ID           Create a new task
-/task or /task list         Select a task to continue
-/task delete [TASK-ID]      Permanently delete a task after confirmation
+/task or /task list         Select a project-local task to continue
+/task browse                Browse global tasks and select one to delete
+/task delete [TASK-ID]      Delete a project-local task
+/task delete --global [ID]  Select and delete a task across projects
 /task status                Show task state, current session, and artifact paths
 /task config                Show effective settings for the current task
-/task config change         Change task mode, manual review, and auto-commit in the terminal UI
+/task config change         Change task mode, deletion, manual review, and auto-commit in the terminal UI
 /task config init project   Create a project config with inherited settings
 /task config init task      Create a task config with inherited settings
 /task resume                Return to an active task; resume an interrupted run
@@ -223,7 +239,8 @@ Configure or disable them with hotkeys in task-workflow.json; use /hotkeys to in
 
 Quote an ID containing spaces, for example: /task "TASK 100500".
 Starting or opening a specific task requires an explicit ID.
-/task delete removes its artifact directory and saved sessions; code outside it remains.
+/task delete moves task data to the OS trash by default; permanent deletion is configurable.
+Code outside a recognized task directory remains untouched.
 Research gathers task context and investigates the code in one saved Pi session. Later phases use their own sessions.
 Each implementation session begins with final discussion of its current step; /task next finalizes that step and starts coding in the same session.
 The implementation session stays open for the step and is reused for repairs.
@@ -357,6 +374,11 @@ function validateConfig(config: unknown, path: string): Config {
   if (values.autoCommit !== undefined && typeof values.autoCommit !== "boolean")
     throw new Error(`autoCommit must be a boolean: ${path}`);
   if (
+    values.deleteMode !== undefined &&
+    !["trash", "permanent"].includes(String(values.deleteMode))
+  )
+    throw new Error(`deleteMode must be trash or permanent: ${path}`);
+  if (
     values.manualReview !== undefined &&
     typeof values.manualReview !== "boolean"
   )
@@ -476,6 +498,7 @@ function materializedConfig(config: Config): Config {
   return {
     ...config,
     mode: config.mode ?? "manual",
+    deleteMode: config.deleteMode ?? "trash",
     autoCommit: config.autoCommit ?? false,
     manualReview: config.manualReview ?? true,
     phaseModels: config.phaseModels ?? {},
@@ -498,6 +521,36 @@ function materializedConfig(config: Config): Config {
     snapshotMaxFiles: config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
     snapshotMaxMiB: config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB,
   };
+}
+
+function effectiveDeletionMode(
+  state: TaskState,
+  stateFile: string,
+  layout: TaskLayout,
+): DeleteMode {
+  const globalMode = readConfig().deleteMode;
+  const projectMode = readScopedConfig(
+    projectConfigPath(state.projectRoot),
+  ).deleteMode;
+  const taskConfig =
+    layout === "historical"
+      ? join(dirname(stateFile), "config.json")
+      : taskConfigPath(state);
+  const taskMode = readScopedConfig(taskConfig).deleteMode;
+  return taskMode ?? projectMode ?? globalMode ?? "trash";
+}
+
+function setTaskDeletionMode(
+  state: TaskState,
+  stateFile: string,
+  layout: TaskLayout,
+  mode: DeleteMode,
+): void {
+  const path =
+    layout === "historical"
+      ? join(dirname(stateFile), "config.json")
+      : taskConfigPath(state);
+  writeScopedConfig(path, { ...readScopedConfig(path), deleteMode: mode });
 }
 
 function effectiveSetting<K extends "mode" | "autoCommit" | "manualReview">(
@@ -852,11 +905,47 @@ type ReplacedContext = Parameters<
   NonNullable<SessionSwitchOptions["withSession"]>
 >[0];
 
+type TaskLayout = "current" | "historical";
+type TaskDiscoveryIssue = { path: string; reason: string };
+type TaskIndexRecord = {
+  id: string;
+  projectRoot: string;
+  statePath: string;
+  indexPath: string;
+  rawContent: string;
+};
+type TaskIndexEntrySnapshot = {
+  dev: number;
+  ino: number;
+  mode: number;
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+  kind: "directory" | "other";
+};
+type TaskIndexIssue = {
+  path: string;
+  reason: string;
+  record?: TaskIndexRecord;
+  rawContent?: string;
+  symlinkTarget?: string;
+  entrySnapshot?: TaskIndexEntrySnapshot;
+};
 type DiscoveredTask = {
   state: TaskState;
   path: string;
+  layout?: TaskLayout;
+  discoveredRoot?: string;
   relocatedFrom?: string;
 };
+type TaskDiscoveryResult = {
+  tasks: DiscoveredTask[];
+  historical: DiscoveredTask[];
+  issues: TaskDiscoveryIssue[];
+  indexIssues: TaskIndexIssue[];
+  indexRecords: TaskIndexRecord[];
+};
+type TaskDiscoveryScope = "project" | "global";
 
 function taskIndexDir(): string {
   return join(
@@ -886,81 +975,166 @@ function rememberTask(state: TaskState, path: string): void {
   }
 }
 
-function indexedStatePaths(root: string): string[] {
+function readTaskIndexRecords(
+  issues: TaskDiscoveryIssue[],
+  indexIssues: TaskIndexIssue[] = [],
+): TaskIndexRecord[] {
   const directory = taskIndexDir();
-  if (!existsSync(directory)) return [];
-  const paths: string[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-    try {
-      const record = JSON.parse(
-        readFileSync(join(directory, entry.name), "utf8"),
-      ) as { projectRoot?: unknown; statePath?: unknown };
-      if (record.projectRoot === root && typeof record.statePath === "string")
-        paths.push(record.statePath);
-    } catch {
-      /* A stale index entry must not hide other tasks. */
-    }
-  }
-  return paths;
-}
-
-function relocatedIndexedStatePaths(root: string): string[] {
-  const directory = taskIndexDir();
-  if (!existsSync(directory)) return [];
-  const paths: string[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-    try {
-      const record = JSON.parse(
-        readFileSync(join(directory, entry.name), "utf8"),
-      ) as { projectRoot?: unknown; statePath?: unknown };
-      if (
-        typeof record.projectRoot !== "string" ||
-        typeof record.statePath !== "string"
-      )
-        continue;
-      const oldRoot = resolve(record.projectRoot);
-      if (
-        oldRoot === resolve(root) ||
-        existsSync(oldRoot) ||
-        !pathWithin(oldRoot, resolve(record.statePath))
-      )
-        continue;
-      const movedPath = resolve(
-        root,
-        relative(oldRoot, resolve(record.statePath)),
-      );
-      if (existsSync(movedPath)) paths.push(movedPath);
-    } catch {
-      /* Ignore stale or malformed index entries. */
-    }
-  }
-  return paths;
-}
-
-function templateStatePaths(root: string, template: string): string[] {
-  const expanded = template.replaceAll("{projectRoot}", root);
-  const absolute = isAbsolute(expanded)
-    ? resolve(expanded)
-    : resolve(root, expanded);
-  const marker = "{taskId}";
-  const offset = absolute.indexOf(marker);
-  if (offset < 0) return [statePath(absolute)];
-  const before = absolute.slice(0, offset);
-  const after = absolute.slice(offset + marker.length);
-  if (
-    !before.endsWith(sep) ||
-    (after && !after.startsWith(sep)) ||
-    after.includes(marker)
-  )
+  try {
+    const info = lstatSync(directory);
+    if (info.isSymbolicLink() || !info.isDirectory())
+      throw new Error("Task index root is not a regular directory.");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    issues.push({ path: directory, reason: String(error) });
     return [];
-  const parent = resolve(before);
-  if (!existsSync(parent)) return [];
-  const suffix = after.replace(/^[/\\]+/, "");
-  return readdirSync(parent, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => statePath(join(parent, entry.name, suffix)));
+  }
+
+  let entries;
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch (error) {
+    issues.push({ path: directory, reason: String(error) });
+    return [];
+  }
+  const records: TaskIndexRecord[] = [];
+  for (const entry of entries) {
+    const indexPath = join(directory, entry.name);
+    if (!entry.name.endsWith(".json")) continue;
+    if (entry.isSymbolicLink()) {
+      const reason = "Symbolic links are not followed in the task index.";
+      issues.push({ path: indexPath, reason });
+      try {
+        indexIssues.push({
+          path: indexPath,
+          reason,
+          symlinkTarget: readlinkSync(indexPath),
+        });
+      } catch {
+        /* Keep the issue visible but do not make an unverifiable link actionable. */
+      }
+      continue;
+    }
+    if (!entry.isFile()) {
+      const reason = "Task index records must be regular files.";
+      issues.push({ path: indexPath, reason });
+      try {
+        const info = lstatSync(indexPath);
+        indexIssues.push({
+          path: indexPath,
+          reason,
+          entrySnapshot: {
+            dev: info.dev,
+            ino: info.ino,
+            mode: info.mode,
+            size: info.size,
+            mtimeMs: info.mtimeMs,
+            ctimeMs: info.ctimeMs,
+            kind: info.isDirectory() ? "directory" : "other",
+          },
+        });
+      } catch {
+        /* Keep entries without a stable snapshot visible but not actionable. */
+      }
+      continue;
+    }
+    let rawContent: string | undefined;
+    try {
+      rawContent = readFileSync(indexPath, "utf8");
+      const record = JSON.parse(rawContent) as {
+        id?: unknown;
+        projectRoot?: unknown;
+        statePath?: unknown;
+      };
+      if (
+        typeof record.id !== "string" ||
+        typeof record.projectRoot !== "string" ||
+        typeof record.statePath !== "string" ||
+        !isAbsolute(record.projectRoot) ||
+        !isAbsolute(record.statePath)
+      )
+        throw new Error("Malformed task index record.");
+      validateTaskId(record.id);
+      const layout = taskLayoutForPath(record.projectRoot, record.statePath);
+      if (!layout || layout.id !== record.id)
+        throw new Error(
+          "Index record points outside a recognized layout or task ID.",
+        );
+      const validRecord = {
+        id: record.id,
+        projectRoot: record.projectRoot,
+        statePath: record.statePath,
+        indexPath,
+        rawContent,
+      };
+      records.push(validRecord);
+      try {
+        lstatSync(validRecord.statePath);
+      } catch (error) {
+        if (
+          (error as NodeJS.ErrnoException).code === "ENOENT" &&
+          existsSync(validRecord.projectRoot)
+        )
+          indexIssues.push({
+            path: indexPath,
+            reason: `Indexed task state is missing: ${validRecord.statePath}`,
+            record: validRecord,
+            rawContent,
+          });
+      }
+    } catch (error) {
+      const reason = String(error);
+      issues.push({ path: indexPath, reason });
+      indexIssues.push({ path: indexPath, reason, rawContent });
+    }
+  }
+  return records;
+}
+
+function indexedStatePaths(root: string, records: TaskIndexRecord[]): string[] {
+  return records
+    .filter((record) => resolve(record.projectRoot) === resolve(root))
+    .map((record) => record.statePath);
+}
+
+function indexedProjectRoots(
+  activeRoot: string,
+  records: TaskIndexRecord[],
+): string[] {
+  return [
+    ...new Set([
+      resolve(activeRoot),
+      ...records.map((record) => resolve(record.projectRoot)),
+    ]),
+  ];
+}
+
+function relocatedIndexedStatePaths(
+  root: string,
+  records: TaskIndexRecord[],
+  issues: TaskDiscoveryIssue[],
+): string[] {
+  const paths: string[] = [];
+  for (const record of records) {
+    const oldRoot = resolve(record.projectRoot);
+    if (
+      oldRoot === resolve(root) ||
+      existsSync(oldRoot) ||
+      !pathWithin(oldRoot, resolve(record.statePath))
+    )
+      continue;
+    const movedPath = resolve(
+      root,
+      relative(oldRoot, resolve(record.statePath)),
+    );
+    if (existsSync(movedPath)) paths.push(movedPath);
+    else
+      issues.push({
+        path: movedPath,
+        reason: `Indexed state file from ${oldRoot} was not found after relocation.`,
+      });
+  }
+  return paths;
 }
 
 function relocatedProjectRoot(
@@ -989,42 +1163,344 @@ function relocatedProjectRoot(
   return previousRoot;
 }
 
-function listTasks(root: string): DiscoveredTask[] {
-  readConfig();
-  const candidates = [
-    ...templateStatePaths(root, ".agents/task-workflow/{taskId}"),
-    ...indexedStatePaths(root),
-    ...relocatedIndexedStatePaths(root),
-  ];
-  const tasks = new Map<string, DiscoveredTask>();
-  for (const path of candidates) {
+function taskLayoutForPath(
+  root: string,
+  path: string,
+): { layout: TaskLayout; id: string } | undefined {
+  const parts = relative(resolve(root), resolve(path)).split(sep);
+  if (parts.length !== 4 || parts[0] !== ".agents" || parts[3] !== "state.json")
+    return undefined;
+  if (parts[1] === "task-workflow") return { layout: "current", id: parts[2] };
+  if (parts[1] === "projects") return { layout: "historical", id: parts[2] };
+  return undefined;
+}
+
+function assertSafeTaskRoot(root: string): void {
+  const rootPath = resolve(root);
+  const info = lstatSync(rootPath);
+  if (info.isSymbolicLink())
+    throw new Error(`Refusing to follow symbolic link: ${rootPath}`);
+  if (!info.isDirectory()) throw new Error("Project root is not a directory.");
+}
+
+function assertSafeTaskStatePath(root: string, path: string): void {
+  const layout = taskLayoutForPath(root, path);
+  if (!layout)
+    throw new Error("State path is outside a recognized task layout.");
+  const rootPath = resolve(root);
+  assertSafeTaskRoot(rootPath);
+  const parts = relative(rootPath, resolve(path)).split(sep);
+  let current = rootPath;
+  for (const part of parts.slice(0, -1)) {
+    current = join(current, part);
+    const info = lstatSync(current);
+    if (info.isSymbolicLink())
+      throw new Error(`Refusing to follow symbolic link: ${current}`);
+    if (!info.isDirectory())
+      throw new Error(`Expected a directory in task path: ${current}`);
+  }
+  const info = lstatSync(resolve(path));
+  if (info.isSymbolicLink())
+    throw new Error(`Refusing to follow symbolic link: ${resolve(path)}`);
+  if (!info.isFile())
+    throw new Error(`Task state is not a file: ${resolve(path)}`);
+}
+
+function validateDiscoveredState(state: TaskState): void {
+  if (
+    typeof state.id !== "string" ||
+    typeof state.projectRoot !== "string" ||
+    typeof state.contextPath !== "string" ||
+    !isAbsolute(state.projectRoot) ||
+    !isAbsolute(state.contextPath) ||
+    !TASK_PHASES.has(state.phase) ||
+    !Number.isInteger(state.currentStep) ||
+    state.currentStep < 1 ||
+    !Array.isArray(state.completedSteps) ||
+    !state.completedSteps.every((step) => Number.isInteger(step) && step > 0)
+  )
+    throw new Error("Task state has an unsupported or malformed format.");
+  validateTaskId(state.id);
+}
+
+function assertSafeTaskContextPath(
+  root: string,
+  state: TaskState,
+  layout: TaskLayout,
+): void {
+  const savedTaskDirectory =
+    layout === "current"
+      ? defaultArtifactDir(state.projectRoot, state.id)
+      : join(state.projectRoot, ".agents", "projects", state.id);
+  const expectedContext =
+    layout === "current" ? join(savedTaskDirectory, "context.md") : undefined;
+  if (
+    (expectedContext &&
+      resolve(state.contextPath) !== resolve(expectedContext)) ||
+    (!expectedContext &&
+      !pathWithin(savedTaskDirectory, resolve(state.contextPath)))
+  )
+    throw new Error("Task context path is outside its recognized layout.");
+
+  const contextPath =
+    resolve(state.projectRoot) === resolve(root)
+      ? resolve(state.contextPath)
+      : resolve(root, relative(state.projectRoot, resolve(state.contextPath)));
+  if (!pathWithin(resolve(root), contextPath))
+    throw new Error("Task context path is outside the discovered project.");
+  const parts = relative(resolve(root), contextPath).split(sep);
+  let current = resolve(root);
+  for (let index = 0; index < parts.length; index++) {
+    current = join(current, parts[index]);
+    let info;
     try {
-      if (!lstatSync(path).isFile()) continue;
-      const state = loadState(path, false);
-      const currentStatePath = existsSync(taskStatePath(state))
-        ? taskStatePath(state)
-        : path;
-      const task: DiscoveredTask = { state, path: currentStatePath };
-      if (resolve(state.projectRoot) !== resolve(root)) {
-        const previousRoot = relocatedProjectRoot(
-          state,
-          currentStatePath,
-          root,
-        );
-        if (!previousRoot) continue;
-        task.relocatedFrom = previousRoot;
-      } else if (resolve(taskStatePath(state)) !== resolve(currentStatePath)) {
-        continue;
-      }
-      const existing = tasks.get(state.id);
-      if (!existing || existing.relocatedFrom) tasks.set(state.id, task);
-    } catch {
-      /* Ignore missing or invalid state files. */
+      info = lstatSync(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    if (info.isSymbolicLink())
+      throw new Error(`Refusing to follow symbolic link: ${current}`);
+    if (index === parts.length - 1) {
+      if (!info.isFile())
+        throw new Error(`Task context is not a file: ${current}`);
+    } else if (!info.isDirectory()) {
+      throw new Error(`Expected a directory in task context path: ${current}`);
     }
   }
-  return [...tasks.values()].sort((a, b) =>
-    a.state.id.localeCompare(b.state.id),
+}
+
+function scanTaskLayout(
+  root: string,
+  layout: TaskLayout,
+  issues: TaskDiscoveryIssue[],
+): string[] {
+  const directory =
+    layout === "current"
+      ? join(root, ".agents", "task-workflow")
+      : join(root, ".agents", "projects");
+  const agentsDirectory = join(root, ".agents");
+  try {
+    const agentsInfo = lstatSync(agentsDirectory);
+    if (agentsInfo.isSymbolicLink() || !agentsInfo.isDirectory())
+      throw new Error("Task storage root is not a regular directory.");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    issues.push({ path: agentsDirectory, reason: String(error) });
+    return [];
+  }
+  try {
+    const info = lstatSync(directory);
+    if (info.isSymbolicLink() || !info.isDirectory())
+      throw new Error("Task layout root is not a regular directory.");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    issues.push({ path: directory, reason: String(error) });
+    return [];
+  }
+
+  let entries;
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch (error) {
+    issues.push({ path: directory, reason: String(error) });
+    return [];
+  }
+  const paths: string[] = [];
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      issues.push({
+        path: join(directory, entry.name),
+        reason: "Symbolic links are not followed during task discovery.",
+      });
+      continue;
+    }
+    if (!entry.isDirectory()) {
+      issues.push({
+        path: join(directory, entry.name),
+        reason: entry.isFile()
+          ? "Expected a task directory; found a regular file."
+          : "Expected a task directory; found a non-directory entry.",
+      });
+      continue;
+    }
+    const path = statePath(join(directory, entry.name));
+    try {
+      assertSafeTaskStatePath(root, path);
+      paths.push(path);
+    } catch (error) {
+      issues.push({ path, reason: String(error) });
+    }
+  }
+  return paths;
+}
+
+function isSafeTaskDiscoveryRoot(
+  root: string,
+  issues: TaskDiscoveryIssue[],
+): boolean {
+  try {
+    assertSafeTaskRoot(root);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    issues.push({ path: root, reason: String(error) });
+    return false;
+  }
+}
+
+/** Discovers validated tasks locally or across index-known project roots. */
+function listTasksDetailed(
+  root: string,
+  scope: TaskDiscoveryScope = "project",
+): TaskDiscoveryResult {
+  readConfig();
+  const issues: TaskDiscoveryIssue[] = [];
+  const indexIssues: TaskIndexIssue[] = [];
+  const indexRecords = readTaskIndexRecords(issues, indexIssues);
+  // Global discovery is bounded to the active root and roots from valid records.
+  const roots =
+    scope === "global"
+      ? indexedProjectRoots(root, indexRecords)
+      : [resolve(root)];
+  const safeRoots = roots.filter((searchRoot) =>
+    isSafeTaskDiscoveryRoot(searchRoot, issues),
   );
+  const candidates: Array<{ root: string; path: string }> = [];
+  for (const searchRoot of safeRoots) {
+    const paths = [
+      ...scanTaskLayout(searchRoot, "current", issues),
+      ...scanTaskLayout(searchRoot, "historical", issues),
+      ...indexedStatePaths(searchRoot, indexRecords),
+    ];
+    candidates.push(...paths.map((path) => ({ root: searchRoot, path })));
+  }
+  if (safeRoots.includes(resolve(root)))
+    candidates.push(
+      ...relocatedIndexedStatePaths(resolve(root), indexRecords, issues).map(
+        (path) => ({ root: resolve(root), path }),
+      ),
+    );
+
+  const tasks = new Map<string, DiscoveredTask>();
+  const historical = new Map<string, DiscoveredTask>();
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const searchRoot = resolve(candidate.root);
+    const path = resolve(candidate.path);
+    const candidateKey = `${searchRoot}\0${path}`;
+    if (seen.has(candidateKey)) continue;
+    seen.add(candidateKey);
+    const layout = taskLayoutForPath(searchRoot, path);
+    if (!layout) {
+      issues.push({
+        path: candidate.path,
+        reason: "State path is outside the recognized task layouts.",
+      });
+      continue;
+    }
+    try {
+      assertSafeTaskStatePath(searchRoot, path);
+      const state = loadState(path, false);
+      validateDiscoveredState(state);
+      assertSafeTaskContextPath(searchRoot, state, layout.layout);
+      if (state.id !== layout.id) {
+        throw new Error(
+          `State task ID ${state.id} does not match its directory ${layout.id}.`,
+        );
+      }
+      const task: DiscoveredTask = {
+        state,
+        path,
+        layout: layout.layout,
+        discoveredRoot: searchRoot,
+      };
+      if (resolve(state.projectRoot) !== searchRoot) {
+        const previousRoot = relocatedProjectRoot(state, path, searchRoot);
+        if (!previousRoot || layout.layout !== "current") {
+          issues.push({
+            path,
+            reason: "Saved project root does not match the discovered project.",
+          });
+          continue;
+        }
+        task.relocatedFrom = previousRoot;
+      } else if (
+        layout.layout === "current" &&
+        resolve(taskStatePath(state)) !== path
+      ) {
+        throw new Error("Current task state path does not match its layout.");
+      }
+      const destination = layout.layout === "current" ? tasks : historical;
+      const key = `${searchRoot}\0${state.id}`;
+      const existing = destination.get(key);
+      if (!existing || existing.relocatedFrom) destination.set(key, task);
+    } catch (error) {
+      issues.push({ path, reason: String(error) });
+    }
+  }
+  if (scope === "global") {
+    // Prefer the current layout when both layouts contain the same task identity.
+    for (const key of tasks.keys()) historical.delete(key);
+  }
+  const sortTasks = (items: Map<string, DiscoveredTask>) =>
+    [...items.values()].sort(
+      (a, b) =>
+        a.state.id.localeCompare(b.state.id) ||
+        (a.discoveredRoot || "").localeCompare(b.discoveredRoot || ""),
+    );
+  const uniqueIssues = new Map<string, TaskDiscoveryIssue>();
+  for (const issue of issues)
+    uniqueIssues.set(`${issue.path}\0${issue.reason}`, issue);
+  for (const record of indexRecords) {
+    if (!existsSync(record.projectRoot)) continue;
+    const relatedIssue = [...uniqueIssues.values()].find(
+      (issue) => resolve(issue.path) === resolve(record.statePath),
+    );
+    if (
+      !relatedIssue ||
+      indexIssues.some((issue) => issue.path === record.indexPath)
+    )
+      continue;
+    try {
+      indexIssues.push({
+        path: record.indexPath,
+        reason: relatedIssue.reason,
+        record,
+        rawContent: readFileSync(record.indexPath, "utf8"),
+      });
+    } catch {
+      indexIssues.push({
+        path: record.indexPath,
+        reason: relatedIssue.reason,
+        record,
+      });
+    }
+  }
+  return {
+    tasks: sortTasks(tasks),
+    historical: sortTasks(historical),
+    issues: [...uniqueIssues.values()],
+    indexIssues,
+    indexRecords,
+  };
+}
+
+function listTasks(root: string): DiscoveredTask[] {
+  return listTasksDetailed(root).tasks;
+}
+
+function taskDiscoveryNotes(result: TaskDiscoveryResult): string {
+  const notes = [
+    ...result.historical.map(
+      (task) =>
+        `- Preserved recognized historical task: ${task.path} (not opened by the current project-local task list).`,
+    ),
+    ...result.issues.map((issue) => `- Skipped ${issue.path}: ${issue.reason}`),
+  ];
+  return notes.length
+    ? `\n\n## Preserved or skipped entries\n\n${notes.join("\n")}`
+    : "";
 }
 
 function rebaseMovedPath(
@@ -4386,47 +4862,460 @@ function pathWithin(parent: string, child: string): boolean {
   );
 }
 
-function taskDirectoryForDeletion(state: TaskState, path: string): string {
-  const artifactDirectory = resolve(taskDir(state));
-  const runtimeDirectory = resolve(runtimeDir(state));
-  if (resolve(path) !== resolve(taskStatePath(state)))
-    throw new Error(`Task state is outside its runtime directory: ${path}`);
-  if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink())
-    throw new Error(`Refusing to delete a linked task state: ${path}`);
+type TaskDeletionPlan = {
+  layout: TaskLayout;
+  targets: string[];
+};
+
+class TaskDeletionError extends Error {
+  constructor(
+    message: string,
+    readonly movedPaths: string[],
+    readonly remainingPaths: string[],
+  ) {
+    super(message);
+    this.name = "TaskDeletionError";
+  }
+}
+
+type TaskBrowserRow =
+  | { kind: "task"; projectKey: string; label: string; task: DiscoveredTask }
+  | { kind: "index"; label: string; issue: TaskIndexIssue }
+  | { kind: "warning"; label: string; path: string };
+
+function taskBrowserRows(discovery: TaskDiscoveryResult): TaskBrowserRow[] {
+  const tasks = [...discovery.tasks, ...discovery.historical];
+  const projectRoots = [
+    ...new Set(
+      tasks.map((task) =>
+        resolve(task.discoveredRoot || task.state.projectRoot),
+      ),
+    ),
+  ].sort();
+  const projectKeys = new Map(
+    projectRoots.map((root, index) => [root, `P${index + 1}`]),
+  );
+  const rows: TaskBrowserRow[] = [
+    ...tasks.map((task) => {
+      const root = resolve(task.discoveredRoot || task.state.projectRoot);
+      return {
+        kind: "task" as const,
+        projectKey: projectKeys.get(root)!,
+        label: `${basename(root)} · ${task.state.id} · ${task.layout || "task"} · ${root} · ${task.path} · ${taskProgress(task.state)}`,
+        task,
+      };
+    }),
+    ...discovery.indexIssues.map((issue) => ({
+      kind: "index" as const,
+      label: `⚠ Index · ${issue.record?.id || "unrecognized entry"} · ${issue.path} · ${issue.reason}`,
+      issue,
+    })),
+  ];
+  const indexedStatePaths = new Set(
+    discovery.indexIssues.flatMap((issue) => [
+      resolve(issue.path),
+      ...(issue.record ? [resolve(issue.record.statePath)] : []),
+    ]),
+  );
+  rows.push(
+    ...discovery.issues
+      .filter((issue) => !indexedStatePaths.has(resolve(issue.path)))
+      .map((issue) => ({
+        kind: "warning" as const,
+        label: `⚠ Preserved · ${issue.path} · ${issue.reason}`,
+        path: issue.path,
+      })),
+  );
+  return rows.sort((left, right) => left.label.localeCompare(right.label));
+}
+
+/** Presents global tasks and issues; only x selects a row for a separate delete flow. */
+async function selectGlobalTaskRow(
+  ctx: ExtensionCommandContext,
+  rows: TaskBrowserRow[],
+): Promise<TaskBrowserRow | undefined> {
+  if (ctx.mode !== "tui" || !rows.length) return undefined;
+  return ctx.ui.custom<TaskBrowserRow | undefined>(
+    (tui, theme, keybindings, done) => {
+      let selectedIndex = 0;
+      return {
+        render(width: number): string[] {
+          const pageSize = Math.max(1, tui.terminal.rows - 6);
+          const start = Math.max(
+            0,
+            Math.min(selectedIndex, rows.length - pageSize),
+          );
+          return [
+            theme.fg(
+              "accent",
+              "Global tasks · P# distinguishes projects · x deletes the selected row",
+            ),
+            ...rows.slice(start, start + pageSize).map((row, offset) => {
+              const index = start + offset;
+              const selected = index === selectedIndex;
+              const marker =
+                row.kind === "task"
+                  ? `${row.projectKey}${selected ? ">" : " "} `
+                  : `${selected ? ">" : "  "}`;
+              const text = `${marker}${row.label}`;
+              const truncated = truncateToWidth(text, width);
+              return row.kind === "task"
+                ? selected
+                  ? theme.inverse(truncated)
+                  : truncated
+                : theme.fg(
+                    "warning",
+                    selected ? theme.inverse(truncated) : truncated,
+                  );
+            }),
+            theme.fg("dim", "↑/↓ or j/k move · x select · Esc cancel"),
+          ];
+        },
+        handleInput(data: string): void {
+          if (keybindings.matches(data, "tui.select.cancel")) {
+            done(undefined);
+            return;
+          }
+          if (data === "x") {
+            done(rows[selectedIndex]);
+            return;
+          }
+          if (keybindings.matches(data, "tui.select.up") || data === "k") {
+            selectedIndex = (selectedIndex - 1 + rows.length) % rows.length;
+          } else if (
+            keybindings.matches(data, "tui.select.down") ||
+            data === "j"
+          ) {
+            selectedIndex = (selectedIndex + 1) % rows.length;
+          } else {
+            return;
+          }
+          tui.requestRender();
+        },
+        invalidate(): void {},
+      };
+    },
+    {
+      blocked: { kind: "question", message: "Select a global task to delete" },
+    },
+  );
+}
+
+function globalTaskBrowserText(discovery: TaskDiscoveryResult): string {
+  const tasks = [...discovery.tasks, ...discovery.historical].map(
+    (task) =>
+      `- ${task.state.id} · ${task.layout || "task"} · ${task.discoveredRoot || task.state.projectRoot} · ${task.path} · ${taskProgress(task.state)}`,
+  );
+  const indexes = discovery.indexIssues.map(
+    (issue) => `- ⚠ Index entry: ${issue.path} · ${issue.reason}`,
+  );
+  const otherIssues = discovery.issues
+    .filter(
+      (issue) =>
+        !discovery.indexIssues.some(
+          (indexIssue) =>
+            resolve(indexIssue.path) === resolve(issue.path) ||
+            (indexIssue.record &&
+              resolve(indexIssue.record.statePath) === resolve(issue.path)),
+        ),
+    )
+    .map((issue) => `- ⚠ Preserved: ${issue.path} · ${issue.reason}`);
+  const entries = [...tasks, ...indexes, ...otherIssues];
+  return [
+    "# Global tasks",
+    "",
+    entries.length ? entries.join("\n") : "No indexed tasks or issues found.",
+    "",
+    "Use /task browse in the terminal UI to remove broken index entries. For task deletion, use /task delete --global TASK-ID.",
+  ].join("\n");
+}
+
+function taskIndexSnapshotMatches(issue: TaskIndexIssue): boolean {
+  try {
+    const directory = resolve(taskIndexDir());
+    const rootInfo = lstatSync(directory);
+    if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) return false;
+    const path = resolve(issue.path);
+    if (dirname(path) !== directory || !basename(path).endsWith(".json"))
+      return false;
+    const info = lstatSync(path);
+    if (info.isSymbolicLink())
+      return (
+        issue.symlinkTarget !== undefined &&
+        readlinkSync(path) === issue.symlinkTarget
+      );
+    if (info.isFile())
+      return (
+        issue.rawContent !== undefined &&
+        readFileSync(path, "utf8") === issue.rawContent
+      );
+    const snapshot = issue.entrySnapshot;
+    const kind = info.isDirectory() ? "directory" : "other";
+    return (
+      snapshot !== undefined &&
+      snapshot.kind === kind &&
+      snapshot.dev === info.dev &&
+      snapshot.ino === info.ino &&
+      snapshot.mode === info.mode &&
+      snapshot.size === info.size &&
+      snapshot.mtimeMs === info.mtimeMs &&
+      snapshot.ctimeMs === info.ctimeMs
+    );
+  } catch {
+    return false;
+  }
+}
+
+function removeBrokenTaskIndexEntry(issue: TaskIndexIssue): void {
+  if (!taskIndexSnapshotMatches(issue))
+    throw new Error(
+      `Task index entry changed or is unsafe; no files were removed: ${issue.path}`,
+    );
+  const info = lstatSync(issue.path);
+  if (info.isDirectory() && !info.isSymbolicLink()) {
+    rmdirSync(issue.path);
+    return;
+  }
+  rmSync(issue.path);
+}
+
+function taskIndexRecordsForTask(
+  records: TaskIndexRecord[],
+  state: TaskState,
+  statePath: string,
+): TaskIndexRecord[] {
+  return records.filter(
+    (record) =>
+      record.id === state.id &&
+      resolve(record.projectRoot) === resolve(state.projectRoot) &&
+      resolve(record.statePath) === resolve(statePath),
+  );
+}
+
+function assertTaskIndexRecordsUnchanged(
+  selectedRecords: TaskIndexRecord[],
+  state: TaskState,
+  statePath: string,
+): void {
+  const issues: TaskDiscoveryIssue[] = [];
+  const currentRecords = taskIndexRecordsForTask(
+    readTaskIndexRecords(issues),
+    state,
+    statePath,
+  );
+  if (currentRecords.length !== selectedRecords.length)
+    throw new Error(
+      `Task index mapping changed; run /task browse again before deleting ${state.id}.`,
+    );
+  for (const selected of selectedRecords) {
+    const current = currentRecords.find(
+      (record) => resolve(record.indexPath) === resolve(selected.indexPath),
+    );
+    if (
+      !current ||
+      current.rawContent !== selected.rawContent ||
+      !taskIndexSnapshotMatches({
+        path: selected.indexPath,
+        reason: "Selected task index mapping changed.",
+        record: selected,
+        rawContent: selected.rawContent,
+      })
+    )
+      throw new Error(
+        `Task index mapping changed; run /task browse again before deleting ${state.id}.`,
+      );
+  }
+}
+
+function remainingTaskDirectory(record: TaskIndexRecord): string | undefined {
+  const location = taskLayoutForPath(record.projectRoot, record.statePath);
+  if (!location || location.id !== record.id)
+    throw new Error("Index record does not identify a recognized task layout.");
+  try {
+    lstatSync(record.statePath);
+    return undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const root = resolve(record.projectRoot);
+  assertSafeTaskRoot(root);
+  const taskDirectory = resolve(dirname(record.statePath));
+  if (!pathWithin(root, taskDirectory) || taskDirectory === root)
+    throw new Error("Indexed task directory is outside its project root.");
+  const relativeParts = relative(root, taskDirectory).split(sep);
+  if (
+    relativeParts.length !== 3 ||
+    relativeParts[0] !== ".agents" ||
+    relativeParts[2] !== record.id ||
+    !["task-workflow", "projects"].includes(relativeParts[1])
+  )
+    throw new Error("Indexed task directory is outside a recognized layout.");
+  let current = root;
+  for (const part of relativeParts) {
+    current = join(current, part);
+    let info;
+    try {
+      info = lstatSync(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+    if (info.isSymbolicLink() || !info.isDirectory())
+      throw new Error(`Refusing to follow unsafe task path: ${current}`);
+  }
+  const actual = realpathSync(taskDirectory);
+  const actualRoot = realpathSync(root);
+  const configuredAgentRoot = resolve(
+    process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
+  );
+  const agentRoot = existsSync(configuredAgentRoot)
+    ? realpathSync(configuredAgentRoot)
+    : configuredAgentRoot;
+  if (
+    !pathWithin(actualRoot, actual) ||
+    actual === actualRoot ||
+    pathWithin(actual, agentRoot) ||
+    pathWithin(agentRoot, actual)
+  )
+    throw new Error(
+      `Refusing to delete an unsafe task directory: ${taskDirectory}`,
+    );
+  return taskDirectory;
+}
+
+function assertRegularTaskConfigPath(path: string): void {
+  try {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink() || !info.isFile())
+      throw new Error(
+        `Refusing to read or write a non-regular task configuration path: ${path}`,
+      );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
+function indexRecordDeletionMode(record: TaskIndexRecord): DeleteMode {
+  const globalMode = readConfig().deleteMode;
+  const projectMode = readScopedConfig(
+    projectConfigPath(record.projectRoot),
+  ).deleteMode;
+  const taskConfigPath = join(dirname(record.statePath), "config.json");
+  assertRegularTaskConfigPath(taskConfigPath);
+  const taskMode = readScopedConfig(taskConfigPath).deleteMode;
+  return taskMode ?? projectMode ?? globalMode ?? "trash";
+}
+
+function enableTaskDirectoryPermanentDeletion(record: TaskIndexRecord): void {
+  const path = join(dirname(record.statePath), "config.json");
+  assertRegularTaskConfigPath(path);
+  const config = readScopedConfig(path);
+  assertRegularTaskConfigPath(path);
+  writeScopedConfig(path, { ...config, deleteMode: "permanent" });
+}
+
+function pathExistsWithoutFollowing(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+function taskDirectoryForDeletion(
+  state: TaskState,
+  path: string,
+): TaskDeletionPlan {
+  const location = taskLayoutForPath(state.projectRoot, path);
+  if (!location || location.id !== state.id)
+    throw new Error(`Task state is outside a recognized layout: ${path}`);
+  assertSafeTaskStatePath(state.projectRoot, path);
+  validateDiscoveredState(state);
+  assertSafeTaskContextPath(state.projectRoot, state, location.layout);
+
+  const runtimeDirectory = resolve(dirname(path));
+  if (
+    location.layout === "current" &&
+    runtimeDirectory !== resolve(defaultRuntimeDir(state.projectRoot, state.id))
+  )
+    throw new Error(`Task state does not belong to ${runtimeDirectory}.`);
+  const artifactDirectory =
+    location.layout === "current"
+      ? resolve(defaultArtifactDir(state.projectRoot, state.id))
+      : runtimeDirectory;
   const root = realpathSync(state.projectRoot);
   const agentRoot = resolve(
     process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
   );
-  for (const directory of new Set([artifactDirectory, runtimeDirectory])) {
+  const targets = [...new Set([artifactDirectory, runtimeDirectory])].filter(
+    (directory) => pathExistsWithoutFollowing(directory),
+  );
+  if (!targets.includes(runtimeDirectory))
+    throw new Error(`Task runtime directory is missing: ${runtimeDirectory}`);
+  for (const directory of targets) {
     const info = lstatSync(directory);
     if (!info.isDirectory() || info.isSymbolicLink())
       throw new Error(
         `Refusing to delete a linked task directory: ${directory}`,
       );
     const actual = realpathSync(directory);
-    if (pathWithin(actual, root))
+    if (!pathWithin(root, actual) || pathWithin(actual, root))
       throw new Error(
-        `Refusing to delete the project root or one of its parents: ${directory}`,
+        `Refusing to delete an unsafe task directory: ${directory}`,
       );
-    if (
-      pathWithin(actual, agentRoot) ||
-      actual === resolve(agentRoot, "sessions") ||
-      actual === resolve(taskIndexDir())
-    )
+    if (pathWithin(actual, agentRoot))
       throw new Error(
         `Refusing to delete a Pi configuration or sessions directory: ${directory}`,
       );
   }
-  const actualRuntime = realpathSync(runtimeDirectory);
-  if (realpathSync(path) !== join(actualRuntime, "state.json"))
+  if (realpathSync(path) !== join(realpathSync(runtimeDirectory), "state.json"))
     throw new Error(`Task state does not belong to ${runtimeDirectory}.`);
-  return artifactDirectory;
+  return { layout: location.layout, targets };
 }
 
-function deleteTaskFiles(state: TaskState, path: string): void {
-  const directory = taskDirectoryForDeletion(state, path);
-  for (const target of new Set([directory, resolve(runtimeDir(state))]))
-    rmSync(target, { recursive: true });
+async function deleteTaskFiles(
+  state: TaskState,
+  path: string,
+  mode: DeleteMode,
+  requestedTargets?: string[],
+): Promise<void> {
+  const plan = taskDirectoryForDeletion(state, path);
+  const targets = requestedTargets ?? plan.targets;
+  if (targets.some((target) => !plan.targets.includes(target)))
+    throw new Error("Deletion targets changed; run /task delete again.");
+
+  const movedPaths: string[] = [];
+  for (let index = 0; index < targets.length; index++) {
+    const target = targets[index];
+    try {
+      const info = lstatSync(target);
+      if (!info.isDirectory() || info.isSymbolicLink())
+        throw new Error(
+          `Refusing to delete a linked task directory: ${target}`,
+        );
+      if (mode === "trash") {
+        await trash(target, { glob: false });
+        if (pathExistsWithoutFollowing(target))
+          throw new Error(`The trash operation did not move ${target}.`);
+      } else {
+        rmSync(target, { recursive: true });
+      }
+      movedPaths.push(target);
+    } catch (error) {
+      const movedCurrentPath = !pathExistsWithoutFollowing(target);
+      const moved = movedCurrentPath ? [...movedPaths, target] : movedPaths;
+      const remaining = targets.slice(index + (movedCurrentPath ? 1 : 0));
+      throw new TaskDeletionError(
+        `Could not ${mode === "trash" ? "move to trash" : "permanently delete"} ${target}: ${error instanceof Error ? error.message : String(error)}`,
+        moved,
+        remaining,
+      );
+    }
+  }
+
   const index = join(
     taskIndexDir(),
     createHash("sha256")
@@ -4447,6 +5336,273 @@ function deleteTaskFiles(state: TaskState, path: string): void {
       rmSync(index);
   } catch {
     /* Task discovery ignores stale index entries. */
+  }
+}
+
+async function deleteBrokenIndexEntry(
+  ctx: ExtensionCommandContext,
+  issue: TaskIndexIssue,
+): Promise<void> {
+  if (ctx.mode !== "tui") {
+    ctx.ui.notify(
+      `Broken index entries can only be removed in the terminal UI. Run /task browse to select and confirm this exact entry: ${issue.path}`,
+      "warning",
+    );
+    return;
+  }
+  if (!taskIndexSnapshotMatches(issue))
+    throw new Error(`Task index entry changed or is unsafe: ${issue.path}`);
+
+  let taskDirectory: string | undefined;
+  if (issue.record) {
+    try {
+      taskDirectory = remainingTaskDirectory(issue.record);
+    } catch (error) {
+      ctx.ui.notify(
+        `Task data will be preserved because its directory is unsafe or unrecognized. ${error instanceof Error ? error.message : String(error)}`,
+        "warning",
+      );
+    }
+  }
+
+  let removeTaskData = false;
+  if (taskDirectory) {
+    const choice = await ctx.ui.select("Broken task index entry:", [
+      "Remove index record only",
+      `Remove task directory and index record · ${taskDirectory}`,
+    ]);
+    if (!choice) return;
+    removeTaskData = choice.startsWith("Remove task directory");
+  }
+  const mode =
+    removeTaskData && issue.record
+      ? indexRecordDeletionMode(issue.record)
+      : undefined;
+  const targets = [
+    issue.path,
+    ...(removeTaskData && taskDirectory ? [taskDirectory] : []),
+  ];
+  const title = removeTaskData
+    ? mode === "permanent"
+      ? "Permanently delete the remaining task directory?"
+      : "Move the remaining task directory to the OS trash?"
+    : "Remove this broken task index entry?";
+  const description = removeTaskData
+    ? `${mode === "permanent" ? "Permanently remove" : "Move to the OS trash"} the validated task directory ${taskDirectory}, then remove only this index record: ${issue.path}`
+    : `Remove only this task index record. Task data will be left untouched: ${issue.path}`;
+  if (!(await ctx.ui.confirm(title, description))) return;
+  if (!taskIndexSnapshotMatches(issue))
+    throw new Error(
+      `Task index entry changed; nothing was removed: ${issue.path}`,
+    );
+
+  if (removeTaskData && issue.record && taskDirectory && mode) {
+    const latestDirectory = remainingTaskDirectory(issue.record);
+    if (latestDirectory !== taskDirectory)
+      throw new Error(
+        `Task directory changed; nothing was removed: ${taskDirectory}`,
+      );
+    try {
+      if (mode === "trash") {
+        await trash(taskDirectory, { glob: false });
+        if (pathExistsWithoutFollowing(taskDirectory))
+          throw new Error(`The trash operation did not move ${taskDirectory}.`);
+      } else {
+        rmSync(taskDirectory, { recursive: true });
+        if (pathExistsWithoutFollowing(taskDirectory))
+          throw new Error(
+            `Permanent deletion did not remove ${taskDirectory}.`,
+          );
+      }
+    } catch (error) {
+      const directoryRemains = pathExistsWithoutFollowing(taskDirectory);
+      const moved = directoryRemains ? [] : [taskDirectory];
+      const remaining = directoryRemains ? [taskDirectory] : [];
+      const message = `Could not ${mode === "trash" ? "move to trash" : "permanently delete"} ${taskDirectory}: ${error instanceof Error ? error.message : String(error)}.\nAlready moved: ${moved.join("\n") || "none"}\nNot moved: ${remaining.join("\n") || "none"}\nThe task index record was retained.`;
+      ctx.ui.notify(message, "error");
+      if (mode !== "trash" || !remaining.length) return;
+      if (
+        !(await ctx.ui.confirm(
+          "Enable permanent deletion and retry?",
+          `Set deleteMode to permanent in ${join(dirname(issue.record.statePath), "config.json")} and permanently remove the remaining task directory ${taskDirectory}? The index record will be removed only after the directory is gone.`,
+        ))
+      )
+        return;
+      if (!taskIndexSnapshotMatches(issue))
+        throw new Error(
+          `Task index entry changed; nothing was retried: ${issue.path}`,
+        );
+      if (remainingTaskDirectory(issue.record) !== taskDirectory)
+        throw new Error(
+          `Task directory changed; deletion was cancelled: ${taskDirectory}`,
+        );
+      enableTaskDirectoryPermanentDeletion(issue.record);
+      try {
+        rmSync(taskDirectory, { recursive: true });
+      } catch (retryError) {
+        ctx.ui.notify(
+          `Permanent deletion failed; the index record was retained: ${retryError instanceof Error ? retryError.message : String(retryError)}`,
+          "error",
+        );
+        return;
+      }
+      if (pathExistsWithoutFollowing(taskDirectory)) {
+        ctx.ui.notify(
+          `Permanent deletion did not remove ${taskDirectory}; the index record was retained.`,
+          "error",
+        );
+        return;
+      }
+    }
+  }
+  removeBrokenTaskIndexEntry(issue);
+  ctx.ui.notify(
+    removeTaskData && taskDirectory
+      ? `Removed the broken index entry and selected task directory: ${targets.join("\n")}`
+      : `Removed the broken task index entry. Task data was not changed: ${issue.path}`,
+    "info",
+  );
+}
+
+async function deleteDiscoveredTask(
+  ctx: ExtensionCommandContext,
+  target: DiscoveredTask,
+  currentRoot: string,
+  indexRecords: TaskIndexRecord[],
+): Promise<void> {
+  if (target.relocatedFrom)
+    throw new Error(
+      `Task ${target.state.id} was moved from ${target.relocatedFrom}. Open it with /task ${target.state.id} and confirm relocation before deleting it.`,
+    );
+  const targetPath = target.path;
+  const state = loadState(targetPath, false);
+  const expectedRoot = target.discoveredRoot || currentRoot;
+  if (
+    state.id !== target.state.id ||
+    resolve(state.projectRoot) !== resolve(expectedRoot)
+  )
+    throw new Error("Task changed while choosing it; run /task delete again.");
+  const selectedIndexRecords = taskIndexRecordsForTask(
+    indexRecords,
+    state,
+    targetPath,
+  );
+  assertTaskIndexRecordsUnchanged(selectedIndexRecords, state, targetPath);
+  const plan = taskDirectoryForDeletion(state, targetPath);
+  const mode = effectiveDeletionMode(state, targetPath, plan.layout);
+  const pathSummary = plan.targets.join("\n");
+  const confirmed = await ctx.ui.confirm(
+    mode === "trash"
+      ? `Move task ${state.id} to the OS trash?`
+      : `Permanently delete task ${state.id}?`,
+    mode === "trash"
+      ? `Move the selected task data for project ${state.projectRoot} at ${pathSummary} to the OS trash?`
+      : `Permanently remove the selected task data for project ${state.projectRoot} at ${pathSummary}. This cannot be undone.`,
+  );
+  if (!confirmed) return;
+  const latest = loadState(targetPath, false);
+  if (
+    latest.id !== state.id ||
+    resolve(latest.projectRoot) !== resolve(expectedRoot)
+  )
+    throw new Error("Task changed before deletion; run /task delete again.");
+  const latestPlan = taskDirectoryForDeletion(latest, targetPath);
+  assertTaskIndexRecordsUnchanged(selectedIndexRecords, latest, targetPath);
+  if (
+    latestPlan.layout !== plan.layout ||
+    latestPlan.targets.join("\0") !== plan.targets.join("\0")
+  )
+    throw new Error(
+      "Task paths changed before deletion; run /task delete again.",
+    );
+
+  const deleteConfirmedTask = async (
+    actionContext: ExtensionCommandContext,
+  ): Promise<void> => {
+    try {
+      assertTaskIndexRecordsUnchanged(selectedIndexRecords, latest, targetPath);
+      await deleteTaskFiles(latest, targetPath, mode);
+      actionContext.ui.notify(
+        mode === "trash"
+          ? `Task ${state.id} was moved to the OS trash.`
+          : `Task ${state.id} was permanently deleted.`,
+        "info",
+      );
+    } catch (error) {
+      if (!(error instanceof TaskDeletionError)) {
+        actionContext.ui.notify(
+          error instanceof Error ? error.message : String(error),
+          "error",
+        );
+        return;
+      }
+      const moved = error.movedPaths.length
+        ? error.movedPaths.join("\n")
+        : "none";
+      const remaining = error.remainingPaths.length
+        ? error.remainingPaths.join("\n")
+        : "none";
+      actionContext.ui.notify(
+        `${error.message}\nAlready moved: ${moved}\nNot moved: ${remaining}\nThe task index record, if any, was retained.`,
+        "error",
+      );
+      if (mode !== "trash" || !error.remainingPaths.length) return;
+      const retry = await actionContext.ui.confirm(
+        "Switch to permanent deletion and retry?",
+        `This will set this task's deleteMode to permanent and permanently delete the remaining paths:\n${error.remainingPaths.join("\n")}\nAlready moved paths will not be retried.`,
+      );
+      if (!retry) return;
+      try {
+        setTaskDeletionMode(latest, targetPath, plan.layout, "permanent");
+        const retryState = loadState(targetPath, false);
+        await deleteTaskFiles(
+          retryState,
+          targetPath,
+          "permanent",
+          error.remainingPaths,
+        );
+        actionContext.ui.notify(
+          `Task ${state.id} was deleted after switching its deletion mode to permanent.`,
+          "info",
+        );
+      } catch (retryError) {
+        const retryMessage =
+          retryError instanceof TaskDeletionError
+            ? `${retryError.message}\nAlready moved: ${retryError.movedPaths.join("\n") || "none"}\nNot moved: ${retryError.remainingPaths.join("\n") || "none"}\nThe task index record, if any, was retained.`
+            : retryError instanceof Error
+              ? retryError.message
+              : String(retryError);
+        actionContext.ui.notify(retryMessage, "error");
+      }
+    }
+  };
+
+  const current = ctx.sessionManager.getSessionFile();
+  const link = taskLink(ctx);
+  const active =
+    (current &&
+      plan.targets.some((directory) =>
+        pathWithin(directory, resolve(current)),
+      )) ||
+    (link?.id === state.id && link.statePath === targetPath);
+  if (active) {
+    const neutral = createNeutralSession(currentRoot);
+    if (
+      plan.targets.some((directory) => pathWithin(directory, resolve(neutral)))
+    )
+      throw new Error(
+        "The replacement session would be inside the task directory; deletion was cancelled.",
+      );
+    const result = await ctx.switchSession(neutral, {
+      withSession: async (fresh) => deleteConfirmedTask(fresh),
+    });
+    if (result.cancelled)
+      ctx.ui.notify(
+        "Deletion was cancelled; the task is unchanged.",
+        "warning",
+      );
+  } else {
+    await deleteConfirmedTask(ctx);
   }
 }
 
@@ -4783,6 +5939,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
     getArgumentCompletions: (prefix) => {
       const commands = [
         "list",
+        "browse",
         "new",
         "delete",
         "status",
@@ -4818,10 +5975,13 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
       } else if (prefix.startsWith("delete ")) {
         try {
           const root = projectRoot(completionContext?.cwd || process.cwd());
-          items = listTasks(root).map(({ state }) => ({
-            value: `delete ${state.id.includes(" ") ? `"${state.id}"` : state.id}`,
-            label: `${state.id} · ${taskProgress(state)}`,
-          }));
+          const discovery = listTasksDetailed(root);
+          items = [...discovery.tasks, ...discovery.historical]
+            .filter((task) => !task.relocatedFrom)
+            .map(({ state, layout }) => ({
+              value: `delete ${state.id.includes(" ") ? `"${state.id}"` : state.id}`,
+              label: `${state.id} · ${layout || "task"} · ${taskProgress(state)}`,
+            }));
         } catch {
           items = [];
         }
@@ -4863,6 +6023,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 [
                   "help",
                   "list",
+                  "browse",
                   "new",
                   "delete",
                   "status",
@@ -4907,6 +6068,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 "Task settings (changes apply to this task):",
                 [
                   `Mode: ${effectiveSetting(state, "mode")}`,
+                  `Deletion: ${effectiveDeletionMode(state, taskStatePath(state), "current")}`,
                   `Manual review (semi-auto): ${effectiveSetting(state, "manualReview") ? "on" : "off"}`,
                   `Auto-commit: ${effectiveSetting(state, "autoCommit") ? "on" : "off"}`,
                   "Done",
@@ -4931,7 +6093,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 updateTaskConfig(state, {
                   manualReview: manualReview === "on",
                 });
-              } else {
+              } else if (selected.startsWith("Auto-commit:")) {
                 const autoCommit = await ctx.ui.select("Auto-commit:", [
                   "off",
                   "on",
@@ -4947,6 +6109,28 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 )
                   continue;
                 updateTaskConfig(state, { autoCommit: autoCommit === "on" });
+              } else {
+                const deleteMode = await ctx.ui.select("Task deletion mode:", [
+                  "trash",
+                  "permanent",
+                ]);
+                if (!deleteMode) continue;
+                if (
+                  deleteMode === "permanent" &&
+                  effectiveDeletionMode(
+                    state,
+                    taskStatePath(state),
+                    "current",
+                  ) !== "permanent" &&
+                  !(await ctx.ui.confirm(
+                    "Enable permanent deletion?",
+                    "Tasks will be permanently removed when deleted. You can change this setting later.",
+                  ))
+                )
+                  continue;
+                updateTaskConfig(state, {
+                  deleteMode: deleteMode as DeleteMode,
+                });
               }
               const displayedTask = visibleTask(ctx);
               if (displayedTask) setPhaseWidget(ctx, displayedTask, true);
@@ -4958,6 +6142,11 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             const global = effectiveConfig(state);
             const effectiveSettings = {
               mode: effectiveSetting(state, "mode"),
+              deleteMode: effectiveDeletionMode(
+                state,
+                taskStatePath(state),
+                "current",
+              ),
               autoCommit: effectiveSetting(state, "autoCommit"),
               manualReview: effectiveSetting(state, "manualReview"),
               statusColors: {
@@ -5016,6 +6205,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           };
           const values = {
             mode: inherited.mode ?? "manual",
+            deleteMode: inherited.deleteMode ?? "trash",
             autoCommit: inherited.autoCommit ?? false,
             manualReview: inherited.manualReview ?? true,
             include: inherited.include ?? [],
@@ -5033,8 +6223,11 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         if (command === "list") {
           if (args.length) throw new Error("Usage: /task list");
           const root = projectRoot(ctx.cwd);
-          const tasks = listTasks(root);
+          const discovery = listTasksDetailed(root);
+          const tasks = discovery.tasks;
+          const notes = taskDiscoveryNotes(discovery);
           if (ctx.mode === "tui" && tasks.length) {
+            if (notes) ctx.ui.notify(notes.trim(), "warning");
             const options = tasks.map((task) => {
               const state = taskDisplayState(task, root);
               return `${state.id} · ${taskProgress(state)} · last worked ${taskLastWorked(state)} · ${taskDescription(state)}${task.relocatedFrom ? ` · moved from ${task.relocatedFrom}` : ""}`;
@@ -5064,16 +6257,62 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
             ctx,
             "Task list",
             tasks.length
-              ? `# Tasks in ${root}\n\n| Task ID | State | Last worked | Context |\n| --- | --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.`
-              : `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.`,
+              ? `# Tasks in ${root}\n\n| Task ID | State | Last worked | Context |\n| --- | --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.${notes}`
+              : `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.${notes}`,
           );
+          return;
+        }
+        if (command === "browse") {
+          if (args.length) throw new Error("Usage: /task browse");
+          if (!ctx.isIdle())
+            throw new Error(
+              "Wait for Pi to finish or cancel its current run before browsing tasks.",
+            );
+          const root = projectRoot(ctx.cwd);
+          const discovery = listTasksDetailed(root, "global");
+          if (ctx.mode !== "tui") {
+            await showArtifact(
+              ctx,
+              "Global tasks",
+              globalTaskBrowserText(discovery),
+            );
+            return;
+          }
+          const rows = taskBrowserRows(discovery);
+          if (!rows.length) {
+            ctx.ui.notify(
+              "No global tasks or broken index entries found.",
+              "info",
+            );
+            return;
+          }
+          const selected = await selectGlobalTaskRow(ctx, rows);
+          if (!selected) return;
+          if (selected.kind === "task")
+            await deleteDiscoveredTask(
+              ctx,
+              selected.task,
+              root,
+              discovery.indexRecords,
+            );
+          else if (selected.kind === "index")
+            await deleteBrokenIndexEntry(ctx, selected.issue);
+          else
+            ctx.ui.notify(
+              `This entry is preserved and cannot be deleted as task data: ${selected.path}`,
+              "warning",
+            );
           return;
         }
         const root = projectRoot(ctx.cwd);
         let versionPath: string | undefined;
         const explicitTaskId =
           command && command !== "delete" ? args[0] : undefined;
-        if ((!command || command === "delete") && args.length) {
+        if (
+          (!command || command === "delete") &&
+          args.length &&
+          args[0] !== "--global"
+        ) {
           const id = args[0];
           const candidates = [statePath(parseRuntimeDir(root, id))].filter(
             (candidate) => existsSync(candidate),
@@ -5092,7 +6331,10 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               `Multiple task state files exist for ${explicitTaskId}: ${candidates.join(", ")}. Resolve the duplicate state files before continuing.`,
             );
           versionPath = candidates[0];
-        } else if (command) {
+        } else if (
+          command &&
+          !(command === "delete" && args[0] === "--global")
+        ) {
           const link = taskLink(ctx);
           if (link && existsSync(link.statePath)) {
             const linkedState = JSON.parse(
@@ -5132,6 +6374,66 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           await resumeFromCurrentProject(pi, ctx);
           return;
         }
+        if (command === "delete" && args[0] === "--global") {
+          if (args.length > 2)
+            throw new Error("Usage: /task delete --global [TASK-ID]");
+          if (!ctx.isIdle())
+            throw new Error(
+              "Wait for Pi to finish or cancel its current run before deleting a task.",
+            );
+          const root = projectRoot(ctx.cwd);
+          const discovery = listTasksDetailed(root, "global");
+          let rows = taskBrowserRows(discovery);
+          if (args.length === 2) {
+            const id = args[1];
+            validateTaskId(id);
+            rows = rows.filter(
+              (row) =>
+                (row.kind === "task" && row.task.state.id === id) ||
+                (row.kind === "index" && row.issue.record?.id === id),
+            );
+            if (!rows.length)
+              throw new Error(
+                `Global task ${id} was not found in indexed roots.`,
+              );
+            if (rows.length > 1 && ctx.mode !== "tui")
+              throw new Error(
+                `Task ID ${id} exists in multiple indexed locations. Use /task browse in the terminal UI and select the exact project and task path.`,
+              );
+          } else if (ctx.mode !== "tui") {
+            throw new Error(
+              "Choose a task in the terminal UI or specify /task delete --global TASK-ID.",
+            );
+          }
+          if (!rows.length) {
+            await showArtifact(
+              ctx,
+              "Global task delete",
+              "No global tasks or index entries found.",
+            );
+            return;
+          }
+          const selected =
+            args.length === 2 && rows.length === 1
+              ? rows[0]
+              : await selectGlobalTaskRow(ctx, rows);
+          if (!selected) return;
+          if (selected.kind === "task")
+            await deleteDiscoveredTask(
+              ctx,
+              selected.task,
+              root,
+              discovery.indexRecords,
+            );
+          else if (selected.kind === "index")
+            await deleteBrokenIndexEntry(ctx, selected.issue);
+          else
+            ctx.ui.notify(
+              `This entry is preserved and cannot be deleted as task data: ${selected.path}`,
+              "warning",
+            );
+          return;
+        }
         if (command === "delete") {
           if (args.length > 1) throw new Error("Usage: /task delete [TASK-ID]");
           if (!ctx.isIdle())
@@ -5139,33 +6441,34 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               "Wait for Pi to finish or cancel its current run before deleting a task.",
             );
           const root = projectRoot(ctx.cwd);
-          if (!args.length)
-            throw new Error(
-              "Specify a task ID with /task delete TASK-ID. ID-less deletion is unavailable because task state must be checked before loading it.",
-            );
-          const discovered = listTasks(root);
-          const tasks = discovered.filter((task) => !task.relocatedFrom);
+          const discovery = listTasksDetailed(root);
+          const discovered = [...discovery.tasks, ...discovery.historical];
           let target: DiscoveredTask | undefined;
           if (args.length) {
             validateTaskId(args[0]);
-            const candidate = discovered.find(
+            const matches = discovered.filter(
               ({ state }) => state.id === args[0],
             );
-            if (candidate?.relocatedFrom)
+            if (matches.some((task) => task.relocatedFrom))
               throw new Error(
-                `Task ${args[0]} was moved from ${candidate.relocatedFrom}. Open it with /task ${args[0]} and confirm relocation before deleting it.`,
+                `Task ${args[0]} was moved from ${matches.find((task) => task.relocatedFrom)?.relocatedFrom}. Open it with /task ${args[0]} and confirm relocation before deleting it.`,
               );
-            target = candidate;
+            if (matches.length > 1)
+              throw new Error(
+                `Multiple recognized layouts contain task ${args[0]} in ${root}. Use /task delete in the terminal UI to select the exact task directory.`,
+              );
+            target = matches[0];
             if (!target)
               throw new Error(
                 `Task ${args[0]} was not found in ${root}. Use /task list to see available tasks.`,
               );
           } else {
-            if (!tasks.length) {
+            const selectable = discovered.filter((task) => !task.relocatedFrom);
+            if (!selectable.length) {
               await showArtifact(
                 ctx,
                 "Task delete",
-                `No tasks found in ${root}.`,
+                `No deletable tasks found in ${root}.`,
               );
               return;
             }
@@ -5173,74 +6476,138 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               throw new Error(
                 "Choose a task in the terminal UI or specify /task delete TASK-ID.",
               );
-            const options = tasks.map(
-              ({ state }) =>
-                `${state.id} · ${taskProgress(state)} · ${taskDescription(state)}`,
+            const options = selectable.map(
+              ({ state, path, layout }) =>
+                `${state.id} · ${layout || "task"} · ${path} · ${taskProgress(state)}`,
             );
             const selected = await ctx.ui.select("Delete task:", options);
             if (selected === undefined) return;
-            target = tasks[options.indexOf(selected)];
+            target = selectable[options.indexOf(selected)];
           }
           if (!target) return;
           const targetPath = target.path;
-          const mismatch = checkTaskLayout(targetPath);
-          if (mismatch)
-            throw new Error(
-              `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${target.state.contextPath} as its context; this will not be done automatically.`,
-            );
-          const state = loadState(targetPath);
-          if (state.id !== target.state.id || state.projectRoot !== root)
+          const state = loadState(targetPath, false);
+          if (
+            state.id !== target.state.id ||
+            resolve(state.projectRoot) !== resolve(root)
+          )
             throw new Error(
               "Task changed while choosing it; run /task delete again.",
             );
-          const directory = taskDirectoryForDeletion(state, targetPath);
-          const runtimeDirectory = resolve(runtimeDir(state));
+          const plan = taskDirectoryForDeletion(state, targetPath);
+          const mode = effectiveDeletionMode(state, targetPath, plan.layout);
+          const pathSummary = plan.targets.join("\n");
           const confirmed = await ctx.ui.confirm(
-            `Permanently delete task ${state.id}?`,
-            `Delete artifacts at ${directory} and local workflow state at ${runtimeDirectory}? This cannot be undone.`,
+            mode === "trash"
+              ? `Move task ${state.id} to the OS trash?`
+              : `Permanently delete task ${state.id}?`,
+            mode === "trash"
+              ? `Move the selected task data at ${pathSummary} to the OS trash?`
+              : `Permanently remove the selected task data at ${pathSummary}. This cannot be undone.`,
           );
           if (!confirmed) return;
-          const latest = loadState(targetPath);
+          const latest = loadState(targetPath, false);
           if (
             latest.id !== state.id ||
-            latest.projectRoot !== root ||
-            resolve(taskDir(latest)) !== directory ||
-            resolve(runtimeDir(latest)) !== runtimeDirectory
+            resolve(latest.projectRoot) !== resolve(root)
           )
             throw new Error(
               "Task changed before deletion; run /task delete again.",
             );
+          const latestPlan = taskDirectoryForDeletion(latest, targetPath);
+          if (
+            latestPlan.layout !== plan.layout ||
+            latestPlan.targets.join("\0") !== plan.targets.join("\0")
+          )
+            throw new Error(
+              "Task paths changed before deletion; run /task delete again.",
+            );
+
+          const deleteConfirmedTask = async (
+            actionContext: ExtensionCommandContext,
+          ): Promise<void> => {
+            try {
+              await deleteTaskFiles(latest, targetPath, mode);
+              actionContext.ui.notify(
+                mode === "trash"
+                  ? `Task ${state.id} was moved to the OS trash.`
+                  : `Task ${state.id} was permanently deleted.`,
+                "info",
+              );
+            } catch (error) {
+              if (!(error instanceof TaskDeletionError)) {
+                actionContext.ui.notify(
+                  error instanceof Error ? error.message : String(error),
+                  "error",
+                );
+                return;
+              }
+              const moved = error.movedPaths.length
+                ? error.movedPaths.join("\n")
+                : "none";
+              const remaining = error.remainingPaths.length
+                ? error.remainingPaths.join("\n")
+                : "none";
+              actionContext.ui.notify(
+                `${error.message}\nAlready moved: ${moved}\nNot moved: ${remaining}\nThe task index record, if any, was retained.`,
+                "error",
+              );
+              if (mode !== "trash" || !error.remainingPaths.length) return;
+              const retry = await actionContext.ui.confirm(
+                "Switch to permanent deletion and retry?",
+                `This will set this task's deleteMode to permanent and permanently delete the remaining paths:\n${error.remainingPaths.join("\n")}\nAlready moved paths will not be retried.`,
+              );
+              if (!retry) return;
+              try {
+                setTaskDeletionMode(
+                  latest,
+                  targetPath,
+                  plan.layout,
+                  "permanent",
+                );
+                const retryState = loadState(targetPath, false);
+                await deleteTaskFiles(
+                  retryState,
+                  targetPath,
+                  "permanent",
+                  error.remainingPaths,
+                );
+                actionContext.ui.notify(
+                  `Task ${state.id} was deleted after switching its deletion mode to permanent.`,
+                  "info",
+                );
+              } catch (retryError) {
+                const retryMessage =
+                  retryError instanceof TaskDeletionError
+                    ? `${retryError.message}\nAlready moved: ${retryError.movedPaths.join("\n") || "none"}\nNot moved: ${retryError.remainingPaths.join("\n") || "none"}\nThe task index record, if any, was retained.`
+                    : retryError instanceof Error
+                      ? retryError.message
+                      : String(retryError);
+                actionContext.ui.notify(retryMessage, "error");
+              }
+            }
+          };
+
           const current = ctx.sessionManager.getSessionFile();
           const link = taskLink(ctx);
           const active =
             (current &&
-              (pathWithin(directory, resolve(current)) ||
-                pathWithin(runtimeDirectory, resolve(current)))) ||
+              plan.targets.some((directory) =>
+                pathWithin(directory, resolve(current)),
+              )) ||
             (link?.id === state.id && link.statePath === targetPath);
           if (active) {
             const neutral = createNeutralSession(root);
             if (
-              pathWithin(directory, resolve(neutral)) ||
-              pathWithin(runtimeDirectory, resolve(neutral))
+              plan.targets.some((directory) =>
+                pathWithin(directory, resolve(neutral)),
+              )
             )
               throw new Error(
                 "The replacement session would be inside the task directory; deletion was cancelled.",
               );
             const result = await ctx.switchSession(neutral, {
-              withSession: async (fresh) => {
-                try {
-                  deleteTaskFiles(loadState(targetPath), targetPath);
-                  fresh.ui.notify(
-                    `Task ${state.id} was permanently deleted.`,
-                    "info",
-                  );
-                } catch (error) {
-                  fresh.ui.notify(
-                    error instanceof Error ? error.message : String(error),
-                    "error",
-                  );
-                }
-              },
+              withSession: async (fresh) => deleteConfirmedTask(fresh),
             });
             if (result.cancelled)
               ctx.ui.notify(
@@ -5248,8 +6615,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                 "warning",
               );
           } else {
-            deleteTaskFiles(latest, targetPath);
-            ctx.ui.notify(`Task ${state.id} was permanently deleted.`, "info");
+            await deleteConfirmedTask(ctx);
           }
           return;
         }
