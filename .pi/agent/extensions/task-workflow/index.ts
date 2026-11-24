@@ -45,7 +45,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.6.0";
+const APP_VERSION = "2.7.0";
 
 type Phase =
   | "research"
@@ -133,7 +133,7 @@ type Config = {
 const ENTRY_TYPE = "task-workflow-link";
 const ARTIFACT_TOOL = "task_write_artifact";
 const ARTIFACT_LANGUAGE_RULE =
-  "Use the user's language for normal conversation, including explanations, questions, and review discussion. Do not switch chat replies to English because the artifacts are English. Write only task artifact content in English, regardless of the language used in the conversation or source ticket. This includes artifact headings, summaries, decisions, roadmap items, step designs, and review findings. Translate or condense non-English discussion into English when writing an artifact rather than copying it. Preserve exact code, identifiers, paths, and required verbatim diff excerpts.";
+  "Use the user's language for normal conversation, including explanations, questions, and review discussion. Do not switch chat replies to English because standard task artifacts are English. Write standard task artifact content in English, regardless of the language used in the conversation or source ticket. This includes artifact headings, summaries, decisions, roadmap items, step designs, and review findings. Translate or condense non-English discussion into English when writing a standard artifact rather than copying it. Preserve exact code, identifiers, paths, and required verbatim diff excerpts. Custom artifacts created during implementation preparation may use the user's language and must retain that language when updated.";
 const KICKOFF_TYPE = "task-workflow-kickoff";
 const PHASE_WIDGET = "task-workflow-phase";
 const READ_TOOLS = ["read", "grep", "find", "ls"];
@@ -239,7 +239,8 @@ Use Pi's normal progress and cancellation controls during implementation and rev
 Use /task next when discussion is settled; use /task accept to agree to proposals and advance.
 Agreement is implied by /task accept; add a note only to clarify a choice or decision.
 Text ending in /task next is not parsed as a command.
-Task artifacts may be updated in any phase; project code changes run only in implement.
+Standard task artifact updates follow phase permissions; custom artifacts are writable only during
+implementation preparation. Project code changes run only in implement.
 Task data uses the fixed path <project>/.agents/task-workflow/<task-id>/, with artifacts under context/.
 Global settings live in ~/.pi/agent/task-workflow.json. Project settings live in
 <project>/.agents/task-workflow/config.json; task settings live in
@@ -1808,6 +1809,57 @@ function artifactPath(
   return stepPath(state, step || state.currentStep);
 }
 
+function writeArtifactFile(
+  state: TaskState,
+  path: string,
+  content: string,
+): string {
+  if (existsSync(path) && lstatSync(path).isSymbolicLink())
+    throw new Error(`Refusing to replace a symbolic link: ${path}`);
+  const temporary = join(taskDir(state), `.task-write-${randomUUID()}.tmp`);
+  try {
+    writeFileSync(
+      temporary,
+      content.endsWith("\n") ? content : `${content}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+    renameSync(temporary, path);
+  } finally {
+    if (existsSync(temporary)) rmSync(temporary);
+  }
+  return path;
+}
+
+function customArtifactPath(state: TaskState, filename: string): string {
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}._-]{0,116}\.md$/iu.test(filename))
+    throw new Error(
+      "Custom artifact names must be Markdown basenames with no path separators.",
+    );
+  const normalized = filename.toLowerCase();
+  if (
+    normalized === "context.md" ||
+    normalized === "roadmap.md" ||
+    /^step-\d+\.md$/.test(normalized) ||
+    /^review-\d+-round-\d+\.md$/.test(normalized)
+  )
+    throw new Error(
+      "Custom artifacts cannot use a standard artifact filename.",
+    );
+  return join(taskDir(state), filename);
+}
+
+function writeCustomArtifact(
+  state: TaskState,
+  filename: string,
+  content: string,
+): string {
+  if (state.phase !== "implement" || state.implementationStarted)
+    throw new Error(
+      "Custom artifacts can only be created or updated during implementation preparation.",
+    );
+  return writeArtifactFile(state, customArtifactPath(state, filename), content);
+}
+
 function writeArtifact(
   state: TaskState,
   kind: ArtifactKind,
@@ -1839,19 +1891,7 @@ function writeArtifact(
       "Task context must be stored inside the fixed task context directory.",
     );
   }
-  if (existsSync(path) && lstatSync(path).isSymbolicLink())
-    throw new Error(`Refusing to replace a symbolic link: ${path}`);
-  const temporary = join(taskDir(state), `.task-write-${randomUUID()}.tmp`);
-  try {
-    writeFileSync(
-      temporary,
-      content.endsWith("\n") ? content : `${content}\n`,
-      { encoding: "utf8", flag: "wx", mode: 0o600 },
-    );
-    renameSync(temporary, path);
-  } finally {
-    if (existsSync(temporary)) rmSync(temporary);
-  }
+  writeArtifactFile(state, path, content);
   if (
     kind === "review" &&
     state.phase === "review" &&
@@ -4240,7 +4280,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
     name: ARTIFACT_TOOL,
     label: "Write Task Artifact",
     description:
-      "Replace a task artifact in the task directory. Write prose and headings in English, regardless of the conversation language; preserve exact code, paths, and quoted excerpts. Review artifact formatting is guided by the review skill, not validated by the extension. The extension chooses the file path.",
+      "Replace a standard task artifact in the task directory, or create/update a custom Markdown artifact during implementation preparation. Standard artifacts use English prose; custom artifacts may use the user's language and retain it on updates. Preserve exact code, paths, and quoted excerpts. Review artifact formatting is guided by the review skill, not validated by the extension. The extension chooses standard paths; custom artifacts require a filename basename.",
     defaultActive: false,
     parameters: Type.Object({
       artifact: Type.Union([
@@ -4248,12 +4288,39 @@ export default function taskExtension(pi: ExtensionAPI): void {
         Type.Literal("roadmap"),
         Type.Literal("step"),
         Type.Literal("review"),
+        Type.Literal("custom"),
       ]),
       step: Type.Optional(Type.Integer({ minimum: 1 })),
+      filename: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
       content: Type.String({ minLength: 1 }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const state = requireTask(ctx);
+      if (params.artifact === "custom") {
+        if (params.step !== undefined)
+          throw new Error(
+            "The step argument is not valid for custom artifacts.",
+          );
+        if (!params.filename)
+          throw new Error("A filename is required for custom artifacts.");
+        if (!sessionMatches(ctx, state))
+          throw new Error(
+            "This is an old task session. Use /task TASK-ID to open the current phase before changing artifacts.",
+          );
+        const path = writeCustomArtifact(
+          state,
+          params.filename,
+          params.content,
+        );
+        return {
+          content: [{ type: "text", text: `Saved ${path}.` }],
+          details: { artifact: params.artifact, path },
+        };
+      }
+      if (params.filename !== undefined)
+        throw new Error(
+          "The filename argument is only valid for custom artifacts.",
+        );
       if (state.phase === "research" && params.artifact !== "context")
         throw new Error(
           "Research can write only context.md. Other artifacts are available in their corresponding phases.",
@@ -4419,7 +4486,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           ]),
         ]
       : configuredPhaseTools(pi, config, state.phase);
-    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : state.phase === "manual-review" ? "This is the separate manual review phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating an existing artifact, convert its non-English prose to English while preserving its agreed meaning. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
+    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : state.phase === "manual-review" ? "This is the separate manual review phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating a standard artifact, convert its non-English prose to English while preserving its agreed meaning. For a custom artifact, preserve the language already used in that file. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
       state.phase === "research"
         ? `Gather and clarify task context, then inspect project files and use available read-only web search/fetch tools to research feasibility. If none is directly listed, use tool_search to discover an available read-only web tool. You may read project files but must not edit them. Write only context.md using task_write_artifact; do not write roadmap, step, or review artifacts in Research. Keep context.md concise and current with confirmed facts; add agreed findings and code references, and leave unresolved doubts out. Research tools enabled for this turn: ${researchAllowedTools(pi).join(", ") || "none"}.`
@@ -4428,7 +4495,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           : state.phase === "implement"
             ? writable
               ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
-              : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
+              : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. You may also create or update additional Markdown artifacts in ${taskDir(state)} with ${ARTIFACT_TOOL}, using artifact "custom" and a filename. These custom artifacts may be written in the user's language; preserve that language when updating them. Before creating one, check for an existing file to update rather than making a duplicate. The same filename updates the existing file; use complete replacement content. Custom artifacts are allowed only before /task next starts coding. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
             : state.phase === "review"
               ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
 

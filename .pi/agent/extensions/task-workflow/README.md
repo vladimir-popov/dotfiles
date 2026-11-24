@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.6.0**
+**Version: 2.7.0**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
@@ -148,7 +148,7 @@ ID. Task storage paths are fixed.
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Research**       | Describe the problem, constraints, and possible approaches; inspect project files and use available read-only web search/fetch tools to discuss feasibility, code locations, and unresolved questions. The extension enables `tool_search` when available and includes matching deferred web tools in the Research tool allowlist. Project files cannot be edited in this phase.                                                                                                                                    | Pi keeps `context.md` compact and current; `task_write_artifact` may write only `context.md` in Research.                                                                                                                                   |
 | **Roadmap**        | Discuss a numbered plan. New agreed requirements update context and cause a revised complete roadmap proposal.                                                                                                                                                                                                                                                                                                              | `context.md` and a draft `roadmap.md`; `/task next` finalizes the roadmap. Top-level steps must be numbered consecutively from 1; short bold titles and dash explanations are preferred, but ordinary numbered Markdown steps are accepted. |
-| **Implementation** | This is one workflow phase with two stages in the same saved session. **Preparation:** discuss the current step and checks; project code is read-only. `/task next` resolves open questions/proposals, finalizes `step-N.md`, marks it `in_progress`, captures a baseline, and starts implementation. **Coding:** implement the approved step; after review, repair open findings in this same session. | Only the current step needs a `step-N.md`; future step designs are deferred. `/task next` after coding writes the temporary `implementation-N.diff` and opens review. |
+| **Implementation** | This is one workflow phase with two stages in the same saved session. **Preparation:** discuss the current step and checks; project code is read-only. `/task next` resolves open questions/proposals, finalizes `step-N.md`, marks it `in_progress`, captures a baseline, and starts implementation. **Coding:** implement the approved step; after review, repair open findings in this same session. | Preparation may create and update additional Markdown artifacts in the task `context/` directory using `task_write_artifact`; custom artifact content may use the user's language. `/task next` after coding writes the temporary `implementation-N.diff` and opens review. |
 | **Review**         | Each round uses a fresh read-only session. The first report is `review-N-round-0.md`; every subsequent round gets the next number.                                                                                                                                                                                                                                                             | `/task next` returns open findings to implementation or accepts a clear review.                                                                                                                                                             |
 | **Manual review**  | Semi-auto only, when `manualReview` is enabled. After automated review and before commit, a separate read-only session lets the user inspect the implementation diff and changed files. `/task next` sends findings to implementation or an empty review to commit; `/task accept` accepts a proposed solution and follows the same routing. | No artifact is required.                                                                                                                                                                                                                     |
 | **Commit**         | A distinct phase after review acceptance. After the commit is verified, the extension records review outcomes in `step-N.md`, marks it `completed`, and removes `implementation-N.diff` and all `review-N-round-M.md` files for that step.                                                                                                                                                                                                                                    | The compact execution record in `step-N.md` preserves review summaries, accepted decisions, and finding dispositions.                                                                                                                                                                                       |
@@ -175,9 +175,16 @@ Steps with no code changes still pass through without a commit action.
 
 `/task resume` returns to the active task in the current project, including from a fresh `/new` session. If several active tasks exist, the terminal UI offers a selector; outside it, use `/task TASK-ID` to choose one. It also detects confirmed project-directory renames for project-local tasks. An aborted run resumes in its saved session with current phase instructions. A review with no saved `review-N-round-M.md` for the active round also resumes; `/task next` remains blocked until that artifact is saved. If no run needs resuming, the command simply opens the saved task session. It does not advance the phase or clear pending artifacts.
 
-Artifacts can be updated in any phase when an agreed change requires it. Project code can be edited only after `/task next` starts implementation and captures a baseline. The extension tracks the current phase and all saved session files in `state.json`.
+Standard artifacts can be updated when the current phase allows it; custom artifacts can only be created or updated during implementation preparation. Project code can be edited only after `/task next` starts implementation and captures a baseline. The extension tracks the current phase and all saved session files in `state.json`.
 
-The task instructions tell Pi to converse in your language, including explanations, questions, and review discussion. Only task artifact content uses English prose and headings. Pi translates the agreed meaning into English when it writes or revises `context.md`, `roadmap.md`, `step-N.md`, and `review-N-round-M.md`. Exact code, identifiers, paths, and required diff excerpts remain unchanged. Existing non-English prose is rewritten when an artifact is next updated or finalized; loading an old task does not rewrite its files automatically.
+The task instructions tell Pi to converse in your language, including explanations, questions, and
+review discussion. Standard task artifacts use English prose and headings: Pi translates the agreed
+meaning when it writes or revises `context.md`, `roadmap.md`, `step-N.md`, and
+`review-N-round-M.md`. Additional custom artifacts created during implementation preparation may
+use the user's language and retain it when updated. Exact code, identifiers, paths, and required
+diff excerpts remain unchanged. Existing non-English prose in standard artifacts is rewritten
+when an artifact is next updated or finalized; loading an old task does not rewrite its files
+automatically.
 
 ### 👀 What each Pi sees
 
@@ -297,9 +304,19 @@ Task artifacts live in `.agents/task-workflow/<task-id>/context/`; `implementati
 
 ## 🔧 Implementation notes
 
-`task_write_artifact` replaces a complete task artifact atomically. The model supplies an artifact kind and optional step number, while the extension chooses the path. It refuses to replace a symbolic link. The extension writes task state and implementation diffs itself. The transition check uses the recent phase discussion and current review artifact to identify open questions or unapproved proposals; it is a model judgment, so important decisions should be explicit.
+`task_write_artifact` replaces a complete task artifact atomically. The model supplies an artifact
+kind and optional step number, while the extension chooses standard paths. During implementation
+preparation only, the model may also supply a custom Markdown basename; the extension confines it
+to the task `context/` directory, rejects standard artifact names, and refuses to replace a
+symbolic link. Reusing the same filename updates that custom artifact. The extension writes task
+state and implementation diffs itself. The transition check uses the recent phase discussion and
+current review artifact to identify open questions or unapproved proposals; it is a model
+judgment, so important decisions should be explicit.
 
-The English-only artifact rule appears in each phase's system instructions, in the artifact tool description, and in the separate model request that finalizes an artifact. It guides generation; the extension does not try to classify the language of code, file names, or quoted diff lines.
+Standard artifacts use English prose. Custom artifacts created during implementation preparation
+may use the user's language; the tool instructions tell Pi to preserve that language when
+updating the file. The language rule guides generation; the extension does not classify artifact
+content.
 
 The extension's review prompt defines the invariant contract and default artifact format/procedure. A configured, available review skill may define the procedure within that contract; no review skill is selected by default. The extension does not validate or normalize review artifact formatting; it only requires the review artifact to be saved before the phase can advance. Review status summaries recognize Markdown `###` finding headings and `Status: resolved` or `Status: dismissed` markers when present.
 
