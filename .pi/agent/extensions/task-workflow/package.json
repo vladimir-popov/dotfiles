@@ -1,0 +1,8 @@
+{
+  "name": "task-workflow",
+  "version": "2.6.0",
+  "private": true,
+  "dependencies": {
+    "picomatch": "^4.0.7"
+  }
+}
