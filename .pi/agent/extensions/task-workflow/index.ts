@@ -5,6 +5,7 @@ import {
   cpSync,
   promises as fsPromises,
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -45,7 +46,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.7.0";
+const APP_VERSION = "2.7.1";
 
 type Phase =
   | "research"
@@ -1814,8 +1815,12 @@ function writeArtifactFile(
   path: string,
   content: string,
 ): string {
-  if (existsSync(path) && lstatSync(path).isSymbolicLink())
-    throw new Error(`Refusing to replace a symbolic link: ${path}`);
+  try {
+    if (lstatSync(path).isSymbolicLink())
+      throw new Error(`Refusing to replace a symbolic link: ${path}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   const temporary = join(taskDir(state), `.task-write-${randomUUID()}.tmp`);
   try {
     writeFileSync(
@@ -1824,6 +1829,31 @@ function writeArtifactFile(
       { encoding: "utf8", flag: "wx", mode: 0o600 },
     );
     renameSync(temporary, path);
+  } finally {
+    if (existsSync(temporary)) rmSync(temporary);
+  }
+  return path;
+}
+
+function createArtifactFile(
+  state: TaskState,
+  path: string,
+  content: string,
+): string {
+  const temporary = join(taskDir(state), `.task-write-${randomUUID()}.tmp`);
+  try {
+    writeFileSync(
+      temporary,
+      content.endsWith("\n") ? content : `${content}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+    try {
+      linkSync(temporary, path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST")
+        throw new Error(`Custom artifact already exists: ${path}`);
+      throw error;
+    }
   } finally {
     if (existsSync(temporary)) rmSync(temporary);
   }
@@ -1848,16 +1878,67 @@ function customArtifactPath(state: TaskState, filename: string): string {
   return join(taskDir(state), filename);
 }
 
+type CustomArtifactOperation = "create" | "append" | "replace_text";
+
+function readCustomArtifact(path: string): string | undefined {
+  try {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink())
+      throw new Error(`Refusing to read a symbolic link: ${path}`);
+    if (!info.isFile())
+      throw new Error(`Custom artifact is not a regular file: ${path}`);
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 function writeCustomArtifact(
   state: TaskState,
   filename: string,
+  operation: CustomArtifactOperation,
   content: string,
+  oldText?: string,
 ): string {
   if (state.phase !== "implement" || state.implementationStarted)
     throw new Error(
       "Custom artifacts can only be created or updated during implementation preparation.",
     );
-  return writeArtifactFile(state, customArtifactPath(state, filename), content);
+
+  const path = customArtifactPath(state, filename);
+  const existing = readCustomArtifact(path);
+  if (operation === "create") {
+    if (existing !== undefined)
+      throw new Error(`Custom artifact already exists: ${path}`);
+    return createArtifactFile(state, path, content);
+  }
+  if (existing === undefined)
+    throw new Error(`Custom artifact does not exist: ${path}`);
+  if (operation === "append") {
+    const separator = existing && !existing.endsWith("\n") ? "\n" : "";
+    return writeArtifactFile(state, path, `${existing}${separator}${content}`);
+  }
+  if (!oldText)
+    throw new Error("oldText is required when replacing custom artifact text.");
+  if (oldText === existing || oldText === existing.trimEnd())
+    throw new Error(
+      "Replacing the entire custom artifact is not allowed; target a smaller exact fragment.",
+    );
+  const firstMatch = existing.indexOf(oldText);
+  if (firstMatch < 0)
+    throw new Error(
+      "oldText was not found in the custom artifact; nothing changed.",
+    );
+  if (existing.indexOf(oldText, firstMatch + oldText.length) >= 0)
+    throw new Error(
+      "oldText matches more than once in the custom artifact; nothing changed.",
+    );
+  const updated =
+    existing.slice(0, firstMatch) +
+    content +
+    existing.slice(firstMatch + oldText.length);
+  return writeArtifactFile(state, path, updated);
 }
 
 function writeArtifact(
@@ -4280,7 +4361,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
     name: ARTIFACT_TOOL,
     label: "Write Task Artifact",
     description:
-      "Replace a standard task artifact in the task directory, or create/update a custom Markdown artifact during implementation preparation. Standard artifacts use English prose; custom artifacts may use the user's language and retain it on updates. Preserve exact code, paths, and quoted excerpts. Review artifact formatting is guided by the review skill, not validated by the extension. The extension chooses standard paths; custom artifacts require a filename basename.",
+      "Replace standard task artifacts with complete content. During implementation preparation, manage custom Markdown artifacts with create, append, or replace_text operations; never rewrite an existing custom file wholesale. replace_text requires an exact oldText that occurs once. Standard artifacts use English prose; custom artifacts may use the user's language. Preserve exact code, paths, and quoted excerpts. Review artifact formatting is guided by the review skill, not validated by the extension. Custom artifacts require a filename basename.",
     defaultActive: false,
     parameters: Type.Object({
       artifact: Type.Union([
@@ -4292,6 +4373,14 @@ export default function taskExtension(pi: ExtensionAPI): void {
       ]),
       step: Type.Optional(Type.Integer({ minimum: 1 })),
       filename: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
+      operation: Type.Optional(
+        Type.Union([
+          Type.Literal("create"),
+          Type.Literal("append"),
+          Type.Literal("replace_text"),
+        ]),
+      ),
+      oldText: Type.Optional(Type.String({ minLength: 1 })),
       content: Type.String({ minLength: 1 }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -4303,6 +4392,16 @@ export default function taskExtension(pi: ExtensionAPI): void {
           );
         if (!params.filename)
           throw new Error("A filename is required for custom artifacts.");
+        if (!params.operation)
+          throw new Error("An operation is required for custom artifacts.");
+        if (params.operation === "replace_text" && !params.oldText)
+          throw new Error(
+            "oldText is required for the replace_text operation.",
+          );
+        if (params.operation !== "replace_text" && params.oldText !== undefined)
+          throw new Error(
+            "oldText is only valid for the replace_text operation.",
+          );
         if (!sessionMatches(ctx, state))
           throw new Error(
             "This is an old task session. Use /task TASK-ID to open the current phase before changing artifacts.",
@@ -4310,16 +4409,28 @@ export default function taskExtension(pi: ExtensionAPI): void {
         const path = writeCustomArtifact(
           state,
           params.filename,
+          params.operation,
           params.content,
+          params.oldText,
         );
         return {
-          content: [{ type: "text", text: `Saved ${path}.` }],
-          details: { artifact: params.artifact, path },
+          content: [
+            { type: "text", text: `Applied ${params.operation} to ${path}.` },
+          ],
+          details: {
+            artifact: params.artifact,
+            operation: params.operation,
+            path,
+          },
         };
       }
-      if (params.filename !== undefined)
+      if (
+        params.filename !== undefined ||
+        params.operation !== undefined ||
+        params.oldText !== undefined
+      )
         throw new Error(
-          "The filename argument is only valid for custom artifacts.",
+          "filename, operation, and oldText are only valid for custom artifacts.",
         );
       if (state.phase === "research" && params.artifact !== "context")
         throw new Error(
@@ -4486,7 +4597,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           ]),
         ]
       : configuredPhaseTools(pi, config, state.phase);
-    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : state.phase === "manual-review" ? "This is the separate manual review phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}; it accepts complete replacement content. ${ARTIFACT_LANGUAGE_RULE} When updating a standard artifact, convert its non-English prose to English while preserving its agreed meaning. For a custom artifact, preserve the language already used in that file. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
+    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : state.phase === "manual-review" ? "This is the separate manual review phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}. Standard artifacts accept complete replacement content; custom artifacts use create, append, or replace_text operations and must never be rewritten wholesale. ${ARTIFACT_LANGUAGE_RULE} When updating a standard artifact, convert its non-English prose to English while preserving its agreed meaning. For a custom artifact, preserve the language already used in that file. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
       state.phase === "research"
         ? `Gather and clarify task context, then inspect project files and use available read-only web search/fetch tools to research feasibility. If none is directly listed, use tool_search to discover an available read-only web tool. You may read project files but must not edit them. Write only context.md using task_write_artifact; do not write roadmap, step, or review artifacts in Research. Keep context.md concise and current with confirmed facts; add agreed findings and code references, and leave unresolved doubts out. Research tools enabled for this turn: ${researchAllowedTools(pi).join(", ") || "none"}.`
@@ -4495,7 +4606,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           : state.phase === "implement"
             ? writable
               ? `Implement or repair step ${state.currentStep} in this session. Read approved artifacts and, when repairing, ${reviewPath(state, state.currentStep)}. Address only open findings. Run focused checks and summarize changes. Do not commit. Use /task next when ready for review.`
-              : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. You may also create or update additional Markdown artifacts in ${taskDir(state)} with ${ARTIFACT_TOOL}, using artifact "custom" and a filename. These custom artifacts may be written in the user's language; preserve that language when updating them. Before creating one, check for an existing file to update rather than making a duplicate. The same filename updates the existing file; use complete replacement content. Custom artifacts are allowed only before /task next starts coding. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
+              : `This is final preparation for step ${state.currentStep}. Read ${state.contextPath}, ${roadmapPath(state)}, and ${stepPath(state, state.currentStep)} if it exists. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed design in ${stepPath(state, state.currentStep)}. You may also manage additional Markdown artifacts in ${taskDir(state)} with ${ARTIFACT_TOOL}, using artifact "custom", a filename, and an operation. Use "create" only for a new file; it fails rather than overwriting an existing one. Use "append" to add content while preserving everything already there. Use "replace_text" to replace a small exact oldText fragment; it succeeds only when that fragment occurs exactly once, and replacing the entire file is rejected. Read the file before making a targeted change. These custom artifacts may be written in the user's language; preserve that language when updating them. If the target fragment is missing or ambiguous, do not rewrite the file; inspect it again or ask the user. Custom artifacts are allowed only before /task next starts coding. Do not edit project code. /task next checks unresolved questions and proposals, finalizes the step design, captures the baseline, and starts implementation.`
             : state.phase === "review"
               ? `Review step ${state.currentStep} independently against the approved context and step design. Read the implementation diff and relevant project code using read-only tools. Save ${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below, using task_write_artifact with artifact "review" and step ${state.currentStep}.
 
