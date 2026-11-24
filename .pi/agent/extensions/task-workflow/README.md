@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.7.1**
+**Version: 2.8.0**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
@@ -111,7 +111,13 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 
 The extension binds **Alt+N** to `/task next`, **Alt+A** to `/task accept`, **Alt+S** to `/task status`, and **Alt+W** to `/task show` by default. They invoke the same commands and checks as the slash forms. Hotkeys work when Pi is idle and the input editor is empty; otherwise the extension shows a reminder and leaves the draft untouched. Run Pi's `/hotkeys` to inspect active bindings. On macOS, your terminal may need Option configured as Meta for Alt shortcuts to work.
 
-`/task show` and Alt+W open a selector containing the existing `.md` files directly in the task artifact directory, including review rounds for active steps. `/task show roadmap.md` opens one directly; `/task show ` completes existing Markdown file names. Outside the terminal UI, `/task show` lists available files. Diff files are not included in this Markdown viewer.
+`/task show` and Alt+W open a selector containing the existing `.md` files directly in the task
+artifact directory, including review rounds for active steps. `/task show roadmap.md` opens one
+directly; `/task show ` completes existing Markdown file names. In fullscreen TUI mode, scroll the
+viewer with the mouse wheel or `j`/`k` (also `о`/`л`), and drag within the text to select and copy
+it without selecting the window frame or rest of the interface. Enter or Escape closes it.
+Outside the terminal UI, `/task show` lists available files. Diff files are not included in this
+Markdown viewer.
 
 Set `hotkeys` in `~/.pi/agent/task-workflow.json` to change a binding or give any `/task` command a key. Map a command string without `/task` to a Pi key name; use `null` to disable a default. Commands with arguments work too, for example `"show roadmap.md"` or `"TASK-100500"`. Reload Pi after changing the configuration.
 

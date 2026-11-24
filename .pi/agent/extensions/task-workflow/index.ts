@@ -38,15 +38,19 @@ import {
 import { uuidv7, type Message } from "@earendil-works/pi-ai";
 import {
   decodeKittyPrintable,
+  getNativeClipboard,
   Markdown,
   parseColor,
   Text,
+  type TuiMouseEvent,
   matchesKey,
+  sliceByColumn,
+  stripTerminalSequences,
   truncateToWidth,
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.7.1";
+const APP_VERSION = "2.8.0";
 
 type Phase =
   | "research"
@@ -2846,13 +2850,110 @@ async function showArtifact(
   await ctx.ui.custom<void>(
     (tui, theme, _keys, done) => {
       const markdown = new Markdown(content, 0, 0, getMarkdownTheme());
+      type Point = { line: number; column: number };
+      type Selection = { anchor: Point; focus: Point };
       let scroll = 0;
+      let maxScroll = 0;
+      let innerWidth = 1;
+      let visibleContentLines = 0;
+      let markdownLines: readonly string[] = [];
+      let selection: Selection | undefined;
+      let dragAnchor: Point | undefined;
+
+      const comparePoints = (left: Point, right: Point): number =>
+        left.line - right.line || left.column - right.column;
+      const pointFromMouse = (
+        event: TuiMouseEvent,
+        clamp: boolean,
+      ): Point | undefined => {
+        if (visibleContentLines === 0) return undefined;
+        const row = event.y - 2;
+        const column = event.x - 2;
+        if (
+          !clamp &&
+          (row < 0 ||
+            row >= visibleContentLines ||
+            column < 0 ||
+            column >= innerWidth)
+        )
+          return undefined;
+        return {
+          line: scroll + Math.max(0, Math.min(visibleContentLines - 1, row)),
+          column: Math.max(0, Math.min(innerWidth - 1, column)),
+        };
+      };
+      const orderedSelection = (): [Point, Point] | undefined => {
+        if (
+          !selection ||
+          comparePoints(selection.anchor, selection.focus) === 0
+        )
+          return undefined;
+        return comparePoints(selection.anchor, selection.focus) < 0
+          ? [selection.anchor, selection.focus]
+          : [selection.focus, selection.anchor];
+      };
+      const rangeForLine = (
+        line: number,
+      ): { start: number; end: number } | undefined => {
+        const ordered = orderedSelection();
+        if (!ordered) return undefined;
+        const [first, last] = ordered;
+        if (line < first.line || line > last.line) return undefined;
+        return {
+          start: line === first.line ? first.column : 0,
+          end: line === last.line ? last.column + 1 : innerWidth,
+        };
+      };
+      const selectedLine = (line: string, lineNumber: number): string => {
+        const range = rangeForLine(lineNumber);
+        if (!range) return line;
+        const padded =
+          line + " ".repeat(Math.max(0, innerWidth - visibleWidth(line)));
+        const before = sliceByColumn(padded, 0, range.start, true);
+        const selected = stripTerminalSequences(
+          sliceByColumn(padded, range.start, range.end - range.start, true),
+        );
+        const after = sliceByColumn(
+          padded,
+          range.end,
+          Math.max(0, innerWidth - range.end),
+          true,
+        );
+        return `${before}${theme.inverse(selected)}${after}`;
+      };
+      const selectedText = (): string => {
+        const ordered = orderedSelection();
+        if (!ordered) return "";
+        const [first, last] = ordered;
+        const chunks: string[] = [];
+        for (let line = first.line; line <= last.line; line++) {
+          const range = rangeForLine(line);
+          if (!range) continue;
+          chunks.push(
+            stripTerminalSequences(
+              sliceByColumn(
+                markdownLines[line] || "",
+                range.start,
+                range.end - range.start,
+                true,
+              ),
+            ).replace(/[ \t]+$/, ""),
+          );
+        }
+        return chunks.join("\n");
+      };
+
       return {
         render(width: number): string[] {
           const inner = Math.max(1, width - 4);
           const lines = markdown.render(inner);
           const height = Math.max(1, Math.floor(tui.terminal.rows * 0.75) - 4);
-          scroll = Math.min(scroll, Math.max(0, lines.length - height));
+          innerWidth = inner;
+          markdownLines = lines;
+          maxScroll = Math.max(0, lines.length - height);
+          scroll = Math.min(scroll, maxScroll);
+          const visibleLines = lines.slice(scroll, scroll + height);
+          visibleContentLines = visibleLines.length;
           const row = (value: string): string => {
             const text = truncateToWidth(value, inner);
             return `${theme.fg("accent", "│")} ${text}${" ".repeat(Math.max(0, inner - visibleWidth(text)))} ${theme.fg("accent", "│")}`;
@@ -2860,15 +2961,58 @@ async function showArtifact(
           return [
             theme.fg("accent", `┌${"─".repeat(Math.max(0, width - 2))}┐`),
             row(theme.bold(title)),
-            ...lines.slice(scroll, scroll + height).map(row),
+            ...visibleLines.map((line, index) =>
+              row(selectedLine(line, scroll + index)),
+            ),
             row(
               theme.fg(
                 "dim",
-                `j/k (о/л) scroll · Enter/Esc close · ${scroll + 1}-${Math.min(scroll + height, lines.length)}/${lines.length}`,
+                `wheel/j/k/о/л · drag select/copy · Enter/Esc · ${scroll + 1}-${Math.min(scroll + height, lines.length)}/${lines.length}`,
               ),
             ),
             theme.fg("accent", `└${"─".repeat(Math.max(0, width - 2))}┘`),
           ];
+        },
+        handleMouse(
+          event: TuiMouseEvent,
+        ):
+          { handled: boolean; capture?: boolean; focus?: boolean } | undefined {
+          if (event.type === "wheel") {
+            scroll = Math.max(
+              0,
+              Math.min(maxScroll, scroll + (event.wheelDelta ?? 0)),
+            );
+            tui.requestRender();
+            return { handled: true };
+          }
+          if (event.type === "press" && event.button === "left") {
+            selection = undefined;
+            dragAnchor = pointFromMouse(event, false);
+            if (dragAnchor)
+              selection = { anchor: dragAnchor, focus: dragAnchor };
+            tui.requestRender();
+            return dragAnchor
+              ? { handled: true, capture: true, focus: true }
+              : { handled: true };
+          }
+          if (dragAnchor && (event.type === "drag" || event.type === "move")) {
+            const focus = pointFromMouse(event, true);
+            if (focus) selection = { anchor: dragAnchor, focus };
+            tui.requestRender();
+            return { handled: true, capture: true };
+          }
+          if (dragAnchor && event.type === "release") {
+            const focus = pointFromMouse(event, true);
+            if (focus) selection = { anchor: dragAnchor, focus };
+            dragAnchor = undefined;
+            const text = selectedText();
+            const clipboard = getNativeClipboard();
+            if (text && clipboard?.setText)
+              void clipboard.setText(text).catch(() => {});
+            tui.requestRender();
+            return { handled: true };
+          }
+          return;
         },
         handleInput(data: string): void {
           const printable = decodeKittyPrintable(data) ?? data;
