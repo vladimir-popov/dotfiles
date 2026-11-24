@@ -228,10 +228,10 @@ export DOCKER_HOST="unix://${HOME}/.colima/docker.sock"
 # ==================================================================================================
 if [[ -n ${PROJECTS:-} && -d "$PROJECTS/dash" ]]; then
   export LLM_PROVIDER=openrouter
-  export LLM_MODEL=openai/gpt-6-luna
+  export LLM_MODEL=openai/gpt-6.2-sol
 else
   export LLM_PROVIDER=openai-codex
-  export LLM_MODEL=gpt-6-luna
+  export LLM_MODEL=gpt-6.2-sol
 fi
 
 alias p='pi --provider "$LLM_PROVIDER" --model "$LLM_MODEL"'

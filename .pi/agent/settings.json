@@ -2,7 +2,7 @@
   "lastChangelogVersion": "1.6.0",
   "deviceId": "2f9a3d36-ee0a-4212-942d-05e5e7b0a381",
   "defaultProvider": "openai",
-  "defaultModel": "gpt-6.1-sol",
+  "defaultModel": "gpt-6.2-sol",
   "fullscreenExitOutput": "resume-hint",
   "pi-fast": {
     "enabledByDefault": true
@@ -19,13 +19,15 @@
       "list_buffers",
       "open_file",
       "web_enable",
-      "source_check"
+      "source_check",
+      "task_write_artifact"
     ],
     "editingTools": [
       "write",
       "edit",
       "bash",
-      "subagent"
+      "subagent",
+      "codemode"
     ]
   },
   "packages": [
