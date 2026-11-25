@@ -329,25 +329,12 @@ GitConflictHelp — Show this help
         cmd = { 'RenderMarkdown' },
     },
     {
-        'iamcco/markdown-preview.nvim',
-        build = function(plugin)
-            vim.fn["mkdp#util#install"]()
-
-            vim.system({
-                "curl",
-                "-fL",
-                "https://cdn.jsdelivr.net/npm/mermaid@11.10.1/dist/mermaid.min.js",
-                "-o",
-                plugin.dir .. "/app/_static/mermaid.min.js",
-            }):wait()
-        end,
+        'sammaji/markdown-preview.nvim',
         ft = { 'markdown' },
-        cmd = { 'MarkdownPreview' },
-        config = function()
-            vim.cmd([[
-            let g:mkdp_auto_close = 0
-        ]])
-        end,
+        cmd = { 'MarkdownPreview', 'MarkdownPreviewStop', 'MarkdownPreviewToggle' },
+        opts = {
+            auto_close = false,
+        },
     },
     -- Typst preview
     {
