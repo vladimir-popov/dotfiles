@@ -53,7 +53,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-const APP_VERSION = "2.9.0";
+const APP_VERSION = "2.9.1";
 
 type Phase =
   | "research"
@@ -170,7 +170,7 @@ function configuredPhaseTools(
     phase === "commit"
       ? READ_TOOLS
       : phase === "manual-review"
-        ? [...READ_TOOLS, ...(config.reviewTools || [])]
+        ? [...READ_TOOLS, ARTIFACT_TOOL, ...(config.reviewTools || [])]
         : phase === "research"
           ? researchAllowedTools(pi)
           : [
@@ -182,9 +182,7 @@ function configuredPhaseTools(
   return [
     ...new Set([
       ...baseTools,
-      ...(phase === "commit" || phase === "manual-review"
-        ? []
-        : [ARTIFACT_TOOL]),
+      ...(phase === "commit" ? [] : [ARTIFACT_TOOL]),
       ...(config.additionalPhaseTools?.[phase] || []),
     ]),
   ];
@@ -3988,7 +3986,7 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
     return `This is the preparation session for step ${step}${total ? ` of ${total}` : ""}. Planned work: ${summary}. Begin by briefly explaining this scope and making clear that this is the final discussion before coding. Read ${state.contextPath} and ${roadmapPath(state)}; read ${stepPath(state, step)} if it already exists. Discuss remaining implementation details and checks, and keep the agreed current-step design in ${stepPath(state, step)}. Do not edit project code yet. /task next checks for unresolved questions or proposals, finalizes ${stepPath(state, step)}, captures the implementation baseline, and starts coding.`;
   }
   if (phase === "manual-review")
-    return `The automated review found no remaining issues. This is the manual review phase for step ${step}. Inspect implementation-${step}.diff and the changed project files. Do not edit code or task artifacts. Use /task next when the discussion is settled; use /task accept to approve a proposed solution. Findings return to implementation; an empty review proceeds to commit.`;
+    return `The automated review found no remaining issues. This is the manual review phase for step ${step}. Inspect implementation-${step}.diff and the changed project files. Do not edit code. When agreed findings or decisions should be carried forward, update only context.md, roadmap.md, or step-${step}.md using task_write_artifact; do not modify review reports or custom artifacts. Use /task next when the discussion is settled; use /task accept to approve a proposed solution. Findings return to implementation; an empty review proceeds to commit.`;
   if (phase === "commit")
     return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue. If Git is unavailable, /task next retries detection and /task accept skips the commit and continues.`;
   return `Review step ${step}. Read ${state.contextPath}, ${stepPath(state, step)}, and ${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against the approved scope and inspect relevant project code. Save the review at ${reviewPath(state, step)} using task_write_artifact with artifact "review" and step ${step}. Do not edit project code or advance the workflow. Discuss findings with me and update their statuses only after we agree.`;
@@ -4087,7 +4085,7 @@ function resumeKickoff(state: TaskState): string {
   if (state.phase === "implement" && !state.implementationStarted)
     return `Resume final preparation for step ${state.currentStep}. Continue discussing the roadmap summary and agreed implementation/checks; update ${stepPath(state, state.currentStep)}. Do not edit project code until /task next finalizes the design and captures the baseline.`;
   if (state.phase === "manual-review")
-    return `Resume the manual review phase for step ${state.currentStep}. Inspect implementation-${state.currentStep}.diff and the changed project files. Do not edit code or task artifacts. Use /task next when discussion is settled; use /task accept to approve a proposal. Findings return to implementation; an empty review proceeds to commit.`;
+    return `Resume the manual review phase for step ${state.currentStep}. Inspect implementation-${state.currentStep}.diff and the changed project files. Do not edit code. When agreed findings or decisions should be carried forward, update only context.md, roadmap.md, or step-${state.currentStep}.md using task_write_artifact; do not modify review reports or custom artifacts. Use /task next when discussion is settled; use /task accept to approve a proposal. Findings return to implementation; an empty review proceeds to commit.`;
   if (state.phase === "commit")
     return state.commitReady
       ? `Resume the separate commit phase for step ${state.currentStep}. Revisit the saved commit result, do not change project code or task artifacts, and wait for /task next before continuing.`
@@ -5736,6 +5734,18 @@ export default function taskExtension(pi: ExtensionAPI): void {
         throw new Error(
           "Research can write only context.md. Other artifacts are available in their corresponding phases.",
         );
+      if (
+        state.phase === "manual-review" &&
+        (!(["context", "roadmap", "step"] as const).includes(
+          params.artifact as "context" | "roadmap" | "step",
+        ) ||
+          (params.artifact === "step" &&
+            params.step !== undefined &&
+            params.step !== state.currentStep))
+      )
+        throw new Error(
+          "Manual review can update only context.md, roadmap.md, and the current step artifact.",
+        );
       if (!sessionMatches(ctx, state))
         throw new Error(
           "This is an old task session. Use /task TASK-ID to open the current phase before changing artifacts.",
@@ -5897,7 +5907,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
           ]),
         ]
       : configuredPhaseTools(pi, config, state.phase);
-    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : state.phase === "manual-review" ? "This is the separate manual review phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : `Update task artifacts with ${ARTIFACT_TOOL}. Standard artifacts accept complete replacement content; custom artifacts use create, append, or replace_text operations and must never be rewritten wholesale. ${ARTIFACT_LANGUAGE_RULE} When updating a standard artifact, convert its non-English prose to English while preserving its agreed meaning. For a custom artifact, preserve the language already used in that file. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
+    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. Canonical context: ${state.contextPath}. ${state.phase === "commit" ? "This is a separate commit phase. Do not edit project code, task artifacts, state, or implementation diffs. Only /task commands change phases." : state.phase === "manual-review" ? `This is the separate manual review phase. Do not edit project code, state, or implementation diffs. Update only context.md, roadmap.md, or the current step artifact with ${ARTIFACT_TOOL}; do not modify review reports or custom artifacts. ${ARTIFACT_LANGUAGE_RULE} Only /task commands change phases.` : `Update task artifacts with ${ARTIFACT_TOOL}. Standard artifacts accept complete replacement content; custom artifacts use create, append, or replace_text operations and must never be rewritten wholesale. ${ARTIFACT_LANGUAGE_RULE} When updating a standard artifact, convert its non-English prose to English while preserving its agreed meaning. For a custom artifact, preserve the language already used in that file. Only /task commands change phases. Do not edit state.json or implementation diffs.`}`;
     const rule =
       state.phase === "research"
         ? `Gather and clarify task context, then inspect project files and use available read-only web search/fetch tools to research feasibility. If none is directly listed, use tool_search to discover an available read-only web tool. You may read project files but must not edit them. Write only context.md using task_write_artifact; do not write roadmap, step, or review artifacts in Research. Keep context.md concise and current with confirmed facts; add agreed findings and code references, and leave unresolved doubts out. Research tools enabled for this turn: ${researchAllowedTools(pi).join(", ") || "none"}.`
@@ -5912,7 +5922,7 @@ export default function taskExtension(pi: ExtensionAPI): void {
 
 Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
               : state.phase === "manual-review"
-                ? `This is the manual review phase for step ${state.currentStep}. The automated review found no remaining issues. Direct the user to inspect ${join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files. Do not conduct another automated review, edit code, modify artifacts, or commit. Use the standard /task next and /task accept transition checks. Manual-review findings route to implementation; an empty review proceeds to commit.`
+                ? `This is the manual review phase for step ${state.currentStep}. The automated review found no remaining issues. Direct the user to inspect ${join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files. Do not conduct another automated review, edit code, or commit. When agreed findings or decisions should be carried forward, update only context.md, roadmap.md, or the current step artifact with ${ARTIFACT_TOOL}; do not modify review reports or custom artifacts. Use the standard /task next and /task accept transition checks. Manual-review findings route to implementation; an empty review proceeds to commit.`
                 : state.phase === "commit"
                   ? state.commitReady
                     ? `Present and explain the commit result already saved in this session. This phase has a clear boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
