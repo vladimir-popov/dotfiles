@@ -208,6 +208,8 @@ Maintain an `index.md` at the knowledge base root, in every project and subproje
 
 Indexes should provide concise descriptions and relative links to relevant documents and child directories.
 
+In the root index, list each known local Git repository root alongside the relative link to its project index. Use absolute paths or home-relative paths beginning with `~/`. A project may list multiple roots, including separate clones and worktrees.
+
 They should support progressive discovery of knowledge without requiring readers to load the entire knowledge base.
 
 Keep indexes focused on navigation rather than duplicating substantive knowledge.
@@ -260,6 +262,12 @@ Organize documents around meaningful topics rather than individual facts, source
 ### 1. Discovery
 
 Establish the scope of the curation task and locate the knowledge base using the default root or the root specified by the user.
+
+Use the project explicitly specified by the user when provided. Otherwise:
+
+1. Determine the local Git repository roots of files identified in the source materials. If no repository can be determined from the materials, use the Git repository root of the current working directory, if any.
+2. Expand home-relative paths and match each detected root against the local repository roots listed in the knowledge base's root `index.md`.
+3. Select the project if every detected root maps unambiguously to that same project. If no root is found, a mapping is missing or ambiguous, or the roots map to different projects, ask the user which project to use.
 
 Inspect:
 

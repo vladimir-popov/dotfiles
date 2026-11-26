@@ -7,6 +7,16 @@ respond in Russian.
 
 Markdown: 100 characters per line; links and tables exempt. Align table columns.
 
+## Project knowledge base
+
+The project knowledge base is located at ~/.pi/agent/knowledge_db/
+
+Use its index.md to discover relevant knowledge when investigating or modifying
+the project.
+
+Load only documents relevant to the current task. Treat the knowledge base as
+supplementary context, not a replacement for primary sources.
+
 ## Jira formatting
 
 When I ask for Jira markup or Jira-ready text, use Jira wiki markup, not Markdown. Wrap code blocks
