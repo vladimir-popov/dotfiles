@@ -1,5 +1,9 @@
 # Project instructions
 
+## Language
+
+Write all new code in TypeScript, including tests, scripts, and utilities.
+
 ## Project versioning
 
 After every project change (excluding changes in .agents/ directory) made in response to a user request, propose a specific
