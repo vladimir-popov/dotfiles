@@ -250,13 +250,13 @@ its dynamic tool-list placeholder is preserved here, not Pi’s full assembled s
 > context.md using task_write_artifact; do not write roadmap, step, or review artifacts in Research.
 > Keep context.md concise and current with confirmed facts; add agreed findings and code references,
 > and leave unresolved doubts out. Research tools enabled for this turn:
-> \${researchAllowedTools(pi).join(", ") || "none"}.
+> &#36;{researchAllowedTools(pi).join(", ") || "none"}.
 
 **Kickoff message.** This hidden kickoff starts the model’s Research turn, asking it to discuss the
 task, constraints, and expected outcome before directing project inspection and capture of agreed
 findings:
 
-> First discuss the task, constraints, and expected outcome; keep \${state.contextPath} concise and
+> First discuss the task, constraints, and expected outcome; keep &#36;{state.contextPath} concise and
 > current. Then inspect the project, discuss feasibility and questions, and add agreed findings to
 > the context artifact.
 
@@ -299,7 +299,7 @@ start the turn and provides the context path and request to propose numbered ste
 **Kickoff message.** This hidden message starts the Roadmap turn by asking the model to read the
 context and propose numbered steps, while inviting discussion and updates to agreed context:
 
-> Read \${state.contextPath}. Propose a numbered roadmap with a short bold title and
+> Read &#36;{state.contextPath}. Propose a numbered roadmap with a short bold title and
 > brief explanation for each step. Discuss additions and update context when we agree on them.
 
 The `${state.contextPath}` placeholder resolves to the task’s `context.md` path.
@@ -335,12 +335,12 @@ phase-specific additions, not Pi’s full assembled system prompt.
 
 Preparation instruction:
 
-> This is final preparation for step \${state.currentStep}. Read \${state.contextPath},
-> \${roadmapPath(state)}, and \${stepPath(state, state.currentStep)} if it exists. Briefly summarize
+> This is final preparation for step &#36;{state.currentStep}. Read &#36;{state.contextPath},
+> &#36;{roadmapPath(state)}, and &#36;{stepPath(state, state.currentStep)} if it exists. Briefly summarize
 > the planned work and remind the user that this session is for final discussion, not coding.
 > Discuss implementation details and checks; keep the agreed design in
-> \${stepPath(state, state.currentStep)}. You may also manage additional Markdown artifacts in
-> \${taskDir(state)} with \${ARTIFACT_TOOL}, using artifact "custom", a filename, and an operation.
+> &#36;{stepPath(state, state.currentStep)}. You may also manage additional Markdown artifacts in
+> &#36;{taskDir(state)} with &#36;{ARTIFACT_TOOL}, using artifact "custom", a filename, and an operation.
 > Use "create" only for a new file; it fails rather than overwriting an existing one. Use
 > "append" to add content while preserving everything already there. Use "replace_text" to replace
 > a small exact oldText fragment; it succeeds only when that fragment occurs exactly once, and
@@ -353,27 +353,27 @@ Preparation instruction:
 
 Coding instruction:
 
-> Implement or repair step \${state.currentStep} in this session. Read approved artifacts and, when
-> repairing, \${reviewPath(state, state.currentStep)}. Address only open findings. Run focused
+> Implement or repair step &#36;{state.currentStep} in this session. Read approved artifacts and, when
+> repairing, &#36;{reviewPath(state, state.currentStep)}. Address only open findings. Run focused
 > checks and summarize changes. Do not commit. Use /task next when ready for review.
 
 **Kickoff messages.** Each hidden kickoff starts a model turn with the immediate task. The
 preparation kickoff introduces the approved roadmap item and asks the model to discuss and record
 the current step design without coding:
 
-> This is the preparation session for step \${step}\${total ? ` of ${total}` : ""}. Planned work:
-> \${summary}. Begin by briefly explaining this scope and making clear that this is the final
-> discussion before coding. Read \${state.contextPath} and \${roadmapPath(state)}; read
-> \${stepPath(state, step)} if it already exists. Discuss remaining implementation details and
-> checks, and keep the agreed current-step design in \${stepPath(state, step)}. Do not edit project
+> This is the preparation session for step &#36;{step}&#36;{total ? ` of ${total}` : ""}. Planned work:
+> &#36;{summary}. Begin by briefly explaining this scope and making clear that this is the final
+> discussion before coding. Read &#36;{state.contextPath} and &#36;{roadmapPath(state)}; read
+> &#36;{stepPath(state, step)} if it already exists. Discuss remaining implementation details and
+> checks, and keep the agreed current-step design in &#36;{stepPath(state, step)}. Do not edit project
 > code yet. /task next checks for unresolved questions or proposals, finalizes
-> \${stepPath(state, step)}, captures the implementation baseline, and starts coding.
+> &#36;{stepPath(state, step)}, captures the implementation baseline, and starts coding.
 
 After preparation succeeds, a second hidden kickoff starts coding in that same saved session and
 specifies the approved scope and initial checks:
 
-> Implement step \${state.currentStep} in this Pi session. The agreed design is in
-> \${stepPath(state, state.currentStep)}. Read \${state.contextPath}, \${roadmapPath(state)}, and the
+> Implement step &#36;{state.currentStep} in this Pi session. The agreed design is in
+> &#36;{stepPath(state, state.currentStep)}. Read &#36;{state.contextPath}, &#36;{roadmapPath(state)}, and the
 > current code. Make only the agreed changes, run focused checks, and do not commit. When finished,
 > summarize the changes and checks. I will use /task next to start review.
 
@@ -426,14 +426,14 @@ and direct the model to discuss findings without editing project code or advanci
 **Phase-specific extension instruction.** The extension adds this Review instruction; it is a
 phase-specific addition, not Pi’s full assembled system prompt:
 
-> Review step \${state.currentStep} independently against the approved context and step design. Read
+> Review step &#36;{state.currentStep} independently against the approved context and step design. Read
 > the implementation diff and relevant project code using read-only tools. Save
-> \${reviewPath(state, state.currentStep)} as an English artifact with the exact structure below,
-> using task_write_artifact with artifact "review" and step \${state.currentStep}.
+> &#36;{reviewPath(state, state.currentStep)} as an English artifact with the exact structure below,
+> using task_write_artifact with artifact "review" and step &#36;{state.currentStep}.
 >
-> Start with # Review: step \${state.currentStep}, then include ## Summary and ## Findings. For every
+> Start with # Review: step &#36;{state.currentStep}, then include ## Summary and ## Findings. For every
 > finding, place one short, exact excerpt copied verbatim from
-> implementation-\${state.currentStep}.diff in a fenced diff block immediately before its heading.
+> implementation-&#36;{state.currentStep}.diff in a fenced diff block immediately before its heading.
 > Then use a heading ### [Severity] Short
 > title, followed by exactly one Status: open line, a precise Location:, and a concise explanation
 > of the defect and concrete impact. Do not report style preferences as defects. If there are no
@@ -445,10 +445,10 @@ phase-specific addition, not Pi’s full assembled system prompt:
 **Kickoff message.** This hidden kickoff starts the Review turn in its new session, identifying the
 approved artifacts and diff to inspect, the report to save, and the requirement to discuss findings:
 
-> Review step \${step}. Read \${state.contextPath}, \${stepPath(state, step)}, and
-> \${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against
+> Review step &#36;{step}. Read &#36;{state.contextPath}, &#36;{stepPath(state, step)}, and
+> &#36;{join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against
 > the approved scope and inspect relevant project code. Save the review at
-> \${reviewPath(state, step)} using task_write_artifact with artifact "review" and step \${step}. Do
+> &#36;{reviewPath(state, step)} using task_write_artifact with artifact "review" and step &#36;{step}. Do
 > not edit project code or advance the workflow. Discuss findings with me and update their statuses
 > only after we agree.
 
@@ -488,12 +488,12 @@ automatically written or required.
 **Phase-specific extension instruction.** This Manual review instruction is added by the extension;
 it is distinct from the common system instructions:
 
-> This is the manual review phase for step \${state.currentStep}. The automated review found no
+> This is the manual review phase for step &#36;{state.currentStep}. The automated review found no
 > remaining issues. Direct the user to inspect
-> \${join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files.
+> &#36;{join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files.
 > Do not conduct another automated review, edit code, or commit. When agreed findings or decisions
 > should be carried forward, update only context.md, roadmap.md, or the current step artifact with
-> \${ARTIFACT_TOOL}; do not modify review reports or custom artifacts. Use the standard
+> &#36;{ARTIFACT_TOOL}; do not modify review reports or custom artifacts. Use the standard
 > /task next and /task accept transition checks. Manual-review findings route to
 > implementation; an empty review proceeds to commit.
 
@@ -551,7 +551,7 @@ commit and asks the user to retry.
 **Session message.** Commit has a separate session and no separate hidden kickoff. Its visible
 phase message introduces the phase and explains how to obtain or retry the result:
 
-> Review accepted for step \${step}. This is the separate commit phase. The commit result will
+> Review accepted for step &#36;{step}. This is the separate commit phase. The commit result will
 > appear here; use /task next to generate or retry it if needed.
 
 The extension then displays the commit outcome or retry instructions as a separate visible
