@@ -1,6 +1,6 @@
 # Task workflow
 
-**Version: 2.9.0**
+**Version: 2.9.1**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
@@ -33,7 +33,7 @@ before coding begins.
 flowchart LR
     A["Research"] -->|/task next| B["Roadmap"]
     B -->|/task next| C["Step preparation"]
-    C -->|/task next: finalize step; status planned → in_progress; capture baseline| D["Implement"]
+    C -->|/task next: finalize design; capture baseline| D["Implement"]
     D -->|/task next: save implementation-N.diff; start review round 0| E["Review"]
     E -->|/task next: open findings; preserve round; repair| D
     E -->|clear: semi-auto with manualReview enabled| F["Manual review"]
@@ -41,7 +41,7 @@ flowchart LR
     F -->|/task next: findings| D
     F -->|/task accept: accepted fix| D
     F -->|/task next: clear| G
-    G -->|/task next: verify commit; summarize rounds; delete diff; status completed| H["Step completed"]
+    G -->|/task next: verify commit; delete temporary artifacts| H["Step completed"]
     H -->|next step| C
     H -->|final step| I["Task complete"]
 ```
@@ -50,12 +50,11 @@ Research gathers task context and investigates code in one saved conversation. E
 preparation discussion and implementation share one saved session; after review finds
 issues, repairs return to that same session. Each review round opens a fresh session. A
 clear review opens a separate commit phase. In semi-auto mode with `manualReview` enabled,
-it opens a separate manual-review phase first. The next step cannot start until commit is completed.
+it opens a separate manual-review phase first. The next step cannot start until commit is completed. The approved design and implementation-knowledge handoff remain; workflow status lives in task state.
 In Git projects, manual mode requires the reviewed files to be committed before
 `/task next`; `autoCommit: true` commits them automatically. If Git is not
 detected, the commit phase remains open. `/task next` retries Git detection and
-commit-message generation; `/task accept` skips this commit and continues, recording the
-intentional skip in the step execution record. Projects without Git remain in commit until
+commit-message generation; `/task accept` skips this commit and continues. Projects without Git remain in commit until
 Git is created or the user accepts the skip.
 
 New tasks use this project-local layout:
@@ -71,7 +70,8 @@ New tasks use this project-local layout:
     └── context/
         ├── context.md
         ├── roadmap.md
-        ├── step-N.md                # Retains compact review execution summaries
+        ├── step-N.md                # Approved implementation design
+        ├── step-result-N.md         # Implementation knowledge passed downstream
         ├── review-N-round-M.md      # Temporary; removed when the step completes
         └── implementation-N.diff   # Temporary; removed when the step completes
 ```
@@ -237,8 +237,9 @@ clarified.
 
 **System instructions.** Research-specific instructions tell the model to clarify the task,
 investigate feasibility using available read-only web search/fetch tools, keep `context.md` concise
-and current with confirmed facts and code references, and leave unresolved doubts out. They instruct
-the model not to edit project files and to write no task artifact other than `context.md`.
+and current with confirmed facts and code references, and leave unresolved doubts out. They
+instruct the model not to edit project files; task-artifact operations remain available for any
+Markdown artifact.
 
 **Phase-specific extension instruction.** The extension adds this Research instruction verbatim;
 its dynamic tool-list placeholder is preserved here, not Pi’s full assembled system prompt:
@@ -246,26 +247,27 @@ its dynamic tool-list placeholder is preserved here, not Pi’s full assembled s
 > Gather and clarify task context, then inspect project files and use available read-only web
 > search/fetch tools to research feasibility. If none is directly listed, use tool_search
 > to discover
-> an available read-only web tool. You may read project files but must not edit them. Write only
-> context.md using task_write_artifact; do not write roadmap, step, or review artifacts in Research.
-> Keep context.md concise and current with confirmed facts; add agreed findings and code references,
-> and leave unresolved doubts out. Research tools enabled for this turn:
+> an available read-only web tool. You may read project files but must not edit them. Keep
+> context.md concise and current with confirmed facts; add agreed findings and code references,
+> and use task_write_artifact for task Markdown artifacts when needed. Leave unresolved doubts out.
+> Research tools enabled for this turn:
 > &#36;{researchAllowedTools(pi).join(", ") || "none"}.
 
 **Kickoff message.** This hidden kickoff starts the model’s Research turn, asking it to discuss the
 task, constraints, and expected outcome before directing project inspection and capture of agreed
 findings:
 
-> First discuss the task, constraints, and expected outcome; keep &#36;{state.contextPath} concise and
-> current. Then inspect the project, discuss feasibility and questions, and add agreed findings to
-> the context artifact.
+> First discuss the task, constraints, and expected outcome; keep &#36;{state.contextPath}
+> concise and current. Then inspect the project, discuss feasibility and questions, and add agreed
+> findings to the context artifact.
 
 The `${state.contextPath}` placeholder resolves to the task’s `context.md` path.
 
 **Tools and artifact restrictions.** By default, Research provides `read`, `grep`, `find`, `ls`,
 `task_write_artifact`, and available directly listed web, search, and fetch tools that are not
-marked as mutating. The model may read project files and is instructed not to edit them; Research
-may write only `context.md`. The `phaseTools` setting can replace the default tool list,
+marked as mutating. The model may read project files and is instructed not to edit them. The
+artifact tool remains available even when `phaseTools` replaces the phase's default tool list; it
+can edit standard and custom Markdown artifacts. The `phaseTools` setting can replace other tools,
 while `additionalPhaseTools` can extend it; see [Configuration](#-configuration).
 
 **Transition.** `/task next` runs a transition assessment for open questions and unapproved
@@ -324,76 +326,64 @@ in the same saved session. The boundary between these stages is `/task next`: be
 code must not be edited; after it, the baseline has been captured and the approved work can begin.
 
 **System instructions.** In preparation, the phase-specific instructions tell the model to review
-the task context, roadmap, and current step design; discuss implementation details and checks;
-update the step design and refrain from editing project code. During coding, the instructions
-direct the model to implement or repair only the approved step, address open review findings when
-repairing, run focused checks, summarize the work, and avoid committing.
+the task context, roadmap, current step design, and relevant earlier implementation knowledge;
+discuss implementation details and checks; update only the design and refrain from editing project
+code. During coding, the instructions direct the model to implement or repair only the approved
+step,
+address open review findings, run focused checks, capture useful implementation knowledge for later
+steps, and avoid committing.
 
 **Phase-specific extension instructions.** The extension adds one of these Implementation
 instructions to the common task context, depending on whether coding has started. These are the
 phase-specific additions, not Pi’s full assembled system prompt.
 
-Preparation instruction:
+**Preparation instruction.** The model reads the context, roadmap, current design, and earlier
+`step-result-N.md` artifacts relevant to the planned step. It discusses implementation details and
+checks, updates only the agreed design in `step-N.md`, and does not edit project code. Step status
+is held in workflow state, not in the design artifact.
 
-> This is final preparation for step &#36;{state.currentStep}. Read &#36;{state.contextPath},
-> &#36;{roadmapPath(state)}, and &#36;{stepPath(state, state.currentStep)} if it exists. Briefly summarize
-> the planned work and remind the user that this session is for final discussion, not coding.
-> Discuss implementation details and checks; keep the agreed design in
-> &#36;{stepPath(state, state.currentStep)}. You may also manage additional Markdown artifacts in
-> &#36;{taskDir(state)} with &#36;{ARTIFACT_TOOL}, using artifact "custom", a filename, and an operation.
-> Use "create" only for a new file; it fails rather than overwriting an existing one. Use
-> "append" to add content while preserving everything already there. Use "replace_text" to replace
-> a small exact oldText fragment; it succeeds only when that fragment occurs exactly once, and
-> replacing the entire file is rejected. Read the file before making a targeted change. These
-> custom artifacts may be written in the user's language; preserve that language when updating
-> them. If the target fragment is missing or ambiguous, do not rewrite the file; inspect it again
-> or ask the user. Custom artifacts are allowed only before /task next starts coding. Do not edit
-> project code. /task next checks unresolved questions and proposals, finalizes the step design,
-> captures the baseline, and starts implementation.
-
-Coding instruction:
-
-> Implement or repair step &#36;{state.currentStep} in this session. Read approved artifacts and, when
-> repairing, &#36;{reviewPath(state, state.currentStep)}. Address only open findings. Run focused
-> checks and summarize changes. Do not commit. Use /task next when ready for review.
+**Coding instruction.** The model implements or repairs only the approved step, reads relevant
+prior result artifacts and open review findings, runs focused checks, and does not commit. It
+records implementation discoveries, constraints, decisions, and caveats useful to later steps in
+`step-result-N.md`; this is a knowledge handoff, not a change log, test log, or review-status
+record.
 
 **Kickoff messages.** Each hidden kickoff starts a model turn with the immediate task. The
 preparation kickoff introduces the approved roadmap item and asks the model to discuss and record
 the current step design without coding:
 
-> This is the preparation session for step &#36;{step}&#36;{total ? ` of ${total}` : ""}. Planned work:
-> &#36;{summary}. Begin by briefly explaining this scope and making clear that this is the final
-> discussion before coding. Read &#36;{state.contextPath} and &#36;{roadmapPath(state)}; read
-> &#36;{stepPath(state, step)} if it already exists. Discuss remaining implementation details and
-> checks, and keep the agreed current-step design in &#36;{stepPath(state, step)}. Do not edit project
-> code yet. /task next checks for unresolved questions or proposals, finalizes
+> This is the preparation session for step &#36;{step}&#36;{total ? ` of ${total}` : ""}.
+> Planned work: &#36;{summary}. Begin by briefly explaining this scope and making clear this is the
+> final discussion before coding. Read &#36;{state.contextPath} and &#36;{roadmapPath(state)}; read
+> &#36;{stepPath(state, step)} if it already exists, plus only relevant earlier step-result
+> artifacts. Discuss remaining implementation details and checks, and keep the agreed current-step
+> design in &#36;{stepPath(state, step)}. Do not edit project code yet. /task next checks for
+> unresolved questions or proposals, finalizes
 > &#36;{stepPath(state, step)}, captures the implementation baseline, and starts coding.
 
 After preparation succeeds, a second hidden kickoff starts coding in that same saved session and
 specifies the approved scope and initial checks:
 
 > Implement step &#36;{state.currentStep} in this Pi session. The agreed design is in
-> &#36;{stepPath(state, state.currentStep)}. Read &#36;{state.contextPath}, &#36;{roadmapPath(state)}, and the
-> current code. Make only the agreed changes, run focused checks, and do not commit. When finished,
-> summarize the changes and checks. I will use /task next to start review.
+> &#36;{stepPath(state, state.currentStep)}. Read &#36;{state.contextPath},
+> &#36;{roadmapPath(state)}, relevant earlier step-result artifacts, and the current code. Make only
+> the agreed changes and run focused checks. Record useful implementation knowledge for later
+> steps in step-result-N.md; do not turn it into a change log, test log, or review-status record.
+> Do not commit. I will use /task next to start review.
 
-**Tools and artifacts.** Preparation provides `read`, `grep`, `find`, `ls`, and
-`task_write_artifact` by default. The model may inspect project files but must not edit project
-code. It finalizes `step-N.md`; it can also create or update custom Markdown artifacts in the task
-context directory using `create`, `append`, or `replace_text` with the stated exact-match rules.
-`phaseTools` can replace the default tool list and `additionalPhaseTools` can extend it; the
-artifact tool remains available. During coding, active Pi tools are available alongside `read`,
-`grep`, `find`, `ls`, `bash`, `edit`, `write`, and `task_write_artifact`; `additionalPhaseTools`
-can extend the coding tool list. `task_write_artifact` remains available during coding, but its
-handler rejects custom-artifact operations once implementation starts; custom artifacts can be
-changed only during preparation. The extension marks the step `in_progress` when coding starts;
-after coding, `/task next` writes the step's temporary `implementation-N.diff` from the captured
-baseline.
+**Tools and artifacts.** The internal `task_write_artifact` tool remains available in every phase,
+including when `phaseTools` replaces the default allowlist, and supports all standard and custom
+Markdown artifacts. Coding also receives the active Pi tools and project-editing tools after the
+baseline is captured; other phases retain their existing project-code restrictions. `step-N.md`
+contains only the approved design. The model records useful implementation knowledge in
+`step-result-N.md`; Review reads the current step's result, and later preparation reads only
+relevant earlier results. `/task next` writes the temporary `implementation-N.diff` from the
+captured baseline.
 
 **Transition.** During preparation, `/task next` checks for unresolved questions and unapproved
-proposals. Once settled, it finalizes `step-N.md`, captures the implementation baseline, marks the
-step `in_progress`, and starts the coding turn in the same session. After coding, `/task next`
-saves `implementation-N.diff` and opens Review in a fresh session. Open review findings return to
+proposals. Once settled, it finalizes `step-N.md`, captures the implementation baseline, and starts
+the coding turn in the same session. After coding, `/task next` saves `implementation-N.diff` and
+opens Review in a fresh session. Open review findings return to
 the saved Implementation session with repair guidance; the model addresses open findings and runs
 focused checks before requesting another review.
 
@@ -401,16 +391,18 @@ Review acceptance routes to Manual review or Commit as described in those phase 
 
 `/task resume` returns to the active task in the current project, including from a fresh `/new` session. If several active tasks exist, the terminal UI offers a selector; outside it, use `/task TASK-ID` to choose one. It also detects confirmed project-directory renames for project-local tasks. An aborted run resumes in its saved session with current phase instructions. A review with no saved `review-N-round-M.md` for the active round also resumes; `/task next` remains blocked until that artifact is saved. If no run needs resuming, the command simply opens the saved task session. It does not advance the phase or clear pending artifacts.
 
-Standard artifacts can be updated when the current phase allows it; custom artifacts can only be created or updated during implementation preparation. Project code can be edited only after `/task next` starts implementation and captures a baseline. The extension tracks the current phase and all saved session files in `state.json`.
+Standard and custom Markdown artifacts can be created or updated in every phase, including
+read-only phases, Commit, and Complete. Project code remains editable only after `/task next` starts
+Implementation and captures a baseline. The extension tracks the current phase and saved sessions
+in `state.json`.
 
 The task instructions tell Pi to converse in your language, including explanations, questions, and
 review discussion. Standard task artifacts use English prose and headings: Pi translates the agreed
-meaning when it writes or revises `context.md`, `roadmap.md`, `step-N.md`, and
-`review-N-round-M.md`. Additional custom artifacts created during implementation preparation may
-use the user's language and retain it when updated. Exact code, identifiers, paths, and required
-diff excerpts remain unchanged. Existing non-English prose in standard artifacts is rewritten
-when an artifact is next updated or finalized; loading an old task does not rewrite its files
-automatically.
+meaning when it writes or revises `context.md`, `roadmap.md`, `step-N.md`, `step-result-N.md`, and
+`review-N-round-M.md`. Custom artifacts may use the user's language and retain it when updated.
+Exact code, identifiers, paths, and required diff excerpts remain unchanged. Existing non-English
+prose in standard artifacts is rewritten when next updated or finalized; loading an old task does
+not rewrite files automatically.
 
 #### Review
 
@@ -420,21 +412,25 @@ project code; each later review round starts in another fresh session, so repair
 an independent review.
 
 **System instructions.** Review-specific instructions require an independent, read-only examination
-of the approved scope, implementation diff, and relevant code. They prescribe the report structure
-and direct the model to discuss findings without editing project code or advancing the workflow.
+of the approved scope, step design, implementation-knowledge handoff, implementation diff, and
+relevant code. They prescribe the report structure
+and direct the model to discuss findings without editing project code or advancing the workflow. The
+model reads the current `step-result-N.md` when present.
 
 **Phase-specific extension instruction.** The extension adds this Review instruction; it is a
 phase-specific addition, not Pi’s full assembled system prompt:
 
-> Review step &#36;{state.currentStep} independently against the approved context and step design. Read
-> the implementation diff and relevant project code using read-only tools. Save
+> Review step &#36;{state.currentStep} independently against the approved context, step design, and
+> implementation knowledge. Read &#36;{stepResultPath(state, state.currentStep)} if it exists, the
+> implementation diff, and relevant project code using read-only tools. Save
 > &#36;{reviewPath(state, state.currentStep)} as an English artifact with the exact structure below,
-> using task_write_artifact with artifact "review" and step &#36;{state.currentStep}.
+> using task_write_artifact with artifact "review", step &#36;{state.currentStep}, and operation
+> "create" (or "replace" if revising an existing report).
 >
-> Start with # Review: step &#36;{state.currentStep}, then include ## Summary and ## Findings. For every
-> finding, place one short, exact excerpt copied verbatim from
-> implementation-&#36;{state.currentStep}.diff in a fenced diff block immediately before its heading.
-> Then use a heading ### [Severity] Short
+> Start with # Review: step &#36;{state.currentStep}, then include ## Summary and ## Findings. For
+> every finding, place one short, exact excerpt copied verbatim from
+> implementation-&#36;{state.currentStep}.diff
+> in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short
 > title, followed by exactly one Status: open line, a precise Location:, and a concise explanation
 > of the defect and concrete impact. Do not report style preferences as defects. If there are no
 > findings, write No findings. under ## Findings and include no finding headings or diff blocks.
@@ -445,12 +441,13 @@ phase-specific addition, not Pi’s full assembled system prompt:
 **Kickoff message.** This hidden kickoff starts the Review turn in its new session, identifying the
 approved artifacts and diff to inspect, the report to save, and the requirement to discuss findings:
 
-> Review step &#36;{step}. Read &#36;{state.contextPath}, &#36;{stepPath(state, step)}, and
-> &#36;{join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against
-> the approved scope and inspect relevant project code. Save the review at
-> &#36;{reviewPath(state, step)} using task_write_artifact with artifact "review" and step &#36;{step}. Do
-> not edit project code or advance the workflow. Discuss findings with me and update their statuses
-> only after we agree.
+> Review step &#36;{step}. Read &#36;{state.contextPath}, &#36;{stepPath(state, step)},
+> &#36;{stepResultPath(state, step)} if it exists, and
+> &#36;{join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently
+> against the approved scope and inspect relevant project code. Save the review at
+> &#36;{reviewPath(state, step)} using task_write_artifact with artifact "review", step &#36;{step},
+> and operation "create" (or "replace" if revising an existing report). Do not edit project code or
+> advance the workflow. Discuss findings with me and update their statuses only after we agree.
 
 **Tools and report.** By default, Review provides `read`, `grep`, `find`, `ls`, and
 `task_write_artifact`; project code is read-only. `reviewTools` can add review tools,
@@ -479,23 +476,21 @@ It follows a clear automated review and gives the user a chance to inspect the i
 before Commit. It is skipped in manual mode or when the setting is disabled.
 
 **System instructions.** Manual-review instructions say the automated review found no remaining
-issues and direct the user to inspect `implementation-N.diff` and changed project files. They
-prohibit another automated review, project-code edits, and commits. When agreed findings or
-decisions need to be carried forward, the session may update only `context.md`, `roadmap.md`, or the
-current `step-N.md`; it must not modify review reports or custom artifacts. No separate report is
-automatically written or required.
+issues and direct the user to inspect `implementation-N.diff`, the current `step-result-N.md` when
+present, and changed project files. They prohibit another automated review, project-code edits, and
+commits. Agreed task-artifact updates remain available through `task_write_artifact`; no separate
+report is automatically written or required.
 
 **Phase-specific extension instruction.** This Manual review instruction is added by the extension;
 it is distinct from the common system instructions:
 
-> This is the manual review phase for step &#36;{state.currentStep}. The automated review found no
+> This is the manual review phase for step &#36;{state.currentStep}. Read
+> &#36;{stepResultPath(state, state.currentStep)} if it exists. The automated review found no
 > remaining issues. Direct the user to inspect
-> &#36;{join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files.
-> Do not conduct another automated review, edit code, or commit. When agreed findings or decisions
-> should be carried forward, update only context.md, roadmap.md, or the current step artifact with
-> &#36;{ARTIFACT_TOOL}; do not modify review reports or custom artifacts. Use the standard
-> /task next and /task accept transition checks. Manual-review findings route to
-> implementation; an empty review proceeds to commit.
+> &#36;{join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project
+> files. Do not conduct another automated review, edit code, or commit. Use task_write_artifact for
+> any agreed task-artifact updates. Use the standard /task next and /task accept transition checks.
+> Manual-review findings route to implementation; an empty review proceeds to commit.
 
 **Session message.** Manual review has no separate hidden kickoff. It starts in its own session with
 a visible phase message directing the user to inspect the implementation diff and changed files;
@@ -504,8 +499,8 @@ when available, the message also lists the changed file paths.
 **Tools and artifacts.** By default, the phase provides `read`, `grep`, `find`, `ls`,
 `task_write_artifact`, and configured `reviewTools`. `phaseTools` can replace the default list, but
 `task_write_artifact` remains included; `additionalPhaseTools` can extend the tools. The model may
-update only the three named standard artifacts, not project code, state, implementation diffs,
-review reports, or custom artifacts.
+edit standard or custom task Markdown artifacts, but not project code, state, implementation diffs,
+or saved sessions.
 
 **Transition.** Use `/task next` when the discussion is settled, or `/task accept` to accept a
 proposed solution. The standard transition checks still apply. Manual-review findings are sent to
@@ -515,13 +510,14 @@ the saved Implementation session as repair guidance; an empty findings result pr
 
 Commit gives each accepted step a clear closeout in its own saved session. The extension prepares
 and presents a commit result for the reviewed changes; depending on `autoCommit`, it either
-creates the commit or waits for the user to commit the reviewed files. Completing the phase records
-the review outcome and moves to the next step or marks the task complete.
+creates the commit or waits for the user to commit the reviewed files. Completing the phase removes
+temporary step artifacts and moves to the next step or marks the task complete.
 
 **System instructions.** The phase-specific instructions depend on whether a commit result is
-ready. When one is ready, they direct the model to explain it and follow the no-edit boundary.
-They also tell the user when a manual commit is pending. For a pending result, they direct the
-model not to invent one and explain how to retry or skip if Git is unavailable.
+ready. When one is ready, they direct the model to explain it and avoid project-code edits. They
+also tell the user when a manual commit is pending. For a pending result, they direct the model not
+to invent one and explain how to retry or skip if Git is unavailable. Task-artifact edits remain
+available in either state.
 
 **Phase-specific extension instructions.** The extension adds one of these Commit instructions to
 the common task context, depending on whether a result is ready. These are phase-specific additions,
@@ -529,15 +525,17 @@ not Pi’s full assembled system prompt.
 
 Ready-result instruction:
 
-> Present and explain the commit result already saved in this session. This phase has a clear
-> boundary: do not implement, review, or modify task artifacts. If a manual commit is pending, the
-> user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or
-> /task accept) leaves this phase and starts the next step or completes the task.
+> Present and explain the commit result already saved in this session. Do not implement, review,
+> or edit project code, state, or implementation diffs. Task-artifact edits remain available through
+> task_write_artifact. If a manual commit is pending, the user must commit the reviewed files before
+> leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts
+> the next step or completes the task.
 
 Pending-result instruction:
 
-> The commit result is not ready. Do not invent one or modify files. Tell the user that /task next
-> retries Git detection and commit-message generation, while /task accept skips the commit and
+> The commit result is not ready. Do not invent one or edit project code. Task-artifact edits remain
+> available through task_write_artifact. Tell the user that /task next retries Git detection and
+> commit-message generation, while /task accept skips the commit and
 > continues if Git is unavailable. This is the separate commit phase.
 
 **Commit-message preparation.** Commit-message generation is a separate model call. The extension
@@ -555,23 +553,23 @@ phase message introduces the phase and explains how to obtain or retry the resul
 > appear here; use /task next to generate or retry it if needed.
 
 The extension then displays the commit outcome or retry instructions as a separate visible
-message. Commit writes no separate report; on completion, its execution record is added to
-`step-N.md`.
+message. Commit writes no separate report. The approved design remains in `step-N.md`;
+implementation knowledge is retained in `step-result-N.md`.
 
-**Tools and artifacts.** By default, Commit provides `read`, `grep`, `find`, and `ls`; it does not
-provide `task_write_artifact`. `phaseTools` can replace the default tools and
-`additionalPhaseTools` can extend them. Commit is not an editing phase: do not modify project code
-or task artifacts.
+**Tools and artifacts.** By default, Commit provides `read`, `grep`, `find`, `ls`, and
+`task_write_artifact`. `phaseTools` can replace the default tools and `additionalPhaseTools` can
+extend them, but the artifact tool remains available. Commit does not allow project-code edits.
 
 **Transition and completion.** If Git is unavailable, the phase remains open. `/task next` retries
 Git detection and commit-message generation; if Git is still unavailable, the phase remains open.
-`/task accept` intentionally skips the commit and continues, recording the skip in the step
-execution record. If message generation fails, `/task next` retries it. For a manual commit,
-`/task next` verifies that the reviewed file contents have been committed before leaving the phase.
+`/task accept` intentionally skips the commit and continues. If message generation fails,
+`/task next` retries it. For a manual commit, `/task next` verifies that the reviewed file contents
+have been committed before leaving the phase.
 
-When the phase ends, the extension records review summaries, accepted decisions, and finding
-dispositions in `step-N.md`, marks the step `completed`, and removes that step’s temporary
-`implementation-N.diff` and `review-N-round-M.md` files. If Git is available and no code changes
+When the phase ends, the extension removes that step’s temporary `implementation-N.diff` and
+`review-N-round-M.md` files and completes the step in workflow state. It keeps `step-N.md` as the
+approved design and retains `step-result-N.md` as the implementation-knowledge handoff; no review
+summaries or finding statuses are copied into either file. If Git is available and no code changes
 were produced, it proposes no commit message and the step passes through without a commit action.
 If Git is unavailable, even a no-change step remains in Commit: `/task next` retries detection,
 and `/task accept` skips the commit. If another step remains, its Implementation preparation
@@ -579,9 +577,18 @@ session opens with a summary of its roadmap scope; after the final step, the tas
 
 ### 👀 What each Pi sees
 
-Research gathers task context and investigates the code in the same Pi conversation. The configured research model is selected when the task starts; otherwise the current model continues. `/task next` advances to the roadmap and changes the phase instructions and allowed tools without switching sessions.
+Research gathers task context and investigates the code in the same Pi conversation. The configured
+research model is selected when the task starts; otherwise the current model continues. `/task next`
+advances to the roadmap and changes the phase instructions and allowed tools without switching
+sessions.
 
-Roadmap, each step's implementation session, each review round, each semi-auto manual-review phase, and each commit phase have their own saved sessions. A new implementation session starts with a preparation discussion and a short summary of the current roadmap item; the same session continues into coding after `/task next` captures the baseline. It does not inherit the roadmap chat transcript. The durable handoff is `context.md`, `roadmap.md`, and the current `step-N.md`; the commit session keeps the commit result and its phase boundary.
+Roadmap, each step's implementation session, each review round, each semi-auto manual-review phase,
+and each commit phase have their own saved sessions. A new implementation session starts with a
+preparation discussion and a short summary of the current roadmap item; the same session continues
+into coding after `/task next` captures the baseline. It does not inherit the roadmap chat transcript.
+The durable handoff is `context.md`, `roadmap.md`, the approved `step-N.md` design, and each
+`step-result-N.md` containing knowledge relevant to later work. The commit session keeps the commit
+result and its phase boundary.
 
 Returning from review restores that step's implementation session, including preparation decisions, implementation messages, and tool output, and adds the current `review-N-round-M.md` as repair guidance. Review is a separate conversation and sees task artifacts, the current implementation diff, and code it reads. Each repeated review is a new conversation, so it checks the repaired code independently. Sessions and baselines are saved under the task directory, separate from its `context/` artifacts. Opening an older task without a session map creates a saved session for its current phase; earlier background worker conversations cannot be reconstructed.
 
@@ -669,9 +676,9 @@ The model IDs above are examples. Use a provider and model available in your Pi 
 | `statusColors`        | Object; bright green, bright black, blue, blue                                       | Colors for `taskName`, `currentSettings`, `currentPhase`, and `phaseDescription`, respectively. Each value accepts an ANSI color name (`black`, `red`, `green`, `yellow`, `blue`, `purple`, `cyan`, `white`, or a `bright`-prefixed variant), a 0–255 palette index, or a hex color such as `#RRGGBB`. Unspecified values use their defaults.                                                                                                                                                                                            |
 | `phaseModels`         | Object; `{}`                                                                         | Model overrides by phase. Valid keys: `research`, `roadmap`, `implement`, `review`. New tasks use `phaseModels.implement` throughout step preparation and coding. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place.                                                                                                                                                                                                                                                                     |
 | `skills`              | Object; `{}`                                                                         | Maps phase names to Pi skill names. Valid keys: `research`, `roadmap`, `implement`, `review`, `commit`. Each value is a skill name or `null`; omitted entries inherit from the broader scope, while `null` explicitly disables the skill. An available review skill may define the procedure, within the extension-owned contract. A missing skill does not block the phase. Use names such as `roadmap-planning`, not paths to `SKILL.md`.                                                                                     |
-| `phaseTools`          | Object; built-in phase-specific tool sets                                                    | Optional replacement allowlists by phase, including `manual-review`. A configured list replaces the phase's built-in user-tool list. The internal `task_write_artifact` remains available in non-commit, non-manual-review phases. Prefer `additionalPhaseTools` when you only want to grant extra extension tools without replacing defaults. |
+| `phaseTools`          | Object; built-in phase-specific tool sets                                                    | Optional replacement allowlists by phase, including `manual-review`. A configured list replaces the phase's built-in user-tool list. The internal `task_write_artifact` remains available in every phase, including Commit and Complete. Prefer `additionalPhaseTools` when you only want to grant extra extension tools without replacing defaults. |
 | `additionalPhaseTools`| Object; `{}`                                                                               | Maps phases, including `manual-review`, to arrays of extra tool names, added to that phase's normal allowlist. This is the recommended way to enable tools from other extensions while retaining defaults (including discovered read-only web tools in Research). For `implement`, additions apply during Preparation; during Coding the extension already enables active Pi tools plus `read`, `bash`, `edit`, and `write`. Entries resolve by phase across global → project → task scopes; a more local list replaces the same phase's broader list. |
-| `reviewTools`         | Array of tool names; `[]`                                                            | Replaces the additional review tool list from broader scopes. These tools are added to the automated review's built-in set: `read`, `grep`, `find`, `ls`, and `task_write_artifact`. The same `reviewTools` are available in manual review, without `task_write_artifact`. Add only tools the configured procedure needs and that you trust for read-only project work. For example, enable a delegation tool explicitly with `"reviewTools": ["subagent"]` (use the actual tool name provided by your environment).                                                                                                                                                                                                                                                                                                              |
+| `reviewTools`         | Array of tool names; `[]`                                                            | Replaces the additional review tool list from broader scopes. These tools are added to the automated review's built-in set: `read`, `grep`, `find`, `ls`, and `task_write_artifact`. The same `reviewTools` are available in manual review; `task_write_artifact` is always included. Add only tools the configured procedure needs and that you trust for read-only project work. For example, enable a delegation tool explicitly with `"reviewTools": ["subagent"]` (use the actual tool name provided by your environment).                                                                                                                                                                                                                                                                                                              |
 | `allowTreeNavigation` | Boolean; `false`                                                                     | Allows Pi's `/tree` command inside task sessions when `true`. Branches still share the same task state and artifacts.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `hotkeys`             | Object; `{ "next": "alt+n", "accept": "alt+a", "status": "alt+s", "show": "alt+w" }` | Maps `/task` command text to a key. Set a command to `null` to disable its default; omitted commands keep defaults. Each active key must be unique within this extension. Hotkey registrations are global and apply when Pi starts or reloads the extension; project/task-specific hotkeys are not supported.                                                                                                                                                                                                                            |
 | `snapshotMaxFiles`    | Positive integer; `4000`                                                             | Maximum number of files included in the baseline before implementation. Without Git this covers all regular project files except the exclusions described below; with Git it covers existing changed files needing a copy. Exceeding the limit stops implementation before copying.                                                                                                                                                                                                                                                      |
@@ -704,36 +711,78 @@ the active project and roots from valid index records; it does not broadly scan 
 
 ## 🔧 Implementation notes
 
-`task_write_artifact` replaces standard task artifacts atomically. The model supplies an artifact
-kind and optional step number, while the extension chooses standard paths. During implementation
-preparation only, custom Markdown artifacts support `create`, `append`, and `replace_text`
-operations. The extension confines custom basenames to the task `context/` directory, rejects
-standard artifact names, and refuses to follow symbolic links. `create` fails if the file exists;
-`append` preserves existing content; `replace_text` requires a unique exact match and rejects
-whole-file replacement. The extension writes task state and implementation diffs itself. The
-transition check uses the recent phase discussion and current review artifact to identify open
-questions or unapproved proposals; it is a model judgment, so important decisions should be
-explicit.
+### Artifact editing
 
-Standard artifacts use English prose. Custom artifacts created during implementation preparation
-may use the user's language; the tool instructions tell Pi to preserve that language when
-updating the file. The language rule guides generation; the extension does not classify artifact
-content.
+`task_write_artifact` edits standard and custom Markdown artifacts in every phase, including
+Research, Review, Manual review, Commit, and Complete. Every call requires an explicit `operation`:
 
-The extension's review prompt defines the invariant contract and default artifact format/procedure. A configured, available review skill may define the procedure within that contract; no review skill is selected by default. The extension does not validate or normalize review artifact formatting; it only requires the review artifact to be saved before the phase can advance. Review status summaries recognize Markdown `###` finding headings and `Status: resolved` or `Status: dismissed` markers when present.
+- `create` writes a new artifact and fails if the target exists.
+- `append` adds content to an existing artifact.
+- `replace_text` replaces one unique exact partial `oldText` match; it rejects whole-file matches.
+- `replace` replaces the complete content of an existing artifact.
+
+Updates require an existing file; use `create` for a missing artifact. `oldText` is valid only for
+`replace_text`. Standard artifact kinds are `context`, `roadmap`, `step`, `step-result`, and
+`review`; the extension selects their fixed paths from the kind and optional step number. Custom
+artifacts require a Markdown basename and are confined to the task context directory. Custom names
+cannot collide with standard artifact names. Writes are atomic and refuse symbolic links and
+non-regular files. The fixed task-context directory and its ancestors must be real directories,
+not symlinks.
+
+The tool cannot target `state.json`, implementation diffs, saved session files, or project code.
+Standard paths are fixed by the extension; custom paths accept only Markdown basenames inside the
+task context directory. These path restrictions complement phase tool allowlists, which continue to
+limit project-code access. Run `npm test` to exercise operation semantics, path confinement, and
+phase availability.
+
+`step-N.md` stores only the approved implementation design. Workflow status is kept in task state,
+not injected into the design file. During coding, the model records useful discoveries, constraints,
+decisions, and caveats for later work in `step-result-N.md`. Review reads the result for its current
+step; preparation for later steps reads only relevant earlier results. It is a knowledge handoff,
+not a change log, test log, or review-history summary. Existing task artifacts are not migrated or
+rewritten automatically.
+
+Standard artifacts use English prose. Custom artifacts may use the user's language and retain it
+when updated. The language rule guides generation; the extension does not classify artifact content.
+
+### Review reports
+
+The extension's review prompt defines the invariant contract and default artifact format/procedure.
+A configured, available review skill may define the procedure within that contract; no review skill
+is selected by default. The extension does not validate or normalize report formatting; it only
+requires the current review artifact to be saved before the phase can advance. Review status
+summaries recognize Markdown `###` finding headings and `Status: resolved` or `Status: dismissed`
+markers when present.
 
 ### Safety mechanisms
 
-The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks calls to other tools. Research, roadmap, and implementation Preparation allow reading project files and writing task artifacts. Implementation is a single workflow phase with a guarded Preparation stage followed by Coding: `/task next` captures a baseline and starts Coding in the same session. At that point the extension adds `pi.getActiveTools()` (tools from active extensions) plus `read`, `bash`, `edit`, and `write`; `phaseTools.implement` no longer limits the tool set. Review, manual review, and commit use read-only tools; commit-phase code must be committed through Git outside the model's tool access. These are Pi tool controls, not operating system file permissions; a user command or another extension's own code can still write files.
+The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks
+calls to other tools. The artifact tool is always retained in active task phases, including when
+`phaseTools` replaces the default list; Complete exposes only artifact editing. Research, Roadmap,
+Review, Manual review, and Commit remain read-only with respect to project code. Implementation is a
+single workflow phase with a guarded Preparation stage followed by Coding: `/task next` captures a
+baseline and starts Coding in the same session. At that point the extension adds
+`pi.getActiveTools()` plus `read`, `bash`, `edit`, and `write`;
+`phaseTools.implement` no longer limits the tool set.
+These are Pi tool controls, not operating system file permissions; a user command or another
+extension's own code can still write files.
+
+### Implementation diff
+
+Before editing begins, the extension captures a baseline under the task directory. With Git, it
+copies existing changed files and later combines their before/after patches with Git's diff for
+newly changed files. Without Git, it snapshots regular project files except the task directory,
+`.git` directories, and symbolic links. It compares changed files using `git diff --no-index`, which
+requires the Git executable but not a repository. The baseline remains through repair and review
+rounds, then is removed when the commit phase completes.
+
+The defaults limit a snapshot to 4,000 files and 100 MiB. The extension checks those limits before
+copying and does not start implementation when either is exceeded. `implementation-N.diff` contains
+the full result with paths relative to the project root; large diffs can still be expensive to
+review and to use for commit-message generation. The diff and temporary `review-N-round-M.md`
+reports are removed when the step completes. `step-N.md` and any `step-result-N.md` remain as durable task
+artifacts; step completion is recorded in `state.json`.
 
 ### Tree navigation
 
 `/tree` changes the conversation branch but does not roll task artifacts or project code back. The extension blocks it in task sessions by default. Set `allowTreeNavigation: true` to remove this block; all branches still share the latest artifacts and state. `/task status` shows the setting.
-
-### Implementation diff
-
-Before editing begins, the extension captures a baseline under the task directory. With Git, it copies existing changed files and later combines their before/after patches with Git's diff for newly changed files. Without Git, it snapshots all regular project files below the project root except the task directory, `.git` directories, and symbolic links. It compares changed files using `git diff --no-index`, which requires the Git executable but not a repository. The baseline remains through repair and review rounds, then is removed when the commit phase is prepared.
-
-The defaults limit a snapshot to 4,000 files and 100 MiB. The extension checks those limits before copying and does not start implementation when either is exceeded. `implementation-N.diff` contains the full result with paths relative to the project root; large diffs can still be expensive to review and to use for commit-message generation. It is removed after the step's commit phase completes. Review reports for that step are removed at the same time; the execution record in `step-N.md` retains concise summaries.
-
-Each `step-N.md` includes a workflow status: `planned` after its design is finalized, `in_progress` from implementation through review and commit, and `completed` only after the commit phase finishes. At completion, the extension adds a compact execution record with review-round summaries, accepted decisions, and finding dispositions. The complete round reports are removed when the step completes; their compact summaries remain in `step-N.md`.
