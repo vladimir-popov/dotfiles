@@ -332,6 +332,10 @@ GitConflictHelp — Show this help
         'sammaji/markdown-preview.nvim',
         ft = { 'markdown' },
         cmd = { 'MarkdownPreview', 'MarkdownPreviewStop', 'MarkdownPreviewToggle' },
+        config = function(_, opts)
+            vim.g.mkdp_auto_close = opts.auto_close
+            vim.cmd('filetype plugin on')
+        end,
         opts = {
             auto_close = false,
         },

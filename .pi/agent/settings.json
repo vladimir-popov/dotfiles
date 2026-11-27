@@ -20,7 +20,8 @@
       "open_file",
       "web_enable",
       "source_check",
-      "task_write_artifact"
+      "task_write_artifact",
+      "tool_search"
     ],
     "editingTools": [
       "write",
