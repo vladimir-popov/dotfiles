@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.6.1",
+  "lastChangelogVersion": "1.7.0",
   "deviceId": "2f9a3d36-ee0a-4212-942d-05e5e7b0a381",
   "defaultProvider": "openai",
   "defaultModel": "gpt-6.2-sol",
