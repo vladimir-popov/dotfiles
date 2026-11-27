@@ -19,8 +19,6 @@ Apply this skill only when the user explicitly expresses an intention to create,
 
 ## Core principles
 
-- Preserve only verified knowledge.
-- Maintain traceability to primary sources.
 - Organize knowledge by projects, subprojects, and topics.
 - Prefer coherent explanations over collections of isolated facts.
 - Consolidate knowledge rather than accumulate records.
@@ -29,90 +27,10 @@ Apply this skill only when the user explicitly expresses an intention to create,
 - Require explicit user approval before changing the meaning of or removing existing knowledge.
 - Keep changes within the scope of the current curation task.
 
-## Knowledge selection
+## Shared knowledge criteria
 
-### Mandatory requirements
-
-Knowledge must satisfy all of the following requirements:
-
-- **Reliability:** supported by sufficient evidence.
-- **Self-containment:** understandable outside the context in which it was discovered.
-- **Project relevance:** describes the project, its domain, environment, requirements, or constraints.
-
-Do not preserve hypotheses, unresolved questions, speculative explanations, or unverified conclusions.
-
-### Indicators of value
-
-Evaluate knowledge according to the following characteristics:
-
-- **Reusability:** useful beyond the original task.
-- **Durability:** likely to remain relevant over time.
-- **Non-obviousness:** difficult to discover through superficial examination of the project.
-- **Recovery cost:** requires substantial investigation, experimentation, or communication to rediscover.
-- **Significance:** overlooking it may lead to incorrect decisions or implementation errors.
-
-These are indicators of value, not individually mandatory requirements.
-
-Prefer knowledge that reduces the cost or risk of future work.
-
-Avoid storing information that can be trivially recovered from source code or existing documentation, unless awareness of its existence is itself important.
-
-## Evidence and traceability
-
-Every substantive claim must be supported by references to its primary sources.
-
-Distinguish between different kinds of evidence:
-
-- Source code establishes implemented behavior.
-- Tests establish tested expectations.
-- Authoritative documentation establishes documented contracts and requirements.
-- Explicit statements from responsible project stakeholders establish communicated requirements and decisions.
-- Experiments establish observed behavior under specific conditions.
-
-Do not treat these kinds of evidence as interchangeable.
-
-In particular, implemented behavior does not necessarily establish intended behavior.
-
-### Source code references
-
-When referencing source code in a Git repository, include:
-
-- Repository identity when necessary to resolve the reference.
-- File path relative to the repository root.
-- Full commit SHA.
-- Line number or line range.
-
-Prefer commit-pinned permalinks when available.
-
-Otherwise, use an equivalent textual reference containing the same information.
-
-Ensure that the referenced commit actually contains the examined code. Never attribute uncommitted changes to the current HEAD.
-
-For source code outside Git, provide the file path and relevant line range, together with any available version information.
-
-### Other sources
-
-Reference original documents, specifications, issues, discussions, messages, or experiment records as appropriate.
-
-Preserve relevant conditions and limitations of the evidence.
-
-Place references close to the claims they support.
-
-A historical source establishes the provenance of knowledge, not necessarily its current validity.
-
-### Source availability and stability
-
-Primary sources must be sufficiently stable and accessible to the intended readers of the knowledge base.
-
-If a candidate relies exclusively on uncommitted changes, defer its inclusion until a verifiable source becomes available.
-
-Knowledge discovered through uncommitted changes may still be included if independently supported by other sufficient primary sources. Ensure that the claim does not extend beyond what those sources establish.
-
-A local commit is not necessarily a sufficient reference if it is inaccessible to the intended readers.
-
-Do not commit, push, or otherwise publish source changes merely to establish a reference.
-
-Report deferred candidates and the missing evidence in the completion report. Do not store them in the knowledge base or maintain a separate collection of pending knowledge.
+Read `~/.pi/agent/knowledge_db/knowledge-criteria.md` for knowledge selection, evidence, source
+references, and source stability. Use this policy even when the user selects a different KB root.
 
 ## Knowledge base organization
 
@@ -311,7 +229,10 @@ Do not turn curation into an open-ended exploration of the project.
 
 Reject candidates that cannot be sufficiently verified.
 
-Defer candidates that lack sufficiently stable and accessible primary sources, following the source availability and stability requirements.
+Defer candidates that lack sufficiently stable and accessible primary sources, following the shared source availability and stability requirements.
+
+Report deferred candidates and the missing evidence in the completion report. Do not store them
+in the knowledge base or maintain a separate collection of pending knowledge.
 
 Ask the user for clarification when their input could resolve a significant uncertainty.
 
