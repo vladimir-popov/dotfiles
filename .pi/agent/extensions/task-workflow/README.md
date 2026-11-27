@@ -135,7 +135,7 @@ The extension shows the current phase in a small header above the editor when a 
 
 Phase kickoffs are hidden extension messages. They guide Pi and start its work without appearing in the editor's ↑ history. After a session switch, ↑ browses the new session's history; the `/task next` command entered in the previous session may therefore not be the first item.
 
-Describe the task over ordinary messages. Use `/task next` when the current discussion is settled. Use `/task accept` to agree to pending proposals and advance; agreement is implied by the command, with no extra note needed. If Pi proposes a version and asks whether to keep it or add an optional feature, `/task accept` keeps the proposed version. If Pi offers several alternatives without recommending one, choose explicitly, for example `/task accept "I prefer option B"`. If there is no pending proposal, `/task accept` advances like `/task next`, except that it can skip a commit when Git is unavailable. In semi-auto manual review, `/task next` routes findings to implementation or a clear review to commit; `/task accept` first accepts the proposed solution. Both commands stop when material questions remain, and `/task next` also stops when a proposal still needs approval. A slash command embedded in ordinary text, such as `I agree. /task next`, does not run.
+Describe the task over ordinary messages. Use `/task next` when the current discussion is settled. Use `/task accept` to agree to pending proposals and advance; agreement is implied by the command, with no extra note needed. If Pi proposes a version and asks whether to keep it or add an optional feature, `/task accept` keeps the proposed version. If Pi offers several alternatives without recommending one, choose explicitly, for example `/task accept "I prefer option B"`. If there is no pending proposal, `/task accept` advances like `/task next`, except in Commit: it can accept differences from review on clean reviewed paths or skip the commit when Git is unavailable. In semi-auto manual review, `/task next` routes findings to implementation or a clear review to commit; `/task accept` first accepts the proposed solution. Both commands stop when material questions remain, and `/task next` also stops when a proposal still needs approval. A slash command embedded in ordinary text, such as `I agree. /task next`, does not run.
 
 | Command                     | Action                                                                                                                                                                                                                                                           |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -153,7 +153,7 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task resume`              | Return to the active task in this project. If multiple tasks are available, choose one in the terminal UI; outside it, use `/task TASK-ID` to select. An interrupted run or pending review resumes automatically; otherwise the saved task session simply opens. |
 | `/task show [FILE.md]`      | Select an existing Markdown artifact or show the named file without adding it to the conversation. File names have completion.                                                                                                                                   |
 | `/task next`                | Advance after checking the current discussion. In implementation preparation, finalize the design and begin work. Manual-review findings return to implementation; an empty review proceeds to commit. In commit, verify files or retry Git detection. |
-| `/task accept [NOTE]`       | Agree to pending proposals and advance. In semi-auto manual review, accept the proposed solution; accepted findings return to implementation, otherwise proceed to commit. Without Git in commit, skip the commit and continue. |
+| `/task accept [NOTE]`       | Agree to pending proposals and advance. In semi-auto manual review, accept the proposed solution; accepted findings return to implementation, otherwise proceed to commit. In Commit, accept differences from review if all reviewed paths are clean, or skip the commit if Git is unavailable. |
 | `/task help`                | Show a short command summary outside the conversation.                                                                                                                                                                                                           |
 
 ### Hotkeys
@@ -587,8 +587,13 @@ snapshot does not distinguish file types, auto-commit
 waits and `/task next` starts a fresh automated review using the original baseline. For a manual
 commit, `/task next` verifies the reviewed file contents and entry types for new snapshots before
 leaving the phase. A saved legacy manual Commit retains its original content-hash comparison.
+Uncommitted changes on reviewed paths block both commands; unrelated paths do not block them.
+If the reviewed paths are clean but differ from review (for example, a new reviewed file was
+intentionally omitted), `/task next` lists the differences and stops. `/task accept` keeps the
+current result and records the differing paths in the Commit session before advancing. It does not
+change Git, restore files, or rerun review.
 
-After successful verification (or an allowed skip), the extension removes only this step's
+After successful verification, acceptance of differences, or an allowed skip, the extension removes only this step's
 `implementation-N.diff` and `review-N-round-M.md` files. It keeps the approved `step-N.md` and any
 `step-result-N.md`, along with their durable index links. Save reusable findings when they are
 learned: semi-auto Commit can finish without an interactive turn. If an interactive Commit turn

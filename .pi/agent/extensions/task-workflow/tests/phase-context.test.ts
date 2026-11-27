@@ -1171,7 +1171,7 @@ it("carries automated and manual repairs through verified Commit and preserves r
   await f.run("next");
   assert.match(
     f.notices.join("\n"),
-    /Commit the reviewed versions of these files/,
+    /Uncommitted changes on reviewed paths: example\.ts/,
   );
   assert.equal(f.state().phase, "commit");
   assert.deepEqual(readdirSync(artifacts).sort(), beforeCleanup);
@@ -1307,7 +1307,7 @@ it("finishes a saved manual Commit with a legacy symlink hash", async (t) => {
   assert.equal(f.state().phase, "commit");
   assert.match(
     f.notices.at(-1)!,
-    /Commit the reviewed versions of these files.*reviewed-link/,
+    /Clean paths that differ from review: reviewed-link/,
   );
   f.writeState({
     ...f.state(),
@@ -1374,6 +1374,99 @@ it("requires fresh Review before auto-committing a legacy symlink snapshot", asy
   assert.equal(git("show", "HEAD:reviewed-link"), "example.ts");
 });
 
+it("accepts omitted reviewed files only after the reviewed paths are clean", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("implement"));
+  const git = initGit(f);
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({ mode: "manual", autoCommit: false }),
+  );
+  await f.run("next");
+  const omitted = join(f.cwd, "omitted.ts");
+  writeFileSync(omitted, baselineSource);
+  writeFileSync(f.source, "export const value = 2;\n");
+  await f.run("next");
+  assert.equal(f.state().phase, "review", f.notices.join("\n"));
+  const report = "review-1-round-0.md";
+  f.writeArtifact(report, "# Review: step 1\n\n## Findings\n\nNo findings.\n");
+  f.writeState({ ...f.state(), reviewPending: false });
+  await f.run("next");
+  assert.equal(f.state().phase, "commit", f.notices.join("\n"));
+  const commitSession = f.session();
+
+  await f.run("accept");
+  assert.match(
+    f.notices.at(-1)!,
+    /Uncommitted changes on reviewed paths:.*omitted\.ts/,
+  );
+  rmSync(omitted);
+  git("add", "example.ts");
+  await f.run("accept");
+  assert.equal(f.state().phase, "commit");
+  assert.match(
+    f.notices.at(-1)!,
+    /Uncommitted changes on reviewed paths: example\.ts/,
+  );
+  assert.match(
+    f.notices.at(-1)!,
+    /Clean paths that differ from review: omitted\.ts/,
+  );
+  assert.doesNotMatch(f.notices.at(-1)!, /Use \/task accept/);
+
+  git("commit", "-qm", "Commit without the omitted file");
+  git("mv", "example.ts", "renamed.ts");
+  await f.run("accept");
+  assert.equal(f.state().phase, "commit");
+  assert.match(
+    f.notices.at(-1)!,
+    /Uncommitted changes on reviewed paths: example\.ts/,
+  );
+  git("mv", "renamed.ts", "example.ts");
+  writeFileSync(join(f.cwd, "unrelated.ts"), baselineSource);
+  const head = git("rev-parse", "HEAD");
+
+  await f.run("next");
+  assert.equal(f.state().phase, "commit");
+  assert.match(
+    f.notices.at(-1)!,
+    /Clean paths that differ from review: omitted\.ts/,
+  );
+  assert.match(
+    f.notices.at(-1)!,
+    /Use \/task accept to keep the current result/,
+  );
+  const artifacts = dirname(f.contextPath);
+  const diff = join(artifacts, "implementation-1.diff");
+  assert.ok(existsSync(diff));
+  assert.ok(existsSync(join(artifacts, report)));
+  assert.ok(
+    !f.messages.some(({ content }) =>
+      content.startsWith("Accepted differences"),
+    ),
+  );
+
+  await f.run("accept");
+  assert.equal(f.state().phase, "complete", f.notices.join("\n"));
+  assert.ok(!existsSync(diff));
+  assert.ok(!existsSync(join(artifacts, report)));
+  const accepted = f
+    .entryMessages()
+    .find(({ content }) => content.startsWith("Accepted differences"));
+  assert.equal(
+    accepted?.content,
+    "Accepted differences from review for step 1:\n\n- omitted.ts",
+  );
+  assert.equal(accepted?.display, true);
+  assert.ok(
+    readFileSync(commitSession, "utf8").includes(
+      JSON.stringify(accepted?.content),
+    ),
+  );
+  assert.equal(git("rev-parse", "HEAD"), head);
+  assert.equal(git("status", "--porcelain"), "?? unrelated.ts");
+});
+
 it("rejects a committed symlink in place of a newly reviewed regular file", async (t) => {
   const f = fixture(t);
   await f.open(f.savedPhase("implement"));
@@ -1407,7 +1500,7 @@ it("rejects a committed symlink in place of a newly reviewed regular file", asyn
   assert.equal(f.state().phase, "commit", f.notices.join("\n"));
   assert.match(
     f.notices.at(-1)!,
-    /Commit the reviewed versions of these files.*reviewed\.ts/,
+    /Clean paths that differ from review: reviewed\.ts/,
   );
   const artifacts = readdirSync(dirname(f.contextPath));
   assert.ok(
@@ -1453,7 +1546,7 @@ it("rejects a committed gitlink in place of a reviewed deletion", async (t) => {
   assert.equal(f.state().phase, "commit", f.notices.join("\n"));
   assert.match(
     f.notices.at(-1)!,
-    /Commit the reviewed versions of these files.*example\.ts/,
+    /Clean paths that differ from review: example\.ts/,
   );
   assert.ok(readdirSync(artifacts).includes(report));
   assert.match(readFileSync(diff, "utf8"), /^deleted file mode /m);

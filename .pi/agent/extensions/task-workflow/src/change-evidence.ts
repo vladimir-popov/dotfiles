@@ -118,6 +118,8 @@ export function changedPaths(state: TaskState): string[] {
       "diff",
       "--cached",
       "--name-only",
+      // Keep both paths of a staged rename visible to exact-path checks.
+      "--no-renames",
       "-z",
       "--",
       ".",

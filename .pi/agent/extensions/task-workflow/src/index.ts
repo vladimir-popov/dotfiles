@@ -265,7 +265,8 @@ an empty review proceeds to commit. Use /task next for settled discussion and /t
 to approve a proposed solution.
 Commit-message generation failures stay in commit; /task next retries them.
 Without Git, /task next retries detection; /task accept skips the commit and continues.
-With manual commits, /task next verifies the reviewed files were committed.
+With manual commits, /task next checks that the reviewed versions were committed.
+If the reviewed paths have no uncommitted changes, /task accept can accept differences from review.
 Use /task resume to return to the active task in this project. It resumes an interrupted run or pending review; otherwise it just opens the saved session.
 After discussion, /task next returns open findings to implementation or accepts
 a clear review. In manual mode, the user reviews during Review. /task next leaves commit
@@ -2892,6 +2893,7 @@ async function finishCommitPhase(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   state: TaskState,
+  acceptReviewDifferences: boolean,
 ): Promise<boolean> {
   if (
     state.commitReady &&
@@ -2934,25 +2936,42 @@ async function finishCommitPhase(
     return false;
   }
   const n = state.currentStep;
+  let acceptedDifferences: string[] = [];
   if (state.commitPendingFiles?.length) {
-    const expected = new Set(state.commitPendingFiles);
-    const stillChanged = changedPaths(state).filter((file) =>
-      expected.has(file),
+    const changed = new Set(changedPaths(state));
+    const stillChanged = state.commitPendingFiles.filter((file) =>
+      changed.has(file),
     );
     const mismatched = state.commitPendingFiles.filter(
       (file) =>
+        !changed.has(file) &&
         !matchesManualCommitHash(
           state.projectRoot,
           file,
           state.commitPendingHashes?.[file],
         ),
     );
-    if (stillChanged.length || mismatched.length) {
-      const files = [...new Set([...stillChanged, ...mismatched])];
-      throw new Error(
-        `Commit phase is not complete. Commit the reviewed versions of these files before /task next: ${files.join(", ")}`,
-      );
+    if (
+      stillChanged.length ||
+      (mismatched.length && !acceptReviewDifferences)
+    ) {
+      const problems = ["Commit phase is not complete."];
+      if (stillChanged.length)
+        problems.push(
+          `Uncommitted changes on reviewed paths: ${stillChanged.join(", ")}. Commit or discard these changes first.`,
+        );
+      if (mismatched.length) {
+        problems.push(
+          `Clean paths that differ from review: ${mismatched.join(", ")}.`,
+        );
+        if (!stillChanged.length)
+          problems.push(
+            "Use /task accept to keep the current result and continue, or commit the reviewed versions and use /task next.",
+          );
+      }
+      throw new Error(problems.join("\n"));
     }
+    acceptedDifferences = mismatched;
   }
   const more = n < stepCount(state);
   delete state.commitPendingFiles;
@@ -2986,10 +3005,16 @@ async function finishCommitPhase(
     rmSync(reviewPath);
   }
   state.reviewRound = undefined;
-  if (more) {
-    state.phase = "implement";
-    state.currentStep = n + 1;
-    saveState(state);
+  state.phase = more ? "implement" : "complete";
+  if (more) state.currentStep = n + 1;
+  saveState(state);
+  if (acceptedDifferences.length)
+    await pi.sendMessage({
+      customType: "task-commit",
+      content: `Accepted differences from review for step ${n}:\n\n${acceptedDifferences.map((file) => `- ${file}`).join("\n")}`,
+      display: true,
+    });
+  if (more)
     return switchPhase(
       ctx,
       state,
@@ -2997,9 +3022,6 @@ async function finishCommitPhase(
       n + 1,
       phaseKickoff(state, "implement", n + 1),
     );
-  }
-  state.phase = "complete";
-  saveState(state);
   updatePhaseUi(appVersion, pi, ctx, state, true);
   pi.sendMessage({
     customType: "task-commit",
@@ -4933,6 +4955,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               pi,
               ctx,
               state,
+              command === "accept",
             );
             return;
           }
