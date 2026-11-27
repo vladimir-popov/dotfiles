@@ -5,368 +5,86 @@ description: Curate a human-readable project knowledge base by extracting, valid
 
 # Knowledge Curation
 
-## Purpose
-
-Maintain a reliable, structured, human-readable knowledge base about software projects, their architecture, domain, and relevant engineering context.
-
-The knowledge base should help both humans and AI agents develop an accurate mental model of a project, avoid repeated investigations, and make informed decisions.
-
-Its purpose is not to document everything. Preserve knowledge whose absence in future tasks could lead to significant investigation effort or incorrect decisions.
-
-Complement source code and existing documentation rather than reproduce them.
-
-Apply this skill only when the user explicitly expresses an intention to create, update, or consolidate the knowledge base. Discovering valuable knowledge during an ordinary task does not itself authorize changes to the knowledge base.
-
-## Core principles
-
-- Organize knowledge by projects, subprojects, and topics.
-- Prefer coherent explanations over collections of isolated facts.
-- Consolidate knowledge rather than accumulate records.
-- Maintain a single canonical location for each piece of knowledge.
-- Respect existing knowledge and user-defined organizational rules.
-- Require explicit user approval before changing the meaning of or removing existing knowledge.
-- Keep changes within the scope of the current curation task.
-
-## Shared knowledge criteria
-
-Read `~/.pi/agent/knowledge_db/knowledge-criteria.md` for knowledge selection, evidence, source
-references, and source stability. Use this policy even when the user selects a different KB root.
-
-## Knowledge base organization
-
-### Knowledge base location
-
-Use `~/.pi/agent/knowledge_db/` as the root of the knowledge base unless the user explicitly specifies a different root for the task.
-
-### Project hierarchy
-
-The knowledge base root contains project directories.
-
-A project directory may contain subproject directories, recursively forming a hierarchy of logically related projects.
-
-The hierarchy should reflect the logical organization of projects rather than necessarily reproduce the physical structure of their repositories.
-
-Every project and subproject must contain the following thematic directories:
-
-- `architecture/`
-- `domain/`
-
-Additional thematic directories may be introduced when justified by the available knowledge.
-
-For example:
-
-```text
-knowledge_db/
-  AGENTS.md
-  index.md
-  project-a/
-    index.md
-    architecture/
-      index.md
-    domain/
-      index.md
-    development/
-    subproject-b/
-      index.md
-      architecture/
-        index.md
-      domain/
-        index.md
-      integrations/
-  project-c/
-    index.md
-    architecture/
-      index.md
-    domain/
-      index.md
-```
-
-The initial project hierarchy is defined by the user.
-
-Adapt the thematic organization as knowledge evolves. Changes to the project and subproject hierarchy require user approval.
-
-### Architecture
-
-The `architecture/` directory contains technical knowledge, including:
-
-- Architectural decisions and their rationale.
-- Component responsibilities and interactions.
-- Technical contracts and invariants.
-- Non-obvious implementation characteristics.
-- Technical constraints and trade-offs.
-
-### Domain
-
-The `domain/` directory contains knowledge about the project's problem domain, including:
-
-- Domain concepts and terminology.
-- Business entities and their relationships.
-- Business rules and invariants.
-- Entity lifecycles.
-- Business processes and the meaning of operations.
-- Exceptions to general rules.
-
-Keep domain knowledge distinct from its technical implementation.
-
-### Knowledge placement
-
-Store knowledge at the most appropriate level of the project hierarchy.
-
-Knowledge shared by multiple subprojects should normally reside in their common parent project.
-
-Knowledge specific to a subproject should reside within that subproject.
-
-Make the scope of applicability explicit when it is not obvious.
-
-Do not duplicate parent-level knowledge in subprojects. Reference the canonical document instead.
-
-### Navigation
-
-Maintain an `index.md` at the knowledge base root, in every project and subproject, and in thematic directories.
-
-Indexes should provide concise descriptions and relative links to relevant documents and child directories.
-
-In the root index, list each known local Git repository root alongside the relative link to its project index. Use absolute paths or home-relative paths beginning with `~/`. A project may list multiple roots, including separate clones and worktrees.
-
-They should support progressive discovery of knowledge without requiring readers to load the entire knowledge base.
-
-Keep indexes focused on navigation rather than duplicating substantive knowledge.
-
-### Local rules
-
-Respect organizational rules defined in the knowledge base's `AGENTS.md` and applicable local instructions.
-
-These rules may define project boundaries, naming conventions, additional thematic categories, and project-specific requirements.
-
-Do not change organizational rules without user approval.
-
-### Initialization
-
-If the knowledge base does not exist at the selected root, establish the initial project hierarchy and organizational rules with the user before creating it.
-
-Create the required directories, navigation indexes, and root `AGENTS.md`.
-
-If the knowledge base already exists, inspect and respect its current organization.
-
-Do not silently replace an existing organizational model.
-
-## Writing style
-
-Write primarily for human understanding.
-
-Present knowledge as coherent, technically precise explanatory prose. Connect related facts into a meaningful narrative that helps readers understand the subject rather than merely memorize individual statements.
-
-Where supported by evidence, explain:
-
-- How the relevant concepts and components relate to each other.
-- Why particular decisions were made.
-- What constraints shape the system.
-- What consequences follow from its design and behavior.
-
-Do not invent causal relationships, motivations, or explanations to make the narrative more coherent.
-
-Explanatory connections must satisfy the same reliability requirements as individual facts.
-
-Prefer clear, concise prose over exhaustive descriptions.
-
-Use headings, lists, tables, diagrams, and code examples where they improve understanding.
-
-Do not impose a rigid document template or fixed document size.
-
-Organize documents around meaningful topics rather than individual facts, source materials, or completed tasks.
-
-## Curation workflow
-
-### 1. Discovery
-
-Establish the scope of the curation task and locate the knowledge base using the default root or the root specified by the user.
-
-Use the project explicitly specified by the user when provided. Otherwise:
-
-1. Determine the local Git repository roots of files identified in the source materials. If no repository can be determined from the materials, use the Git repository root of the current working directory, if any.
-2. Expand home-relative paths and match each detected root against the local repository roots listed in the knowledge base's root `index.md`.
-3. Select the project if every detected root maps unambiguously to that same project. If no root is found, a mapping is missing or ambiguous, or the roots map to different projects, ask the user which project to use.
-
-Inspect:
-
-- The provided source materials, if any.
-- The relevant project and subproject.
-- Applicable knowledge base rules.
-- Existing navigation indexes.
-- Existing knowledge relevant to the current task.
-
-Use the knowledge base hierarchy to limit unnecessary context loading.
-
-If essential information about the scope or destination is missing, ask the user for clarification.
-
-### 2. Extraction
-
-Identify candidate knowledge from the provided source materials or existing knowledge within the requested scope.
-
-Evaluate candidates against the mandatory requirements and indicators of value.
-
-Distinguish durable project knowledge from task-specific context, temporary decisions, implementation attempts, and incidental observations.
-
-Failed approaches and experiments may contain valuable knowledge. Extract their verified, reusable findings rather than preserve the history of unsuccessful attempts.
-
-Do not preserve information merely because it appears in the source materials.
-
-### 3. Validation
-
-Establish whether each candidate is sufficiently supported by evidence.
-
-Perform targeted investigation when necessary to:
-
-- Verify claims against primary sources.
-- Recover precise source references.
-- Clarify the scope and conditions of a claim.
-- Resolve ambiguities.
-- Distinguish observed behavior from intended behavior.
-
-Investigation must remain focused on validating candidate knowledge.
-
-Do not turn curation into an open-ended exploration of the project.
-
-Reject candidates that cannot be sufficiently verified.
-
-Defer candidates that lack sufficiently stable and accessible primary sources, following the shared source availability and stability requirements.
-
-Report deferred candidates and the missing evidence in the completion report. Do not store them
-in the knowledge base or maintain a separate collection of pending knowledge.
-
-Ask the user for clarification when their input could resolve a significant uncertainty.
-
-### 4. Consolidation
-
-Compare verified candidate knowledge with relevant existing knowledge.
-
-Determine whether each candidate:
-
-- Introduces new knowledge.
-- Complements existing knowledge.
-- Refines an existing explanation without changing its meaning.
-- Duplicates existing knowledge.
-- Reveals a difference in context, applicability, or behavior.
-- Contradicts or supersedes existing knowledge.
-
-Integrate compatible knowledge into the existing narrative.
-
-Avoid appending disconnected notes or creating documents that merely summarize individual source materials.
-
-Maintain a single canonical location for each piece of knowledge.
-
-Use cross-references instead of duplicating content.
-
-#### Discrepancies and contradictions
-
-When discrepancies arise, investigate both the existing and new evidence.
-
-Do not automatically assume that newer evidence invalidates existing knowledge. A discrepancy may indicate a regression, a difference in scope, or a distinction between intended and implemented behavior.
-
-When an apparent contradiction can be explained by differences in context or conditions, preserve the relevant knowledge together with its verified scope of applicability.
-
-When implemented behavior differs from a documented contract, preserve the contract and describe the observed deviation separately, including its conditions and supporting evidence.
-
-Document verified exceptions without presenting them as changes to the underlying contract unless such changes are independently established.
-
-Do not characterize deviations as bugs, technical debt, intentional compromises, or other kinds of decisions without supporting evidence.
-
-If incorporating new information changes the meaning or applicability of existing knowledge, follow the approval policy. This applies even when the original wording remains unchanged.
-
-If existing knowledge is established to be incorrect or obsolete, propose its revision with supporting evidence.
-
-If a contradiction cannot be resolved, leave the affected knowledge unchanged and report the issue.
-
-### 5. Update
-
-Apply permitted changes to the knowledge base.
-
-Create, extend, merge, split, or relocate documents and thematic directories when doing so improves organization within the current task's scope.
-
-Preserve existing knowledge, its meaning, and its source references during reorganization.
-
-Restrict reorganization to documents directly affected by the current curation task.
-
-Do not reorganize unrelated documents or neighboring thematic areas merely because an opportunity for improvement has been discovered.
-
-Before relocating, merging, or splitting documents, identify their incoming references within the knowledge base.
-
-Update affected indexes and internal cross-references, including those outside the immediate thematic area when necessary.
-
-Such updates must be limited to maintaining navigational and referential integrity. They do not authorize unrelated content changes or further reorganization.
-
-If broader reorganization would be beneficial, propose it as a separate task rather than applying it.
-
-Follow the approval policy before applying restricted changes.
-
-## Approval policy
-
-The following changes may be applied without additional user approval:
-
-- Adding verified knowledge.
-- Extending existing explanations without changing their meaning.
-- Consolidating duplicate knowledge without losing information or evidence.
-- Reorganizing affected documents and thematic directories without changing the meaning of existing knowledge.
-- Updating indexes and internal cross-references.
-
-The following changes require explicit user approval:
-
-- Changing the meaning or applicability of existing knowledge.
-- Removing existing knowledge.
-- Changing the project or subproject hierarchy.
-- Changing knowledge base organizational rules.
-
-An explicit request for a specific restricted change satisfies the approval requirement for that change. All applicable evidence requirements still apply.
-
-A general request to update, review, or consolidate knowledge does not constitute approval of specific semantic changes identified during the task.
-
-Determine whether approval is required based on the semantic effect of the proposed change, not its textual form.
-
-Adding an exception, qualification, or additional explanation requires approval if it changes the meaning or applicability of an existing claim, even when the original text is preserved.
-
-Documenting an independently verified observation or implementation deviation does not require approval when it leaves the meaning and applicability of existing knowledge intact.
-
-For each restricted change not already explicitly authorized by the user, present:
-
-- The affected knowledge or organizational structure.
-- The proposed change.
-- The reason for the change.
-- Supporting evidence and relevant source references.
-
-Do not apply restricted changes that have not been explicitly authorized by the user.
-
-Independent changes that do not require approval may proceed.
-
-## Completion report
-
-After processing the source materials or consolidating existing knowledge, provide a concise report describing:
-
-- New knowledge added.
-- Existing knowledge extended or consolidated.
-- Significant organizational changes.
-- Rejected candidates and reasons for rejection, when noteworthy.
-- Deferred candidates and the evidence required for their inclusion.
-- Unresolved contradictions.
-- Proposed changes awaiting user approval.
-- Broader reorganization opportunities, when significant.
-
-Reference affected knowledge base documents where appropriate.
-
-The report is an operational summary, not part of the knowledge base.
-
-## Final checks
-
-Before completing the curation task, verify that:
-
-- All added knowledge is sufficiently supported by evidence.
-- Source references are accurate, stable, accessible, and resolvable.
-- Knowledge is stored at the appropriate project and thematic level.
-- Documents form coherent, human-readable explanations.
-- No unsupported interpretations have been introduced.
-- Contracts and observed implementation behavior are clearly distinguished.
-- No existing knowledge or supporting evidence has been unintentionally lost.
-- Reorganization has remained within the current task's scope.
-- Affected indexes and internal cross-references are consistent.
-- No change requiring approval has been applied without it.
-
-The knowledge base should become more useful and coherent with each curation task, not merely larger.
+Use this skill only when the user explicitly asks to create, update, or consolidate a knowledge
+base (KB). Preserve durable project knowledge that helps readers make decisions or avoid
+rediscovery. Complement existing code and documentation.
+
+## 1. Establish scope
+
+Use `~/.pi/agent/knowledge_db/` as the KB root. Read its
+[`AGENTS.md`](../../knowledge_db/AGENTS.md) when present and any applicable local instructions.
+Use the [shared knowledge criteria](../../knowledge_db/knowledge-criteria.md) for selection,
+evidence, and source stability.
+
+If the KB does not exist, agree on the initial project hierarchy and organizational rules with
+the user before creating its root `AGENTS.md`, required directories, and indexes.
+For an existing base, work within its established organization.
+
+Use the project the user specifies. Otherwise, identify the local Git roots of files in the
+source materials, falling back to the current directory's Git root only if the materials
+identify none. Match the roots against the root index after expanding `~/` paths. Select the
+project only if every detected root maps unambiguously to the same project. Ask the user when
+no root is found, a mapping is absent or ambiguous, the roots map to different projects, or the
+scope or destination is otherwise unclear.
+
+Read the provided materials and follow the relevant project, subproject, and thematic indexes
+to find the knowledge affected by the request.
+
+## 2. Select and verify candidates
+
+Extract candidates from the provided materials, including working sessions, or from existing
+knowledge in scope. Apply the shared criteria. Retain verified, reusable findings from
+experiments and failed approaches when valuable. Omit task history, temporary decisions,
+implementation attempts, and incidental observations that add no durable knowledge.
+
+Check each claim against primary sources. Investigate only as needed to verify the claim,
+recover precise references, resolve ambiguity, and establish scope and conditions. Ask the user
+when their input could resolve a significant uncertainty. Reject candidates with insufficient
+support. If stable, accessible evidence is missing or verification needs a separate investigation,
+defer the candidate and report the unresolved question or missing evidence. Keep deferred
+candidates out of the KB and any separate pending collection.
+
+## 3. Consolidate
+
+Compare verified candidates with the existing knowledge they affect. Plan additions for new
+knowledge, integrate compatible refinements into the relevant explanation, and merge duplicates
+while preserving their information and evidence. Link to the canonical location.
+
+Draw the conclusions needed to integrate candidates or consolidate the entries in scope.
+Do not search for unrelated discrepancies or derive independent findings from existing entries.
+
+When claims differ, examine both sets of evidence. Check for different scopes, conditions,
+or a deviation between documented intent and implementation before proposing a revision.
+
+- If context explains the discrepancy, preserve each supported claim with its verified scope.
+- If implementation differs from a documented contract, retain the contract and document the
+  observed deviation or exception separately with its conditions and evidence. Establish any
+  change to the contract independently. Attribute causes or characterize deviations only when
+  supported by evidence.
+- If existing knowledge is incorrect or obsolete, propose a revision with evidence. If the
+  contradiction remains unresolved, retain the existing entries and report the discrepancy.
+
+## 4. Apply changes
+
+Follow the [approval rules in `AGENTS.md`](../../knowledge_db/AGENTS.md#approval-for-changes).
+
+For any restricted change awaiting approval, present the affected knowledge or structure,
+proposed change, rationale, and supporting references. Proceed with independent changes that
+are already authorized.
+
+Create or reorganize articles and thematic directories as needed within scope. Preserve existing
+knowledge and references during reorganization. Before moving, merging, or splitting articles,
+find incoming references and update affected indexes and links, including those outside the
+immediate area. Limit edits outside that area to link and navigation fixes. Propose broader
+reorganization as a separate task.
+
+## 5. Verify and report
+
+Check that changed articles are coherent, correctly placed, and supported by accurate, stable,
+accessible references that resolve. Check that the edits preserve knowledge and evidence, keep
+contracts distinct from observed behavior, maintain navigation, and respect scope and approvals.
+
+Briefly report additions, refinements, consolidations, and significant organizational changes,
+with links to affected articles. Include noteworthy rejections, deferred candidates and missing
+evidence, unresolved discrepancies, proposals awaiting approval, and significant opportunities
+for separate reorganization when relevant. Return this report to the user outside the KB.
