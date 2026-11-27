@@ -48,13 +48,13 @@ const hostModules = new Map([
   ],
   ["typebox", "export const Type = new Proxy({}, { get: () => () => ({}) });"],
 ]);
-const extensionUrl = new URL("../index.ts", import.meta.url);
+const implementationUrl = new URL("../src/index.ts", import.meta.url);
 const hooks = registerHooks({
   load(url, context, next) {
-    if (url !== extensionUrl.href) return next(url, context);
-    // index.ts uses parameter properties, which Node's strip-only loader cannot handle.
+    if (url !== implementationUrl.href) return next(url, context);
+    // src/index.ts uses parameter properties, which Node's strip-only loader cannot handle.
     const { outputText } = ts.transpileModule(
-      readFileSync(extensionUrl, "utf8"),
+      readFileSync(implementationUrl, "utf8"),
       {
         compilerOptions: {
           module: ts.ModuleKind.ESNext,

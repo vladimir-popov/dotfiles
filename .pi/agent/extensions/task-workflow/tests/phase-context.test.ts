@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -59,7 +61,14 @@ type State = {
   sessions?: Record<string, unknown>;
 };
 
-function fixture(t: TestContext) {
+function fixture(
+  t: TestContext,
+  startup?: {
+    global: { hotkeys: Record<string, string | null> };
+    project: { hotkeys: Record<string, string | null> };
+    task: { hotkeys: Record<string, string | null> };
+  },
+) {
   const temp = realpathSync(mkdtempSync(join(tmpdir(), "phase-context-test-")));
   const cwd = join(temp, "project");
   mkdirSync(cwd);
@@ -76,6 +85,16 @@ function fixture(t: TestContext) {
   const contextPath = join(artifacts, "context.md");
   const configPath = join(temp, "task-workflow.json");
   const source = join(cwd, "example.ts");
+  if (startup) {
+    mkdirSync(runtime, { recursive: true });
+    writeFileSync(configPath, JSON.stringify(startup.global));
+    writeFileSync(
+      join(dirname(runtime), "config.json"),
+      JSON.stringify(startup.project),
+    );
+    writeFileSync(join(runtime, "config.json"), JSON.stringify(startup.task));
+  }
+  const shortcuts: [string, string][] = [];
   const state = (): State => JSON.parse(readFileSync(statePath, "utf8"));
   const writeState = (values: State) =>
     writeFileSync(
@@ -94,6 +113,7 @@ function fixture(t: TestContext) {
     writeFileSync(join(artifacts, name), content);
   const messages: Delivered[] = [];
   const notices: string[] = [];
+  const confirmations: { title: string; description: string }[] = [];
   const switches: string[] = [];
   const dispatchedCommands: string[] = [];
   const modelCalls: { systemPrompt: string; input: string }[] = [];
@@ -133,7 +153,9 @@ function fixture(t: TestContext) {
     registerTool(tool: ArtifactTool) {
       if (tool.name === "task_write_artifact") artifactTool = tool;
     },
-    registerShortcut() {},
+    registerShortcut(key: string, definition: { description: string }) {
+      shortcuts.push([key, definition.description]);
+    },
     registerCommand(command: string, definition: { handler: Handler }) {
       if (command === "task") handler = definition.handler;
     },
@@ -151,6 +173,10 @@ function fixture(t: TestContext) {
     isIdle: () => true,
     model: { contextWindow: 128_000, maxTokens: 4096 },
     ui: {
+      async confirm(title: string, description: string) {
+        confirmations.push({ title, description });
+        return false;
+      },
       notify(message: string) {
         notices.push(message);
       },
@@ -303,14 +329,18 @@ function fixture(t: TestContext) {
       tools: systemPromptOptions.selectedTools,
     };
   }
-  async function run(args: string) {
+  async function run(args: string, commandCwd = cwd) {
     assert.ok(handler);
-    await handler(args, ctx as unknown as CommandContext);
+    await handler(args, {
+      ...ctx,
+      cwd: commandCwd,
+    } as unknown as CommandContext);
   }
   return {
     cwd,
     contextPath,
     configPath,
+    shortcuts,
     state,
     statePath,
     writeState,
@@ -331,6 +361,7 @@ function fixture(t: TestContext) {
     dispatchedCommands,
     modelCalls,
     notices,
+    confirmations,
     switches,
     prompt,
     session: () => session,
@@ -481,6 +512,54 @@ for (const [phase, state, instruction] of [
   });
 }
 
+it("registers global startup shortcut overrides and ignores project and task bindings", (t) => {
+  const f = fixture(t, {
+    global: { hotkeys: { next: "ctrl+n", status: null } },
+    project: { hotkeys: { next: "ctrl+p", status: "ctrl+s" } },
+    task: { hotkeys: { show: "ctrl+w", list: "ctrl+l" } },
+  });
+  assert.deepEqual(f.shortcuts, [
+    ["ctrl+n", "/task next"],
+    ["alt+a", "/task accept"],
+    ["alt+w", "/task show"],
+  ]);
+});
+
+it("discovers an indexed task but refuses to advance it from an archived session", async (t) => {
+  const f = fixture(t);
+  const archived = f.savedPhase("research");
+  const active = f.savedPhase("roadmap");
+  const indexDir = join(dirname(f.configPath), "task-workflow-index");
+  mkdirSync(indexDir);
+  const locator = join(indexDir, "matching.json");
+  const record = JSON.stringify({
+    id,
+    projectRoot: f.cwd,
+    statePath: f.statePath,
+  });
+  writeFileSync(locator, record);
+
+  const otherProject = join(dirname(f.configPath), "other-project");
+  mkdirSync(otherProject);
+  await f.run("browse", otherProject);
+  assert.ok(
+    f.notices
+      .at(-1)
+      ?.includes(`- ${id} · current · ${f.cwd} · ${f.statePath} ·`),
+  );
+  await f.open(archived);
+  const before = readFileSync(f.statePath, "utf8");
+  const switchCount = f.switches.length;
+  await f.run("next");
+  assert.match(f.notices.at(-1) ?? "", /not the active task session/i);
+  assert.equal(f.session(), archived);
+  assert.equal(f.switches.length, switchCount);
+  assert.equal(f.modelCalls.length, 0);
+  assert.equal(readFileSync(f.statePath, "utf8"), before);
+  assert.equal(readFileSync(locator, "utf8"), record);
+  assert.equal(f.state().sessions?.roadmap, active);
+});
+
 it("does not give active-task guidance to unlinked, missing-state, or archived sessions", async (t) => {
   const f = fixture(t);
   assert.equal(f.prompt().text, undefined);
@@ -611,6 +690,37 @@ it("dispatches same-session coding only after the baseline and write permission 
   assert.ok(assertContextEntry(f, f.messages[0]).tools.includes("write"));
 });
 
+it("uses task-scoped snapshot filters, including null overriding an inherited include", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("implement"));
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({ include: ["never.ts"], exclude: ["*.ts"] }),
+  );
+  writeFileSync(
+    join(dirname(dirname(f.statePath)), "config.json"),
+    JSON.stringify({ include: ["other.ts"] }),
+  );
+  writeFileSync(
+    join(dirname(f.statePath), "config.json"),
+    JSON.stringify({ include: null, exclude: ["other.ts"] }),
+  );
+  writeFileSync(f.source, baselineSource);
+  writeFileSync(join(f.cwd, "other.ts"), baselineSource);
+  await f.run("next");
+  const dir = f.state().pendingBaselineDir;
+  assert.ok(dir, f.notices.join("\n"));
+  const { paths } = JSON.parse(
+    readFileSync(join(dir, "manifest.json"), "utf8"),
+  );
+  assert.deepEqual(
+    paths
+      .map(([path]: [string, string]) => path)
+      .filter((path: string) => path.endsWith(".ts")),
+    ["example.ts"],
+  );
+});
+
 it("keeps preparation read-only and does not dispatch coding on baseline failure", async (t) => {
   const f = fixture(t);
   await f.open(f.savedPhase("implement"));
@@ -626,6 +736,102 @@ it("keeps preparation read-only and does not dispatch coding on baseline failure
   assert.deepEqual(f.messages, []);
 });
 
+it("uses the discovered layout's scoped deletion mode at confirmation", async (t) => {
+  const f = fixture(t);
+  f.savedPhase("research");
+  const runtime = dirname(f.statePath);
+  const projectConfig = join(dirname(runtime), "config.json");
+  writeFileSync(f.configPath, JSON.stringify({ deleteMode: "trash" }));
+  writeFileSync(projectConfig, JSON.stringify({ deleteMode: "permanent" }));
+  await f.run(`delete ${id}`);
+  assert.equal(f.confirmations.at(-1)?.title, `Permanently delete task ${id}?`);
+  assert.ok(f.confirmations.at(-1)?.description.includes(runtime));
+
+  const historical = join(f.cwd, ".agents", "projects", id);
+  mkdirSync(dirname(historical), { recursive: true });
+  renameSync(runtime, historical);
+  const historicState = join(historical, "state.json");
+  writeFileSync(
+    historicState,
+    JSON.stringify({
+      ...JSON.parse(readFileSync(historicState, "utf8")),
+      contextPath: join(historical, "context", "context.md"),
+    }),
+  );
+  writeFileSync(
+    join(historical, "config.json"),
+    JSON.stringify({ deleteMode: "trash" }),
+  );
+  await f.run(`delete ${id}`);
+  assert.equal(
+    f.confirmations.at(-1)?.title,
+    `Move task ${id} to the OS trash?`,
+  );
+  assert.ok(f.confirmations.at(-1)?.description.includes(historical));
+  assert.ok(existsSync(historicState), "both confirmations were declined");
+});
+
+it(
+  "preserves a written Review report when the subsequent state save fails",
+  { skip: process.getuid?.() === 0 },
+  async (t) => {
+    const f = fixture(t);
+    await f.open(f.savedPhase("review", { reviewPending: true }));
+    const before = readFileSync(f.statePath, "utf8");
+    chmodSync(f.statePath, 0o444);
+    try {
+      await assert.rejects(
+        f.editArtifact({
+          artifact: "review",
+          operation: "create",
+          content: "# Review\n",
+        }),
+        { code: "EACCES" },
+      );
+      assert.equal(
+        readFileSync(
+          join(dirname(f.contextPath), "review-1-round-0.md"),
+          "utf8",
+        ),
+        "# Review\n",
+      );
+      assert.equal(readFileSync(f.statePath, "utf8"), before);
+    } finally {
+      chmodSync(f.statePath, 0o644);
+    }
+  },
+);
+
+it("retains Commit evidence on a no-Git retry and cleans up only after explicit skip", async (t) => {
+  const f = fixture(t);
+  const baseline = join(dirname(f.statePath), "baseline");
+  await f.open(
+    f.savedPhase("commit", {
+      completedSteps: [1],
+      pendingBaselineDir: baseline,
+    }),
+  );
+  mkdirSync(baseline);
+  writeFileSync(join(baseline, "manifest.json"), "{}");
+  const diff = join(dirname(f.contextPath), "implementation-1.diff");
+  const report = join(dirname(f.contextPath), "review-1-round-0.md");
+  writeFileSync(diff, "# example.ts\n");
+  writeFileSync(report, "# Review\n");
+  const before = readFileSync(f.statePath, "utf8");
+  await f.run("next");
+  assert.match(
+    f.messages.at(-1)?.content ?? "",
+    /Git repository not detected.*remains open/,
+  );
+  assert.equal(readFileSync(f.statePath, "utf8"), before);
+  assert.ok([baseline, diff, report].every((path) => existsSync(path)));
+  await f.run("accept");
+  assert.equal(f.state().phase, "complete");
+  assert.equal(f.state().pendingBaselineDir, undefined);
+  assert.ok([baseline, diff, report].every((path) => !existsSync(path)));
+  assert.equal(f.modelCalls.length, 0);
+});
+
 function initGit(f: Fixture) {
   const git = (...args: string[]) =>
     execFileSync("git", args, { cwd: f.cwd, encoding: "utf8" }).trimEnd();
@@ -639,6 +845,90 @@ function initGit(f: Fixture) {
   git("add", "example.ts");
   git("commit", "-qm", "Baseline");
   return git;
+}
+
+for (const destination of ["review", "manual-review", "commit"] as const) {
+  it(`preserves caller effects when the switch to ${destination} is cancelled`, async (t) => {
+    const f = fixture(t);
+    const file = f.savedPhase("implement");
+    await f.open(file);
+    initGit(f);
+    writeFileSync(
+      f.configPath,
+      JSON.stringify({
+        mode: "semi-auto",
+        manualReview: destination === "manual-review",
+        autoCommit: true,
+      }),
+    );
+    await f.run("next");
+    const baseline = f.state().pendingBaselineDir;
+    assert.ok(baseline, f.notices.join("\n"));
+    writeFileSync(f.source, "export const value = 2;\n");
+    const diffPath = join(dirname(f.contextPath), "implementation-1.diff");
+    if (destination !== "review") {
+      await f.run("next");
+      assert.equal(f.state().phase, "review", f.notices.join("\n"));
+      await f.editArtifact({
+        artifact: "review",
+        operation: "create",
+        content: "# Review\n\n## Findings\n\nNo findings.\n",
+      });
+    }
+    const before = {
+      file: f.session(),
+      messages: f.messages.length,
+      calls: f.modelCalls.length,
+      switches: f.switches.length,
+      dispatched: f.dispatchedCommands.length,
+    };
+    f.cancelNextSwitch();
+    await f.run("next");
+    const state = f.state();
+    assert.match(f.notices.at(-1) ?? "", /Session switch was cancelled/);
+    assert.equal(f.session(), before.file);
+    assert.ok(
+      f.messages
+        .slice(before.messages)
+        .every(
+          (message) =>
+            !message.triggerTurn && message.customType !== "task-commit",
+        ),
+    );
+    assert.deepEqual(
+      f.modelCalls
+        .slice(before.calls)
+        .map(({ systemPrompt }) =>
+          systemPrompt.startsWith("You decide whether"),
+        ),
+      [true],
+    );
+    assert.equal(f.switches.length, before.switches);
+    assert.equal(f.dispatchedCommands.length, before.dispatched);
+    assert.match(readFileSync(diffPath, "utf8"), /\+export const value = 2;/);
+    assert.equal(state.pendingBaselineDir, baseline);
+    if (destination === "review") {
+      assert.equal(state.phase, "implement");
+      assert.equal(state.reviewPending, true);
+      assert.equal(state.sessions?.review, undefined);
+      assert.equal(
+        readdirSync(join(dirname(f.statePath), "sessions")).length,
+        1,
+      );
+    } else {
+      assert.equal(state.phase, destination);
+      assert.deepEqual(state.completedSteps, [1]);
+      const sessions = state.sessions?.[
+        destination === "manual-review" ? "manualReview" : "commit"
+      ] as Record<string, string | string[]>;
+      const ref = sessions["1"];
+      assert.ok(existsSync(Array.isArray(ref) ? ref[0] : ref));
+      assert.equal(state.commitReady, false);
+      assert.ok(
+        existsSync(join(dirname(f.contextPath), "review-1-round-0.md")),
+      );
+    }
+  });
 }
 
 it("carries automated and manual repairs through verified Commit and preserves reusable findings", async (t) => {

@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, type TestContext } from "node:test";
-import type { HandoffCandidate } from "../research-handoff.ts";
+import type { HandoffCandidate } from "../src/research-handoff.ts";
 import { taskExtension } from "./load-task-extension.ts";
 
 const initial = "# Export\n\nExport format: JSON.\n";

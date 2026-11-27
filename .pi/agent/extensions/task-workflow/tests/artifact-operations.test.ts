@@ -17,7 +17,7 @@ import {
   validateTaskContextDirectory,
   writeArtifactOperation,
   type ArtifactOperation,
-} from "../artifact-operations.ts";
+} from "../src/artifact-operations.ts";
 
 const temporaryRoots: string[] = [];
 

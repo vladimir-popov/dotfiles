@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, type TestContext } from "node:test";
-import { writeArtifactOperation } from "../artifact-operations.ts";
-import { completeResearchHandoff } from "../research-handoff.ts";
+import { writeArtifactOperation } from "../src/artifact-operations.ts";
+import { completeResearchHandoff } from "../src/research-handoff.ts";
 
 const context =
   "# Task\r\n\r\nLegacy detail.\r\n\r\n- Name exports `daily.csv`.\r\n\r\n[Notes](research.md) — Evidence.\r\n";
