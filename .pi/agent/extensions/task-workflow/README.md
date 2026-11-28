@@ -132,11 +132,13 @@ only or a title with a body.
 
 Start Pi in the project directory and enter `/task TASK-100500`. Pi asks whether to create a missing
 task or continue an existing one. Declining leaves the current session unchanged. `/task` and
-`/task list` show project-local tasks with a short state description and their last worked time,
-based on the newest saved task session. Both open the same selector in the terminal UI. Use
-`/task browse` to inspect tasks across indexed projects and recognized layouts; in the terminal
-UI, this selector is for deletion only. Existing project-local IDs also appear in command
-completion.
+`/task list` show tasks in the current project. Use `/task list all` to include all indexed
+projects. The first column shows the last saved session's modification time in local time
+(`14:32 26.11.26`); the second shows the task ID, progress, and short description, plus the
+project in the global list. In the terminal UI, press **Enter** to continue in the saved session
+without starting a new turn, **s** to inspect status without switching sessions, or **x** to start
+deletion. Historical layouts can be inspected or deleted, but cannot be continued. Existing
+project-local IDs also appear in command completion.
 
 If you rename a project directory, close Pi and start it from the new path. In the terminal UI,
 `/task` or `/task resume` can show project-local tasks marked as moved and ask for confirmation
@@ -154,8 +156,8 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/task new TASK-ID`         | Create a task with the given ID.                                                                                                                                                                                                                                 |
 | `/task TASK-ID`             | Open an existing task.                                                                                                                                                                                                                                           |
-| `/task` or `/task list`     | Select an existing task, or show a list outside the terminal UI.                                                                                                                                                                                                 |
-| `/task browse`              | Browse tasks across indexed projects and select a task or broken index entry for deletion in the terminal UI.                                                                                                                                                     |
+| `/task` or `/task list`      | List tasks in the current project. In the terminal UI, continue, inspect, or delete the selected task. |
+| `/task list all`             | Use the same list across indexed projects; also shows broken index entries. |
 | `/task delete [TASK-ID]`    | Delete a project-local task after a separate confirmation. Without an ID, choose from a selector in the terminal UI.                                                                                                                                              |
 | `/task delete --global [ID]` | Select and delete a task across indexed projects after a separate confirmation. An ID is required outside the terminal UI.                                                                                                                                    |
 | `/task status`              | Show the phase, step, session paths, review status, and settings without adding text to the conversation.                                                                                                                                                        |
@@ -214,10 +216,10 @@ ID. Task storage paths are fixed.
 
 `/task delete` lists tasks in the current project for selection. `/task delete TASK-100500`
 selects one directly; quote IDs with spaces as above. `/task delete --global TASK-100500` selects a
-task across indexed projects. If an ID occurs in multiple projects, use `/task browse` in the
-terminal UI and choose the exact project and path. Global browsing also offers
-`/task delete --global` with no ID in the terminal UI. All routes require a separate confirmation
-that names the selected data paths; `/task browse` uses `x` to begin deletion, not to confirm it.
+task across indexed projects. If an ID occurs in multiple projects, use `/task list all` in the
+terminal UI and select the exact project and path. You can also use `/task delete --global` with
+no ID in the terminal UI. All routes require a separate confirmation that names the selected
+data paths; `x` in the list begins deletion but does not confirm it.
 Deletion is limited to validated task directories; project files outside them remain untouched.
 Finish or cancel a running Pi response before deleting.
 
@@ -232,7 +234,7 @@ Global discovery is bounded to the active project and project roots named by val
 shared task index. It checks the current `.agents/task-workflow/<task-id>/` and recognized
 historical `.agents/projects/<task-id>/` layouts; it does not recursively scan projects. Tasks or
 entries with unknown layouts or invalid data are shown in a warning color and preserved.
-`/task browse` can remove a broken index entry without touching task data. If a valid index record
+`/task list all` can remove a broken index entry without touching task data. If a valid index record
 identifies a recognized task directory but its `state.json` is missing, the selector offers to
 remove only the index record or also the remaining task directory. Removing that directory
 requires explicit selection and confirmation. Malformed records or unvalidated paths never

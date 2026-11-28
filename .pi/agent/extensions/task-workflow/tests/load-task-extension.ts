@@ -31,7 +31,9 @@ const hostModules = new Map([
   ["@earendil-works/pi-ai", 'export const uuidv7 = () => "test";'],
   [
     "@earendil-works/pi-tui",
-    `export const ${[
+    `export const truncateToWidth = (value, width) => value.slice(0, width);
+    export const visibleWidth = (value) => value.length;
+    export const ${[
       "decodeKittyPrintable",
       "getNativeClipboard",
       "Markdown",
@@ -40,8 +42,6 @@ const hostModules = new Map([
       "matchesKey",
       "sliceByColumn",
       "stripTerminalSequences",
-      "truncateToWidth",
-      "visibleWidth",
     ]
       .map((name) => `${name} = () => {}`)
       .join(", ")};`,

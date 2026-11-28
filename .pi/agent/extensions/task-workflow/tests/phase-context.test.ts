@@ -12,6 +12,7 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -105,6 +106,8 @@ function fixture(
   const shortcutHandlers = new Map<string, Shortcut["handler"]>();
   const artifactChoices: string[][] = [];
   const overlays: boolean[] = [];
+  const listScreens: string[][] = [];
+  const listInputs: string[][] = [];
   let uiMode: "print" | "tui" = "print";
   let idle = true;
   let editorText = "";
@@ -221,8 +224,46 @@ function fixture(
         artifactChoices.push(options);
         return "note.md";
       },
-      async custom(_factory: unknown, options: { overlay: boolean }) {
-        overlays.push(options.overlay);
+      async custom(
+        factory: (
+          tui: { terminal: { rows: number }; requestRender(): void },
+          theme: {
+            fg(key: string, value: string): string;
+            inverse(value: string): string;
+          },
+          keys: { matches(input: string, key: string): boolean },
+          done: (value: unknown) => void,
+        ) => {
+          render(width: number): string[];
+          handleInput(input: string): void;
+        },
+        options: { overlay?: boolean },
+      ) {
+        if (options.overlay) {
+          overlays.push(options.overlay);
+          return;
+        }
+        const inputs = listInputs.shift();
+        assert.ok(inputs, "Task list opened unexpectedly");
+        let selection: unknown;
+        let closed = false;
+        const component = factory(
+          { terminal: { rows: 24 }, requestRender() {} },
+          { fg: (_key, value) => value, inverse: (value) => value },
+          { matches: (input, key) => key === `tui.select.${input}` },
+          (value) => {
+            selection = value;
+            closed = true;
+          },
+        );
+        listScreens.push(component.render(120));
+        assert.ok(component.render(30).every((line) => line.length === 30));
+        for (const input of inputs) {
+          assert.ok(!closed, "List closed before consuming all inputs");
+          component.handleInput(input);
+        }
+        assert.ok(closed, "Task list did not close");
+        return selection;
       },
       async confirm(title: string, description: string) {
         confirmations.push({ title, description });
@@ -401,6 +442,11 @@ function fixture(
     shortcuts,
     artifactChoices,
     overlays,
+    listScreens,
+    setListInputs: (...inputs: string[][]) => {
+      uiMode = "tui";
+      listInputs.push(...inputs);
+    },
     setBusy: (mode: "print" | "tui" = "print") => {
       idle = false;
       uiMode = mode;
@@ -708,12 +754,9 @@ it("discovers an indexed task but refuses to advance it from an archived session
 
   const otherProject = join(dirname(f.configPath), "other-project");
   mkdirSync(otherProject);
-  await f.run("browse", otherProject);
-  assert.ok(
-    f.notices
-      .at(-1)
-      ?.includes(`- ${id} · current · ${f.cwd} · ${f.statePath} ·`),
-  );
+  await f.run("list all", otherProject);
+  assert.ok(f.notices.at(-1)?.includes(`${id} · project · Planning roadmap`));
+  assert.ok(f.notices.at(-1)?.includes(f.statePath));
   await f.open(archived);
   assert.deepEqual(f.activeTools(), []);
   assert.ok(f.toolModeDenial());
@@ -727,6 +770,103 @@ it("discovers an indexed task but refuses to advance it from an archived session
   assert.equal(readFileSync(f.statePath, "utf8"), before);
   assert.equal(readFileSync(locator, "utf8"), record);
   assert.equal(f.state().sessions?.roadmap, active);
+});
+
+it("lists local or indexed tasks with time before date and retires browse", async (t) => {
+  const f = fixture(t);
+  const session = f.savedPhase("research");
+  const lastWorked = new Date(2026, 10, 26, 14, 32);
+  utimesSync(session, lastWorked, lastWorked);
+  const indexDir = join(dirname(f.configPath), "task-workflow-index");
+  mkdirSync(indexDir);
+  writeFileSync(
+    join(indexDir, "matching.json"),
+    JSON.stringify({ id, projectRoot: f.cwd, statePath: f.statePath }),
+  );
+  writeFileSync(join(indexDir, "broken.json"), "invalid");
+  const otherProject = join(dirname(f.configPath), "other-project");
+  mkdirSync(otherProject);
+
+  await f.run("");
+  assert.match(
+    f.notices.at(-1) ?? "",
+    /\| 14:32 26\.11\.26 \| context-test · Researching code · Supporting note \|/,
+  );
+  assert.doesNotMatch(f.notices.at(-1) ?? "", /broken\.json/);
+  await f.run("list", otherProject);
+  assert.match(f.notices.at(-1) ?? "", /No tasks found/);
+  assert.doesNotMatch(f.notices.at(-1) ?? "", /context-test ·|broken\.json/);
+  await f.run("list all", otherProject);
+  assert.match(
+    f.notices.at(-1) ?? "",
+    /\| 14:32 26\.11\.26 \| context-test · project · Researching code/,
+  );
+  assert.match(f.notices.at(-1) ?? "", /broken\.json/);
+  await f.run("list everything");
+  assert.match(f.notices.at(-1) ?? "", /Usage: \/task list \[all\]/);
+  await f.run("browse");
+  assert.match(f.notices.at(-1) ?? "", /Use \/task list all/);
+});
+
+it("inspects, continues, and confirms deletion from the shared task list", async (t) => {
+  const f = fixture(t);
+  const saved = f.savedPhase("research");
+  const time = new Date(2026, 10, 26, 14, 32);
+  utimesSync(saved, time, time);
+  f.setListInputs(["s"], ["cancel"]);
+  await f.run("list");
+  assert.deepEqual(f.overlays, [true], f.notices.join("\n"));
+  assert.deepEqual(f.switches, []);
+  const [top, , headerRule, header, row, footerRule, path, controls, bottom] =
+    f.listScreens[0];
+  assert.match(top, /^╭─+╮$/);
+  assert.match(headerRule, /^├─+┤$/);
+  assert.match(row, /^│ > 14:32 26\.11\.26 +context-test.* │$/);
+  assert.equal(header.indexOf("Task"), row.indexOf(id));
+  assert.equal(footerRule, headerRule);
+  assert.ok(path.startsWith(`│ ${f.cwd}/`));
+  assert.match(controls, /Enter Continue/);
+  assert.match(bottom, /^╰─+╯$/);
+
+  f.setListInputs(["x"]);
+  await f.run("list");
+  assert.equal(f.confirmations.length, 1);
+  assert.match(
+    f.confirmations[0].title,
+    /Move task context-test to the OS trash/,
+  );
+  assert.ok(existsSync(f.statePath), "declining leaves task data untouched");
+
+  const indexDir = join(dirname(f.configPath), "task-workflow-index");
+  mkdirSync(indexDir);
+  writeFileSync(
+    join(indexDir, "matching.json"),
+    JSON.stringify({ id, projectRoot: f.cwd, statePath: f.statePath }),
+  );
+  const otherProject = join(dirname(f.configPath), "other-project");
+  mkdirSync(otherProject);
+  f.setListInputs(["confirm"]);
+  await f.run("list all", otherProject);
+  assert.deepEqual(f.switches, [saved]);
+  assert.deepEqual(f.messages, []);
+});
+
+it("only offers index cleanup for a broken entry in the global task list", async (t) => {
+  const f = fixture(t);
+  const indexDir = join(dirname(f.configPath), "task-workflow-index");
+  mkdirSync(indexDir);
+  const broken = join(indexDir, "broken.json");
+  writeFileSync(broken, "invalid");
+
+  f.setListInputs(["confirm", "x"]);
+  await f.run("list all");
+  assert.deepEqual(f.switches, []);
+  assert.equal(
+    f.confirmations[0]?.title,
+    "Remove this broken task index entry?",
+  );
+  assert.ok(f.confirmations[0]?.description.includes(broken));
+  assert.ok(existsSync(broken), "declining leaves the index untouched");
 });
 
 it("does not give active-task guidance to unlinked, missing-state, or archived sessions", async (t) => {

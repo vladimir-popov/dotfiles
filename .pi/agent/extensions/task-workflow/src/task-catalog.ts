@@ -610,7 +610,7 @@ export function assertTaskIndexRecordsUnchanged(
   );
   if (currentRecords.length !== selectedRecords.length)
     throw new Error(
-      `Task index mapping changed; run /task browse again before deleting ${state.id}.`,
+      `Task index mapping changed; run /task list all again before deleting ${state.id}.`,
     );
   for (const selected of selectedRecords) {
     const current = currentRecords.find(
@@ -627,7 +627,7 @@ export function assertTaskIndexRecordsUnchanged(
       })
     )
       throw new Error(
-        `Task index mapping changed; run /task browse again before deleting ${state.id}.`,
+        `Task index mapping changed; run /task list all again before deleting ${state.id}.`,
       );
   }
 }

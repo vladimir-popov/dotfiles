@@ -267,8 +267,9 @@ const HELP = `Task workflow
 
 /task TASK-ID              Start or continue a task after confirmation
 /task new TASK-ID           Create a new task
-/task or /task list         Select a project-local task to continue
-/task browse                Browse global tasks and select one to delete
+/task or /task list         List tasks in the current project
+/task list all              List tasks across indexed projects
+                            Enter continues, s shows status, x starts deletion
 /task delete [TASK-ID]      Delete a project-local task
 /task delete --global [ID]  Select and delete a task across projects
 /task status                Show task state, current session, and artifact paths
@@ -388,19 +389,6 @@ function listTasksDetailed(
 
 function listTasks(root: string): DiscoveredTask[] {
   return listTasksDetailed(root).tasks;
-}
-
-function taskDiscoveryNotes(result: TaskDiscoveryResult): string {
-  const notes = [
-    ...result.historical.map(
-      (task) =>
-        `- Preserved recognized historical task: ${task.path} (not opened by the current project-local task list).`,
-    ),
-    ...result.issues.map((issue) => `- Skipped ${issue.path}: ${issue.reason}`),
-  ];
-  return notes.length
-    ? `\n\n## Preserved or skipped entries\n\n${notes.join("\n")}`
-    : "";
 }
 
 function rebaseMovedPath(
@@ -897,7 +885,11 @@ function taskDescription(state: TaskState): string {
   return "No description yet";
 }
 
-function taskLastWorked(state: TaskState): string {
+function taskLastSessionTime(
+  task: DiscoveredTask,
+  root: string,
+): number | undefined {
+  const { state, relocatedFrom } = task;
   const sessions = [
     state.sessions?.research,
     state.sessions?.roadmap,
@@ -911,18 +903,23 @@ function taskLastWorked(state: TaskState): string {
   let latest: number | undefined;
   for (const file of sessions) {
     try {
-      const modified = statSync(file).mtimeMs;
+      const path = relocatedFrom
+        ? rebaseMovedPath(file, relocatedFrom, root)
+        : file;
+      const modified = statSync(path).mtimeMs;
       if (latest === undefined || modified > latest) latest = modified;
     } catch {
       /* Missing session files do not prevent listing the task. */
     }
   }
-  return latest === undefined
-    ? "unknown"
-    : new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(latest);
+  return latest;
+}
+
+function formatTaskSessionTime(time?: number): string {
+  if (time === undefined) return "—";
+  const date = new Date(time);
+  const two = (value: number) => String(value).padStart(2, "0");
+  return `${two(date.getHours())}:${two(date.getMinutes())} ${two(date.getDate())}.${two(date.getMonth() + 1)}.${two(date.getFullYear() % 100)}`;
 }
 
 function taskProgress(state: TaskState): string {
@@ -3431,156 +3428,193 @@ class TaskDeletionError extends Error {
   }
 }
 
-type TaskBrowserRow =
-  | { kind: "task"; projectKey: string; label: string; task: DiscoveredTask }
-  | { kind: "index"; label: string; issue: TaskIndexIssue }
-  | { kind: "warning"; label: string; path: string };
+type TaskListRow = { label: string } & (
+  | { kind: "task"; lastSession?: number; task: DiscoveredTask }
+  | { kind: "index"; issue: TaskIndexIssue }
+  | { kind: "warning"; path: string }
+);
 
-function taskBrowserRows(discovery: TaskDiscoveryResult): TaskBrowserRow[] {
-  const tasks = [...discovery.tasks, ...discovery.historical];
-  const projectRoots = [
-    ...new Set(
-      tasks.map((task) =>
-        resolve(task.discoveredRoot || task.state.projectRoot),
-      ),
-    ),
-  ].sort();
-  const projectKeys = new Map(
-    projectRoots.map((root, index) => [root, `P${index + 1}`]),
+type TaskListSelection = {
+  index: number;
+  action: "open" | "status" | "delete";
+};
+
+function taskListRows(
+  discovery: TaskDiscoveryResult,
+  root: string,
+  all: boolean,
+): TaskListRow[] {
+  const tasks = [...discovery.tasks, ...discovery.historical].map((task) => {
+    const taskRoot = task.discoveredRoot ?? task.state.projectRoot;
+    const state = taskDisplayState(task, taskRoot);
+    const info = [state.id, taskProgress(state), taskDescription(state)];
+    if (task.layout === "historical") info.push("historical");
+    if (task.relocatedFrom) info.push(`moved from ${task.relocatedFrom}`);
+    if (all) info.splice(1, 0, basename(taskRoot) || taskRoot);
+    return {
+      kind: "task" as const,
+      lastSession: taskLastSessionTime(task, taskRoot),
+      label: info.join(" · "),
+      task,
+    };
+  });
+  tasks.sort(
+    (a, b) =>
+      (b.lastSession ?? -Infinity) - (a.lastSession ?? -Infinity) ||
+      a.label.localeCompare(b.label),
   );
-  const rows: TaskBrowserRow[] = [
-    ...tasks.map((task) => {
-      const root = resolve(task.discoveredRoot || task.state.projectRoot);
-      return {
-        kind: "task" as const,
-        projectKey: projectKeys.get(root)!,
-        label: `${basename(root)} · ${task.state.id} · ${task.layout || "task"} · ${root} · ${task.path} · ${taskProgress(task.state)}`,
-        task,
-      };
-    }),
-    ...discovery.indexIssues.map((issue) => ({
-      kind: "index" as const,
-      label: `⚠ Index · ${issue.record?.id || "unrecognized entry"} · ${issue.path} · ${issue.reason}`,
-      issue,
-    })),
-  ];
-  const indexedStatePaths = new Set(
-    discovery.indexIssues.flatMap((issue) => [
-      resolve(issue.path),
-      ...(issue.record ? [resolve(issue.record.statePath)] : []),
+  const indexPaths = new Set(
+    discovery.indexIssues.flatMap(({ path, record }) => [
+      resolve(path),
+      ...(all && record ? [resolve(record.statePath)] : []),
     ]),
   );
-  rows.push(
+  return [
+    ...tasks,
+    ...(all
+      ? discovery.indexIssues.map((issue) => ({
+          kind: "index" as const,
+          label: `⚠ Index · ${issue.record?.id ?? "unrecognized entry"} · ${issue.path} · ${issue.reason}`,
+          issue,
+        }))
+      : []),
     ...discovery.issues
-      .filter((issue) => !indexedStatePaths.has(resolve(issue.path)))
-      .map((issue) => ({
+      .filter(
+        ({ path }) =>
+          !indexPaths.has(resolve(path)) &&
+          (all || pathWithin(root, resolve(path))),
+      )
+      .map(({ path, reason }) => ({
         kind: "warning" as const,
-        label: `⚠ Preserved · ${issue.path} · ${issue.reason}`,
-        path: issue.path,
+        label: `⚠ Preserved · ${path} · ${reason}`,
+        path,
       })),
-  );
-  return rows.sort((left, right) => left.label.localeCompare(right.label));
+  ];
 }
 
-/** Presents global tasks and issues; only x selects a row for a separate delete flow. */
-async function selectGlobalTaskRow(
+function taskListRowPath(row: TaskListRow): string {
+  return row.kind === "task"
+    ? row.task.path
+    : row.kind === "index"
+      ? row.issue.path
+      : row.path;
+}
+
+/** Show one task list for browsing or selecting a target for confirmed deletion. */
+async function selectTaskListRow(
   ctx: ExtensionCommandContext,
-  rows: TaskBrowserRow[],
-): Promise<TaskBrowserRow | undefined> {
-  if (ctx.mode !== "tui" || !rows.length) return undefined;
-  return ctx.ui.custom<TaskBrowserRow | undefined>(
+  title: string,
+  rows: TaskListRow[],
+  initialIndex = 0,
+  deleteOnly = false,
+): Promise<TaskListSelection | undefined> {
+  return ctx.ui.custom<TaskListSelection | undefined>(
     (tui, theme, keybindings, done) => {
-      let selectedIndex = 0;
+      let selectedIndex = initialIndex;
       return {
         render(width: number): string[] {
-          const pageSize = Math.max(1, tui.terminal.rows - 6);
+          if (width < 5) return [];
+          const innerWidth = width - 4;
+          const pageSize = Math.max(1, tui.terminal.rows - 11);
           const start = Math.max(
             0,
             Math.min(selectedIndex, rows.length - pageSize),
           );
+          const frame = (value: string) => theme.fg("dim", value);
+          const rule = (left: string, right: string) =>
+            frame(`${left}${"─".repeat(width - 2)}${right}`);
+          const panelRow = (
+            value: string,
+            style = (value: string) => value,
+          ) => {
+            const line = truncateToWidth(
+              value.replace(/[\x00-\x1f\x7f-\x9f]/g, " "),
+              innerWidth,
+            );
+            const padding = " ".repeat(
+              Math.max(0, innerWidth - visibleWidth(line)),
+            );
+            return `${frame("│")} ${style(line)}${padding} ${frame("│")}`;
+          };
           return [
-            theme.fg(
-              "accent",
-              "Global tasks · P# distinguishes projects · x deletes the selected row",
-            ),
+            rule("╭", "╮"),
+            panelRow(title, (line) => theme.fg("accent", line)),
+            rule("├", "┤"),
+            panelRow("  Last session     Task", frame),
             ...rows.slice(start, start + pageSize).map((row, offset) => {
-              const index = start + offset;
-              const selected = index === selectedIndex;
-              const marker =
-                row.kind === "task"
-                  ? `${row.projectKey}${selected ? ">" : " "} `
-                  : `${selected ? ">" : "  "}`;
-              const text = `${marker}${row.label}`;
-              const truncated = truncateToWidth(text, width);
-              return row.kind === "task"
-                ? selected
-                  ? theme.inverse(truncated)
-                  : truncated
-                : theme.fg(
-                    "warning",
-                    selected ? theme.inverse(truncated) : truncated,
-                  );
+              const selected = start + offset === selectedIndex;
+              const date = formatTaskSessionTime(
+                row.kind === "task" ? row.lastSession : undefined,
+              );
+              return panelRow(
+                `${selected ? "> " : "  "}${date.padEnd(14)}   ${row.label}`,
+                (line) => {
+                  const styled = selected ? theme.inverse(line) : line;
+                  return row.kind === "task"
+                    ? styled
+                    : theme.fg("warning", styled);
+                },
+              );
             }),
-            theme.fg("dim", "↑/↓ or j/k move · x select · Esc cancel"),
+            rule("├", "┤"),
+            panelRow(taskListRowPath(rows[selectedIndex]), frame),
+            panelRow(
+              deleteOnly
+                ? "↑/↓ Move · x Delete · Esc Close"
+                : "↑/↓ Move · Enter Continue · s Status · x Delete · Esc Close",
+              frame,
+            ),
+            rule("╰", "╯"),
           ];
         },
         handleInput(data: string): void {
-          if (keybindings.matches(data, "tui.select.cancel")) {
-            done(undefined);
-            return;
-          }
-          if (data === "x") {
-            done(rows[selectedIndex]);
-            return;
-          }
-          if (keybindings.matches(data, "tui.select.up") || data === "k") {
+          const row = rows[selectedIndex];
+          if (keybindings.matches(data, "tui.select.cancel")) done(undefined);
+          else if (data === "x" && row.kind !== "warning")
+            done({ index: selectedIndex, action: "delete" });
+          else if (!deleteOnly && data === "s")
+            done({ index: selectedIndex, action: "status" });
+          else if (
+            !deleteOnly &&
+            row.kind === "task" &&
+            keybindings.matches(data, "tui.select.confirm")
+          )
+            done({ index: selectedIndex, action: "open" });
+          else if (keybindings.matches(data, "tui.select.up") || data === "k") {
             selectedIndex = (selectedIndex - 1 + rows.length) % rows.length;
+            tui.requestRender();
           } else if (
             keybindings.matches(data, "tui.select.down") ||
             data === "j"
           ) {
             selectedIndex = (selectedIndex + 1) % rows.length;
-          } else {
-            return;
+            tui.requestRender();
           }
-          tui.requestRender();
         },
         invalidate(): void {},
       };
     },
-    {
-      blocked: { kind: "question", message: "Select a global task to delete" },
-    },
+    { blocked: { kind: "question", message: title } },
   );
 }
 
-function globalTaskBrowserText(discovery: TaskDiscoveryResult): string {
-  const tasks = [...discovery.tasks, ...discovery.historical].map(
-    (task) =>
-      `- ${task.state.id} · ${task.layout || "task"} · ${task.discoveredRoot || task.state.projectRoot} · ${task.path} · ${taskProgress(task.state)}`,
-  );
-  const indexes = discovery.indexIssues.map(
-    (issue) => `- ⚠ Index entry: ${issue.path} · ${issue.reason}`,
-  );
-  const otherIssues = discovery.issues
-    .filter(
-      (issue) =>
-        !discovery.indexIssues.some(
-          (indexIssue) =>
-            resolve(indexIssue.path) === resolve(issue.path) ||
-            (indexIssue.record &&
-              resolve(indexIssue.record.statePath) === resolve(issue.path)),
-        ),
-    )
-    .map((issue) => `- ⚠ Preserved: ${issue.path} · ${issue.reason}`);
-  const entries = [...tasks, ...indexes, ...otherIssues];
-  return [
-    "# Global tasks",
-    "",
-    entries.length ? entries.join("\n") : "No indexed tasks or issues found.",
-    "",
-    "Use /task browse in the terminal UI to remove broken index entries. For task deletion, use /task delete --global TASK-ID.",
-  ].join("\n");
+function taskListText(
+  title: string,
+  rows: TaskListRow[],
+  all: boolean,
+): string {
+  if (!rows.length) return `# ${title}\n\nNo tasks found.`;
+  const entries = rows.map((row) => {
+    const date = formatTaskSessionTime(
+      row.kind === "task" ? row.lastSession : undefined,
+    );
+    const label =
+      all && row.kind === "task"
+        ? `${row.label} · ${row.task.path}`
+        : row.label;
+    return `| ${date} | ${label.replaceAll("|", "\\|").replace(/\s+/g, " ")} |`;
+  });
+  return `# ${title}\n\n| Last session | Task |\n| --- | --- |\n${entries.join("\n")}\n\n${all ? "Use /task list all in the terminal UI to select a task or remove a broken index entry." : "Use /task TASK-ID to continue a task."}`;
 }
 
 function remainingTaskDirectory(record: TaskIndexRecord): string | undefined {
@@ -3801,7 +3835,7 @@ async function deleteBrokenIndexEntry(
 ): Promise<void> {
   if (ctx.mode !== "tui") {
     ctx.ui.notify(
-      `Broken index entries can only be removed in the terminal UI. Run /task browse to select and confirm this exact entry: ${issue.path}`,
+      `Broken index entries can only be removed in the terminal UI. Run /task list all to select and confirm this exact entry: ${issue.path}`,
       "warning",
     );
     return;
@@ -4402,7 +4436,7 @@ export default function taskExtension(
     getArgumentCompletions: (prefix) => {
       const commands = [
         "list",
-        "browse",
+        "list all",
         "new",
         "delete",
         "status",
@@ -4517,6 +4551,8 @@ export default function taskExtension(
         const args = parsed
           .slice(requestedCommand ? 1 : 0)
           .map((arg) => arg.value);
+        if (command === "browse")
+          throw new Error("/task browse was removed. Use /task list all.");
         if (command === "start")
           throw new Error(`Use /task TASK-ID instead of /task ${command}.`);
         if (command === "skip-commit")
@@ -4693,88 +4729,98 @@ export default function taskExtension(
           return;
         }
         if (command === "list") {
-          if (args.length) throw new Error("Usage: /task list");
+          if (args.length > 1 || (args.length === 1 && args[0] !== "all"))
+            throw new Error("Usage: /task list [all]");
           const root = projectRoot(ctx.cwd);
-          const discovery = listTasksDetailed(root);
-          const tasks = discovery.tasks;
-          const notes = taskDiscoveryNotes(discovery);
-          if (ctx.mode === "tui" && tasks.length) {
-            if (notes) ctx.ui.notify(notes.trim(), "warning");
-            const options = tasks.map((task) => {
-              const state = taskDisplayState(task, root);
-              return `${state.id} · ${taskProgress(state)} · last worked ${taskLastWorked(state)} · ${taskDescription(state)}${task.relocatedFrom ? ` · moved from ${task.relocatedFrom}` : ""}`;
-            });
-            const selected = await ctx.ui.select("Continue task:", options);
-            if (selected === undefined) return;
-            const task = tasks[options.indexOf(selected)];
-            if (task) {
-              const mismatch = checkTaskLayout(task.path);
-              if (mismatch) {
-                ctx.ui.notify(
-                  `${mismatch}\nThis task cannot be continued. Start a new task and use the contents of ${task.state.contextPath} as its context; this will not be done automatically.`,
-                  "warning",
-                );
-                return;
-              }
-              const state = await confirmTaskRelocation(ctx, task, root);
-              if (state) await continueTaskSession(ctx, state);
-            }
-            return;
-          }
-          const rows = tasks.map((task) => {
-            const state = taskDisplayState(task, root);
-            return `| \`${state.id}\` | ${taskProgress(state)}${task.relocatedFrom ? ` (moved from ${task.relocatedFrom})` : ""} | ${taskLastWorked(state)} | ${taskDescription(state).replaceAll("|", "\\|")} |`;
-          });
-          await showArtifact(
-            ctx,
-            "Task list",
-            tasks.length
-              ? `# Tasks in ${root}\n\n| Task ID | State | Last worked | Context |\n| --- | --- | --- | --- |\n${rows.join("\n")}\n\nUse /task TASK-ID to continue.${notes}`
-              : `# Tasks in ${root}\n\nNo tasks found. Start one with /task TASK-ID.${notes}`,
-          );
-          return;
-        }
-        if (command === "browse") {
-          if (args.length) throw new Error("Usage: /task browse");
-          if (!ctx.isIdle())
-            throw new Error(
-              "Wait for Pi to finish or cancel its current run before browsing tasks.",
-            );
-          const root = projectRoot(ctx.cwd);
-          const discovery = listTasksDetailed(root, "global");
-          if (ctx.mode !== "tui") {
+          const all = args[0] === "all";
+          const title = all
+            ? "Tasks across indexed projects"
+            : `Tasks in ${root}`;
+          const discovery = listTasksDetailed(root, all ? "global" : "project");
+          const rows = taskListRows(discovery, root, all);
+          if (ctx.mode !== "tui" || !rows.length) {
             await showArtifact(
               ctx,
-              "Global tasks",
-              globalTaskBrowserText(discovery),
+              "Task list",
+              taskListText(title, rows, all),
             );
             return;
           }
-          const rows = taskBrowserRows(discovery);
-          if (!rows.length) {
-            ctx.ui.notify(
-              "No global tasks or broken index entries found.",
-              "info",
-            );
-            return;
-          }
-          const selected = await selectGlobalTaskRow(ctx, rows);
-          if (!selected) return;
-          if (selected.kind === "task")
-            await deleteDiscoveredTask(
+          let index = 0;
+          while (true) {
+            const selection = await selectTaskListRow(ctx, title, rows, index);
+            if (!selection) return;
+            index = selection.index;
+            const row = rows[index];
+            if (selection.action === "status") {
+              const detail =
+                row.kind !== "task" ||
+                row.task.layout === "historical" ||
+                row.task.relocatedFrom
+                  ? row.label
+                  : taskStatusText(appVersion, pi, ctx, row.task.state);
+              const location = `**State or index path:** \`${taskListRowPath(row)}\``;
+              await showArtifact(
+                ctx,
+                "Task status",
+                `${location}\n\n${detail}`,
+              );
+              continue;
+            }
+            if (!ctx.isIdle()) {
+              ctx.ui.notify(
+                "Wait for Pi to finish or cancel its current run before continuing or deleting a task.",
+                "warning",
+              );
+              continue;
+            }
+            if (selection.action === "delete") {
+              if (row.kind === "task")
+                await deleteDiscoveredTask(
+                  ctx,
+                  row.task,
+                  root,
+                  discovery.indexRecords,
+                );
+              else if (row.kind === "index")
+                await deleteBrokenIndexEntry(ctx, row.issue);
+              return;
+            }
+            if (row.kind !== "task") continue;
+            if (ctx.ui.getEditorText().trim()) {
+              ctx.ui.notify(
+                "Submit or clear the unsent editor text before switching tasks.",
+                "warning",
+              );
+              return;
+            }
+            const task = row.task;
+            const taskRoot = task.discoveredRoot ?? task.state.projectRoot;
+            assertSafeTaskStatePath(taskRoot, task.path);
+            const mismatch = checkTaskLayout(task.path);
+            if (mismatch || task.layout === "historical") {
+              ctx.ui.notify(
+                `${mismatch ?? "This task uses a historical layout."}\nThis task cannot be continued. Start a new task and use the contents of ${task.state.contextPath} as its context; this will not be done automatically.`,
+                "warning",
+              );
+              continue;
+            }
+            const latest = loadState(task.path, false);
+            if (
+              latest.id !== task.state.id ||
+              resolve(latest.projectRoot) !== resolve(task.state.projectRoot)
+            )
+              throw new Error(
+                "Task changed while choosing it; run /task list again.",
+              );
+            const state = await confirmTaskRelocation(
               ctx,
-              selected.task,
-              root,
-              discovery.indexRecords,
+              { ...task, state: latest },
+              taskRoot,
             );
-          else if (selected.kind === "index")
-            await deleteBrokenIndexEntry(ctx, selected.issue);
-          else
-            ctx.ui.notify(
-              `This entry is preserved and cannot be deleted as task data: ${selected.path}`,
-              "warning",
-            );
-          return;
+            if (state) await continueTaskSession(ctx, state);
+            return;
+          }
         }
         const root = projectRoot(ctx.cwd);
         let versionPath: string | undefined;
@@ -4853,7 +4899,7 @@ export default function taskExtension(
             );
           const root = projectRoot(ctx.cwd);
           const discovery = listTasksDetailed(root, "global");
-          let rows = taskBrowserRows(discovery);
+          let rows = taskListRows(discovery, root, true);
           if (args.length === 2) {
             const id = args[1];
             validateTaskId(id);
@@ -4868,7 +4914,7 @@ export default function taskExtension(
               );
             if (rows.length > 1 && ctx.mode !== "tui")
               throw new Error(
-                `Task ID ${id} exists in multiple indexed locations. Use /task browse in the terminal UI and select the exact project and task path.`,
+                `Task ID ${id} exists in multiple indexed locations. Use /task list all in the terminal UI and select the exact project and task path.`,
               );
           } else if (ctx.mode !== "tui") {
             throw new Error(
@@ -4883,10 +4929,17 @@ export default function taskExtension(
             );
             return;
           }
-          const selected =
+          const selection =
             args.length === 2 && rows.length === 1
-              ? rows[0]
-              : await selectGlobalTaskRow(ctx, rows);
+              ? { index: 0 }
+              : await selectTaskListRow(
+                  ctx,
+                  "Delete a global task",
+                  rows,
+                  0,
+                  true,
+                );
+          const selected = selection && rows[selection.index];
           if (!selected) return;
           if (selected.kind === "task")
             await deleteDiscoveredTask(
