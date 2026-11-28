@@ -7,11 +7,13 @@ const hostModules = new Map([
   [
     "@earendil-works/pi-coding-agent",
     `
-    import { writeFileSync } from "node:fs";
+    import { mkdirSync, writeFileSync } from "node:fs";
     import { randomUUID } from "node:crypto";
     import { join } from "node:path";
     export const getMarkdownTheme = () => {};
     export const SessionManager = { create(_root, dir) {
+      dir ??= join(process.env.PI_CODING_AGENT_DIR, "neutral-sessions");
+      mkdirSync(dir, { recursive: true });
       const path = join(dir, randomUUID() + ".jsonl");
       const branch = [];
       const save = () => writeFileSync(path, JSON.stringify(branch));

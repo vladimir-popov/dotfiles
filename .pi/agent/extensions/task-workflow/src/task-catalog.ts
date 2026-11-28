@@ -63,6 +63,8 @@ export type TaskIndexIssue = {
   path: string;
   reason: string;
   record?: TaskIndexRecord;
+  /** A missing project root permits index-only cleanup, never orphan deletion. */
+  missingProjectRoot?: boolean;
   rawContent?: string;
   symlinkTarget?: string;
   entrySnapshot?: TaskIndexEntrySnapshot;
@@ -215,16 +217,18 @@ function readTaskIndexRecords(
       try {
         lstatSync(validRecord.statePath);
       } catch (error) {
-        if (
-          (error as NodeJS.ErrnoException).code === "ENOENT" &&
-          existsSync(validRecord.projectRoot)
-        )
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          const missingProjectRoot = !existsSync(validRecord.projectRoot);
           indexIssues.push({
             path: indexPath,
-            reason: `Indexed task state is missing: ${validRecord.statePath}`,
+            reason: missingProjectRoot
+              ? `Indexed project is missing: ${validRecord.projectRoot}`
+              : `Indexed task state is missing: ${validRecord.statePath}`,
             record: validRecord,
+            missingProjectRoot,
             rawContent,
           });
+        }
       }
     } catch (error) {
       const reason = String(error);
@@ -256,7 +260,6 @@ function indexedProjectRoots(
 function relocatedIndexedStatePaths(
   root: string,
   records: TaskIndexRecord[],
-  issues: TaskDiscoveryIssue[],
 ): string[] {
   const paths: string[] = [];
   for (const record of records) {
@@ -271,12 +274,8 @@ function relocatedIndexedStatePaths(
       root,
       relative(oldRoot, resolve(record.statePath)),
     );
+    // A missing guessed path does not associate the old index entry with this project.
     if (existsSync(movedPath)) paths.push(movedPath);
-    else
-      issues.push({
-        path: movedPath,
-        reason: `Indexed state file from ${oldRoot} was not found after relocation.`,
-      });
   }
   return paths;
 }
@@ -346,6 +345,9 @@ function scanTaskLayout(
   }
   const paths: string[] = [];
   for (const entry of entries) {
+    // The current layout shares its parent directory with project settings.
+    if (layout === "current" && entry.name === "config.json" && entry.isFile())
+      continue;
     if (entry.isSymbolicLink()) {
       issues.push({
         path: join(directory, entry.name),
@@ -414,7 +416,7 @@ export function listTasksDetailed(
   }
   if (safeRoots.includes(resolve(root)))
     candidates.push(
-      ...relocatedIndexedStatePaths(resolve(root), indexRecords, issues).map(
+      ...relocatedIndexedStatePaths(resolve(root), indexRecords).map(
         (path) => ({ root: resolve(root), path }),
       ),
     );

@@ -111,7 +111,10 @@ function fixture(
   > = [];
   const statusScreens: string[][] = [];
   const listScreens: string[][] = [];
+  const confirmationBackgrounds: string[][] = [];
+  let renderOpenList: (() => string[]) | undefined;
   const listInputs: string[][] = [];
+  const renameInputs: (string | undefined)[] = [];
   let uiMode: "print" | "tui" = "print";
   let renderStatus = false;
   let idle = true;
@@ -135,6 +138,7 @@ function fixture(
   const messages: Delivered[] = [];
   const notices: string[] = [];
   const confirmations: { title: string; description: string }[] = [];
+  const confirmationAnswers: boolean[] = [];
   const switches: string[] = [];
   const dispatchedCommands: string[] = [];
   const modelCalls: { systemPrompt: string; input: string }[] = [];
@@ -225,6 +229,10 @@ function fixture(
     }),
     ui: {
       getEditorText: () => editorText,
+      async input() {
+        assert.ok(renameInputs.length, "Rename prompt opened unexpectedly");
+        return renameInputs.shift();
+      },
       async select(_title: string, options: string[]) {
         artifactChoices.push(options);
         return "note.md";
@@ -247,7 +255,10 @@ function fixture(
           render(width: number): string[];
           handleInput(input: string): void;
         },
-        options: { overlay?: boolean },
+        options: {
+          overlay?: boolean;
+          blocked?: { kind: string; message: string };
+        },
       ) {
         const theme = {
           fg: (_key: string, value: string) => value,
@@ -261,6 +272,62 @@ function fixture(
             return value;
           },
         };
+        if (options.overlay && options.blocked?.kind === "permission") {
+          assert.ok(
+            renderOpenList,
+            "Delete confirmation must leave the list open",
+          );
+          confirmationBackgrounds.push(renderOpenList());
+          let choice: unknown;
+          const highlights: string[] = [];
+          const dialog = factory(
+            { terminal: { rows: 24 }, requestRender() {} },
+            {
+              ...theme,
+              inverse(value: string) {
+                highlights.push(value);
+                return value;
+              },
+            },
+            {
+              matches: (input, key) =>
+                key === `tui.select.${input}` ||
+                (input === "left" && key === "tui.editor.cursorLeft") ||
+                (input === "right" && key === "tui.editor.cursorRight"),
+            },
+            (value) => {
+              choice = value;
+            },
+          );
+          const lines = dialog.render(300);
+          const title = options.blocked.message;
+          if (title !== "Broken task index entry:") {
+            confirmations.push({
+              title,
+              description: lines
+                .slice(2, -3)
+                .map((line) => line.slice(2, -2).trimEnd())
+                .join("\n"),
+            });
+            for (const width of [30, 300]) {
+              const screen = dialog.render(width);
+              const buttons = screen.at(-3) ?? "";
+              const labels = "[ No ]   [ Yes ]";
+              assert.equal(
+                buttons.indexOf(labels),
+                Math.floor((width - labels.length) / 2),
+              );
+              assert.ok(screen.every((line) => line.length === width));
+              assert.equal(highlights.at(-1), "[ No ]");
+            }
+            const yes = confirmationAnswers.shift();
+            dialog.handleInput(yes ? "right" : "left");
+            dialog.render(80);
+            assert.equal(highlights.at(-1), yes ? "[ Yes ]" : "[ No ]");
+          }
+          dialog.handleInput("confirm");
+          return choice;
+        }
         if (options.overlay) {
           overlays.push(options.overlay);
           if (renderStatus) {
@@ -275,8 +342,6 @@ function fixture(
           }
           return;
         }
-        const inputs = listInputs.shift();
-        assert.ok(inputs, "Task list opened unexpectedly");
         let selection: unknown;
         let closed = false;
         const component = factory(
@@ -286,20 +351,27 @@ function fixture(
           (value) => {
             selection = value;
             closed = true;
+            renderOpenList = undefined;
           },
         );
-        listScreens.push(component.render(120));
+        renderOpenList = () => component.render(120);
+        listScreens.push(renderOpenList());
         assert.ok(component.render(30).every((line) => line.length === 30));
-        for (const input of inputs) {
-          assert.ok(!closed, "List closed before consuming all inputs");
-          component.handleInput(input);
+        while (!closed) {
+          const inputs = listInputs.shift();
+          assert.ok(inputs, "Task list opened unexpectedly or did not close");
+          for (const input of inputs) {
+            assert.ok(!closed, "List closed before consuming all inputs");
+            component.handleInput(input);
+            if (input === "x" && !closed)
+              await new Promise<void>((resolve) => setImmediate(resolve));
+          }
         }
-        assert.ok(closed, "Task list did not close");
         return selection;
       },
       async confirm(title: string, description: string) {
         confirmations.push({ title, description });
-        return false;
+        return confirmationAnswers.shift() ?? false;
       },
       notify(message: string) {
         notices.push(message);
@@ -324,7 +396,14 @@ function fixture(
       }
       switches.push(file);
       session = file;
-      entries = JSON.parse(readFileSync(file, "utf8"));
+      const saved = readFileSync(file, "utf8");
+      entries = saved.startsWith("[")
+        ? JSON.parse(saved)
+        : saved
+            .trimEnd()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+            .slice(1);
       branch = [...entries];
       await fire("session_start", { reason: "resume" });
       await options?.withSession?.({
@@ -482,6 +561,7 @@ function fixture(
       uiMode = "tui";
     },
     listScreens,
+    renameInputs,
     setListInputs: (...inputs: string[][]) => {
       uiMode = "tui";
       listInputs.push(...inputs);
@@ -518,6 +598,8 @@ function fixture(
     modelCalls,
     notices,
     confirmations,
+    confirmationAnswers,
+    confirmationBackgrounds,
     switches,
     prompt,
     session: () => session,
@@ -1000,9 +1082,11 @@ it("inspects, continues, and confirms deletion from the shared task list", async
   assert.match(controls, /Enter Continue/);
   assert.match(bottom, /^╰─+╯$/);
 
-  f.setListInputs(["x"]);
+  f.setListInputs(["x", "cancel"]);
   await f.run("list");
   assert.equal(f.confirmations.length, 1);
+  assert.equal(f.listScreens.length, 3, "declining does not reopen the list");
+  assert.match(f.confirmationBackgrounds[0].join("\n"), /> .*context-test/);
   assert.match(
     f.confirmations[0].title,
     /Move task context-test to the OS trash/,
@@ -1023,6 +1107,243 @@ it("inspects, continues, and confirms deletion from the shared task list", async
   assert.deepEqual(f.messages, []);
 });
 
+it("continues deleting from the refreshed list after leaving the deleted task's session", async (t) => {
+  const f = fixture(t);
+  const active = f.savedPhase("research");
+  await f.open(active);
+  const base = dirname(dirname(f.statePath));
+  writeFileSync(f.configPath, '{"deleteMode":"permanent"}');
+  const other = join(base, "second-task");
+  mkdirSync(other);
+  writeFileSync(
+    join(other, "state.json"),
+    JSON.stringify({
+      version: 1,
+      id: "second-task",
+      projectRoot: f.cwd,
+      contextPath: join(other, "context", "context.md"),
+      phase: "research",
+      currentStep: 1,
+      completedSteps: [],
+    }),
+  );
+  f.confirmationAnswers.push(true, true);
+  f.setListInputs(["x"], ["s"], ["x"]);
+  await f.run("list");
+  assert.deepEqual(
+    f.confirmations.map(({ title }) => title),
+    [
+      "Permanently delete task context-test?",
+      "Permanently delete task second-task?",
+    ],
+  );
+  assert.match(f.session(), /neutral-sessions/);
+  assert.equal(existsSync(f.statePath), false);
+  assert.equal(existsSync(other), false);
+  const refreshed = f.listScreens[1].join("\n");
+  assert.match(refreshed, /> .*second-task/);
+  assert.doesNotMatch(refreshed, /context-test ·/);
+  assert.deepEqual(
+    f.overlays,
+    [true, true],
+    "status and empty list were shown",
+  );
+});
+
+function savedRenameTask(f: ReturnType<typeof fixture>) {
+  const runtime = dirname(f.statePath);
+  f.savedPhase("implement");
+  const sessions = join(runtime, "sessions");
+  const baseline = join(runtime, "baselines", "baseline-test");
+  mkdirSync(sessions);
+  mkdirSync(baseline, { recursive: true });
+  writeFileSync(join(baseline, "manifest.json"), '{"paths":[]}');
+  writeFileSync(join(runtime, "config.json"), '{"mode":"semi-auto"}\n');
+  const parent = join(sessions, "prepare.jsonl");
+  const saved = join(sessions, "implement.jsonl");
+  const prose = `Historical note: ${f.contextPath}`;
+  for (const [file, phase] of [
+    [parent, "prepare"],
+    [saved, "implement"],
+  ]) {
+    writeFileSync(
+      file,
+      [
+        {
+          type: "session",
+          cwd: f.cwd,
+          ...(file === saved ? { parentSession: parent } : {}),
+        },
+        {
+          type: "custom",
+          customType: "task-workflow-link",
+          data: { id, statePath: f.statePath, phase, step: 1 },
+        },
+        { type: "session_info", name: `${id} · ${phase} 1` },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: prose }],
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+  }
+  f.writeState({
+    phase: "implement",
+    sessions: { prepare: { 1: parent }, implement: { 1: saved } },
+    pendingBaselineDir: baseline,
+    interruptedSession: saved,
+  });
+  const indexDir = join(dirname(f.configPath), "task-workflow-index");
+  const oldIndex = join(
+    indexDir,
+    `${createHash("sha256").update(`${f.cwd}\0${id}`).digest("hex")}.json`,
+  );
+  mkdirSync(indexDir);
+  writeFileSync(
+    oldIndex,
+    JSON.stringify({ id, projectRoot: f.cwd, statePath: f.statePath }),
+  );
+  return { runtime, saved, oldIndex, indexDir, prose };
+}
+
+it("renames the selected local task and reopens its saved phase under the new ID", async (t) => {
+  const f = fixture(t);
+  const { runtime, saved, oldIndex, indexDir, prose } = savedRenameTask(f);
+  const archive = join(runtime, "sessions", "archived.jsonl");
+  writeFileSync(archive, readFileSync(saved));
+  const context = readFileSync(f.contextPath);
+  const unrelated = join(dirname(runtime), "unrelated");
+  mkdirSync(join(unrelated, "sessions"), { recursive: true });
+  const unrelatedStatePath = join(unrelated, "state.json");
+  const unrelatedSession = join(unrelated, "sessions", "implement.jsonl");
+  const unrelatedState = JSON.stringify({
+    version: 1,
+    id: "unrelated",
+    projectRoot: f.cwd,
+    contextPath: join(unrelated, "context", "context.md"),
+    phase: "implement",
+    currentStep: 1,
+    completedSteps: [],
+    pendingBaselineDir: join(unrelated, "baselines", "baseline-test"),
+    sessions: { implement: { 1: unrelatedSession } },
+  });
+  writeFileSync(unrelatedStatePath, unrelatedState);
+  writeFileSync(unrelatedSession, readFileSync(saved));
+  const newer = new Date(Date.now() + 60_000);
+  utimesSync(unrelatedSession, newer, newer);
+  f.renameInputs.push("New Task");
+  f.setListInputs(["j", "r"], ["confirm"]);
+  await f.run("list");
+  const destination = join(dirname(runtime), "New Task");
+  const updatedStatePath = join(destination, "state.json");
+  const updatedSession = join(destination, "sessions", "implement.jsonl");
+  assert.match(f.listScreens[0].join("\n"), /> .*unrelated/);
+  assert.match(f.listScreens[0].join("\n"), /r Rename/);
+  assert.match(f.listScreens[1].join("\n"), /> .*New Task/);
+  assert.deepEqual(f.switches, [updatedSession], f.notices.join("\n"));
+  assert.equal(existsSync(runtime), false);
+  assert.equal(existsSync(oldIndex), false);
+  assert.equal(readFileSync(unrelatedStatePath, "utf8"), unrelatedState);
+  assert.deepEqual(
+    readFileSync(join(destination, "context", "context.md")),
+    context,
+  );
+  assert.equal(
+    readFileSync(join(destination, "config.json"), "utf8"),
+    '{"mode":"semi-auto"}\n',
+  );
+  const state = JSON.parse(readFileSync(updatedStatePath, "utf8"));
+  assert.equal(state.id, "New Task");
+  assert.equal(state.phase, "implement");
+  assert.equal(state.contextPath, join(destination, "context", "context.md"));
+  assert.equal(
+    state.pendingBaselineDir,
+    join(destination, "baselines", "baseline-test"),
+  );
+  assert.ok(existsSync(join(state.pendingBaselineDir, "manifest.json")));
+  assert.equal(state.interruptedSession, updatedSession);
+  assert.equal(state.sessions.implement[1], updatedSession);
+  assert.equal(
+    state.sessions.prepare[1],
+    join(destination, "sessions", "prepare.jsonl"),
+  );
+  for (const file of [
+    updatedSession,
+    join(destination, "sessions", "archived.jsonl"),
+  ]) {
+    const [header, link, name, history] = readFileSync(file, "utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.equal(header.cwd, f.cwd);
+    assert.equal(header.parentSession, state.sessions.prepare[1]);
+    assert.deepEqual(link.data, {
+      id: "New Task",
+      statePath: updatedStatePath,
+      phase: "implement",
+      step: 1,
+    });
+    assert.equal(name.name, "New Task · implement 1");
+    assert.equal(history.message.content[0].text, prose);
+  }
+  assert.deepEqual(
+    readdirSync(indexDir).map((file) =>
+      JSON.parse(readFileSync(join(indexDir, file), "utf8")),
+    ),
+    [{ id: "New Task", projectRoot: f.cwd, statePath: updatedStatePath }],
+  );
+  assert.match(f.prompt().text, /New Task/);
+  assert.deepEqual(f.messages, []);
+});
+
+it("keeps task data on cancel and refuses invalid IDs, occupied paths and malformed sessions", async (t) => {
+  const f = fixture(t);
+  const { runtime, saved, oldIndex } = savedRenameTask(f);
+  const originalState = readFileSync(f.statePath);
+  const originalIndex = readFileSync(oldIndex);
+  symlinkSync(
+    join(dirname(runtime), "missing"),
+    join(dirname(runtime), "occupied"),
+  );
+  f.renameInputs.push(undefined, "../invalid", "occupied");
+  f.setListInputs(["r"], ["r"], ["r"], ["cancel"]);
+  await f.run("list");
+  assert.match(f.notices.join("\n"), /Task ID may contain/);
+  assert.match(f.notices.join("\n"), /already exists for occupied/);
+  writeFileSync(saved, "not JSONL\n");
+  f.renameInputs.push("valid");
+  f.setListInputs(["r"], ["cancel"]);
+  await f.run("list");
+  assert.match(f.notices.at(-1) ?? "", /malformed Pi session/);
+  assert.deepEqual(readFileSync(f.statePath), originalState);
+  assert.deepEqual(readFileSync(oldIndex), originalIndex);
+  assert.equal(existsSync(join(dirname(runtime), "valid")), false);
+});
+
+it("detaches from the selected open task before renaming it", async (t) => {
+  const f = fixture(t);
+  const { runtime, saved } = savedRenameTask(f);
+  await f.open(saved);
+  f.cancelNextSwitch();
+  f.renameInputs.push("new-id");
+  f.setListInputs(["r"], ["cancel"]);
+  await f.run("list");
+  assert.equal(f.session(), saved);
+  assert.ok(existsSync(f.statePath));
+
+  f.renameInputs.push("new-id");
+  f.setListInputs(["r"]);
+  await f.run("list");
+  assert.match(f.session(), /neutral-sessions/);
+  assert.equal(existsSync(runtime), false);
+  assert.ok(existsSync(join(dirname(runtime), "new-id", "state.json")));
+});
+
 it("only offers index cleanup for a broken entry in the global task list", async (t) => {
   const f = fixture(t);
   const indexDir = join(dirname(f.configPath), "task-workflow-index");
@@ -1030,7 +1351,7 @@ it("only offers index cleanup for a broken entry in the global task list", async
   const broken = join(indexDir, "broken.json");
   writeFileSync(broken, "invalid");
 
-  f.setListInputs(["confirm", "x"]);
+  f.setListInputs(["confirm", "x"], ["cancel"]);
   await f.run("list all");
   assert.deepEqual(f.switches, []);
   assert.equal(
@@ -1039,6 +1360,78 @@ it("only offers index cleanup for a broken entry in the global task list", async
   );
   assert.ok(f.confirmations[0]?.description.includes(broken));
   assert.ok(existsSync(broken), "declining leaves the index untouched");
+
+  f.confirmationAnswers.push(true);
+  f.setListInputs(["x"]);
+  await f.run("list all");
+  assert.equal(existsSync(broken), false);
+  assert.deepEqual(f.overlays, [true], "the refreshed global list is empty");
+});
+
+it("keeps a missing foreign project's locator out of the local list and removes only its index entry globally", async (t) => {
+  const f = fixture(t);
+  const indexDir = join(dirname(f.configPath), "task-workflow-index");
+  const missing = join(dirname(f.configPath), "missing-project");
+  const index = join(indexDir, "old-demo.json");
+  mkdirSync(indexDir);
+  writeFileSync(
+    index,
+    JSON.stringify({
+      id: "demo",
+      projectRoot: missing,
+      statePath: join(
+        missing,
+        ".agents",
+        "task-workflow",
+        "demo",
+        "state.json",
+      ),
+    }),
+  );
+  await f.run("list");
+  assert.match(f.notices.at(-1) ?? "", /No tasks found/);
+  assert.ok(existsSync(index));
+
+  const saved = f.savedPhase("research");
+  f.confirmationAnswers.push(true);
+  f.setListInputs(["j", "x"], ["cancel"]);
+  await f.run("list all");
+  assert.match(
+    f.listScreens[0].join("\n"),
+    /⚠ Index · demo · Indexed project is missing/,
+  );
+  assert.doesNotMatch(f.listScreens[1].join("\n"), /⚠ Index · demo/);
+  assert.equal(
+    f.confirmations[0]?.title,
+    "Remove this broken task index entry?",
+  );
+  assert.ok(f.confirmations[0]?.description.includes(index));
+  assert.equal(existsSync(index), false);
+  assert.ok(existsSync(f.statePath));
+  assert.ok(existsSync(saved));
+});
+
+it("allows confirmed index-only cleanup of a missing local task in the local list", async (t) => {
+  const f = fixture(t);
+  const indexDir = join(dirname(f.configPath), "task-workflow-index");
+  const index = join(indexDir, "missing-local.json");
+  mkdirSync(indexDir);
+  writeFileSync(
+    index,
+    JSON.stringify({ id, projectRoot: f.cwd, statePath: f.statePath }),
+  );
+  f.confirmationAnswers.push(true);
+  f.setListInputs(["x"]);
+  await f.run("list");
+  assert.match(
+    f.listScreens[0].join("\n"),
+    /⚠ Index · context-test · Indexed task state is missing/,
+  );
+  assert.equal(
+    f.confirmations[0]?.title,
+    "Remove this broken task index entry?",
+  );
+  assert.equal(existsSync(index), false);
 });
 
 it("does not give active-task guidance to unlinked, missing-state, or archived sessions", async (t) => {

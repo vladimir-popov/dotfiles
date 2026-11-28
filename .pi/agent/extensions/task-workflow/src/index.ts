@@ -9,6 +9,7 @@ import {
   readdirSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -198,7 +199,7 @@ const RESEARCH_MUTATION_TOOL_PATTERN =
   /write|edit|delete|remove|submit|click|post|put|patch|execute|run|shell|bash/i;
 
 function configuredPhaseTools(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "getAllTools">,
   config: Config,
   phase: Phase,
 ): string[] {
@@ -231,7 +232,7 @@ function configuredPhaseTools(
 }
 
 function phaseActiveTools(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "getAllTools" | "getActiveTools">,
   config: Config,
   phase: Phase,
   inheritedTools?: readonly string[],
@@ -251,7 +252,7 @@ function phaseActiveTools(
   ];
 }
 
-function researchAllowedTools(pi: ExtensionAPI): string[] {
+function researchAllowedTools(pi: Pick<ExtensionAPI, "getAllTools">): string[] {
   const tools = pi.getAllTools();
   const availableNames = new Set(tools.map((tool) => tool.name));
   const readTools = READ_TOOLS.filter((name) => availableNames.has(name));
@@ -566,7 +567,10 @@ function relocateSessionFile(
   return rewritten.join("\n");
 }
 
-function atomicWriteTextFiles(updates: Map<string, string>): void {
+function atomicWriteTextFiles(
+  updates: Map<string, string>,
+  operation = "Task relocation",
+): void {
   const staged: Array<{
     path: string;
     temporary: string;
@@ -581,9 +585,7 @@ function atomicWriteTextFiles(updates: Map<string, string>): void {
       if (existsSync(path)) {
         const info = lstatSync(path);
         if (!info.isFile() || info.isSymbolicLink())
-          throw new Error(
-            `Refusing to replace a non-regular relocation target: ${path}`,
-          );
+          throw new Error(`Refusing to replace a non-regular target: ${path}`);
         original = readFileSync(path, "utf8");
         mode = info.mode & 0o777;
       }
@@ -627,12 +629,300 @@ function atomicWriteTextFiles(updates: Map<string, string>): void {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(
       rollbackError
-        ? `Task relocation failed (${detail}) and rollback was incomplete (${String(rollbackError)}). Do not continue this task until its files are checked.`
-        : `Task relocation failed and was rolled back: ${detail}`,
+        ? `${operation} failed (${detail}) and rollback was incomplete (${String(rollbackError)}). Do not continue this task until its files are checked.`
+        : `${operation} failed and file changes were rolled back: ${detail}`,
     );
   } finally {
     for (const item of staged)
       if (existsSync(item.temporary)) rmSync(item.temporary, { force: true });
+  }
+}
+
+function renamedSessionContent(
+  file: string,
+  before: TaskState,
+  after: TaskState,
+): { content: string; linked: boolean; changed: boolean } {
+  const oldStatePath = taskStatePath(before);
+  const oldRuntime = runtimeDir(before);
+  const newRuntime = runtimeDir(after);
+  let linked = false;
+  const original = readFileSync(file, "utf8");
+  const content = original
+    .split("\n")
+    .map((line, index) => {
+      if (!line && index > 0) return line;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+        if (
+          !entry ||
+          typeof entry !== "object" ||
+          Array.isArray(entry) ||
+          (index === 0 && entry.type !== "session")
+        )
+          throw new Error();
+      } catch {
+        throw new Error(
+          `Cannot rename a task with a malformed Pi session: ${file}`,
+        );
+      }
+      if (entry.type === "session" && typeof entry.parentSession === "string") {
+        const parent = rebaseMovedPath(
+          entry.parentSession,
+          oldRuntime,
+          newRuntime,
+        );
+        if (parent !== entry.parentSession)
+          return JSON.stringify({ ...entry, parentSession: parent });
+      }
+      if (
+        entry.type === "custom" &&
+        entry.customType === ENTRY_TYPE &&
+        entry.data?.id === before.id &&
+        typeof entry.data.statePath === "string" &&
+        resolve(entry.data.statePath) === oldStatePath
+      ) {
+        linked = true;
+        return JSON.stringify({
+          ...entry,
+          data: {
+            ...entry.data,
+            id: after.id,
+            statePath: taskStatePath(after),
+          },
+        });
+      }
+      if (
+        entry.type === "session_info" &&
+        typeof entry.name === "string" &&
+        entry.name.startsWith(`${before.id} · `)
+      ) {
+        return JSON.stringify({
+          ...entry,
+          name: after.id + entry.name.slice(before.id.length),
+        });
+      }
+      return line;
+    })
+    .join("\n");
+  return { content, linked, changed: content !== original };
+}
+
+function assertTaskRenameDestinationAvailable(root: string, id: string): void {
+  const index = taskIndexPath(root, id);
+  if (pathExistsWithoutFollowing(dirname(index)))
+    assertSafeTaskRoot(dirname(index));
+  if (
+    pathExistsWithoutFollowing(defaultRuntimeDir(root, id)) ||
+    pathExistsWithoutFollowing(join(root, ".agents", "projects", id)) ||
+    pathExistsWithoutFollowing(index)
+  )
+    throw new Error(
+      `A task or index entry already exists for ${id}. Choose another ID.`,
+    );
+}
+
+function renameTask(
+  task: DiscoveredTask,
+  root: string,
+  id: string,
+  indexRecords: TaskIndexRecord[],
+): { statePath: string; staleIndexPaths: string[] } {
+  validateTaskId(id);
+  const path = resolve(task.path);
+  if (
+    task.layout !== "current" ||
+    task.relocatedFrom ||
+    path !== statePath(defaultRuntimeDir(root, task.state.id))
+  )
+    throw new Error("Only current tasks in this project can be renamed.");
+  assertSafeTaskStatePath(root, path);
+  const before = JSON.parse(readFileSync(path, "utf8")) as TaskState;
+  validateDiscoveredState(before);
+  if (
+    before.version !== 1 ||
+    before.id !== task.state.id ||
+    before.projectRoot !== root
+  )
+    throw new Error("Task changed while choosing it; run /task list again.");
+  assertSafeTaskContextPath(root, before, "current");
+
+  const oldRuntime = runtimeDir(before);
+  const newRuntime = defaultRuntimeDir(root, id);
+  const newIndex = taskIndexPath(root, id);
+  assertTaskRenameDestinationAvailable(root, id);
+
+  const rebase = (value?: string) =>
+    value === undefined
+      ? undefined
+      : rebaseMovedPath(value, oldRuntime, newRuntime);
+  if (
+    before.pendingBaselineDir &&
+    (!isAbsolute(before.pendingBaselineDir) ||
+      !pathWithin(join(oldRuntime, "baselines"), before.pendingBaselineDir))
+  )
+    throw new Error(
+      "The saved baseline is outside the task's baselines directory.",
+    );
+  const after: TaskState = {
+    ...before,
+    id,
+    contextPath: join(defaultArtifactDir(root, id), "context.md"),
+    sessions: rebaseSessionRefs(before.sessions, oldRuntime, newRuntime),
+    interruptedSession: rebase(before.interruptedSession),
+    pendingBaselineDir: rebase(before.pendingBaselineDir),
+  };
+  const sessionsDir = sessionDirectory(before);
+  const savedSessions = sessionReferences(before);
+  for (const file of savedSessions) {
+    if (
+      !isAbsolute(file) ||
+      dirname(resolve(file)) !== sessionsDir ||
+      !file.endsWith(".jsonl")
+    )
+      throw new Error(
+        `The saved session is outside the task's sessions directory or has an unsupported path: ${file}`,
+      );
+  }
+  const references = new Set(savedSessions.map((file) => resolve(file)));
+  const updates = new Map<string, string>();
+  if (pathExistsWithoutFollowing(sessionsDir)) {
+    assertSafeTaskRoot(sessionsDir);
+    for (const entry of readdirSync(sessionsDir, { withFileTypes: true })) {
+      if (!entry.name.endsWith(".jsonl")) continue;
+      const file = join(sessionsDir, entry.name);
+      if (!entry.isFile())
+        throw new Error(`Cannot safely rename saved session: ${file}`);
+      const { content, linked, changed } = renamedSessionContent(
+        file,
+        before,
+        after,
+      );
+      if (!linked && references.has(file))
+        throw new Error(
+          `Cannot rename a saved session without its matching task link: ${file}`,
+        );
+      if (changed)
+        updates.set(join(sessionDirectory(after), entry.name), content);
+    }
+  }
+  const oldRecords = taskIndexRecordsForTask(indexRecords, before, path);
+  assertTaskIndexRecordsUnchanged(oldRecords, before, path);
+  const target = taskStatePath(after);
+  updates.set(target, `${JSON.stringify(after, null, 2)}\n`);
+  updates.set(
+    newIndex,
+    `${JSON.stringify({ projectRoot: root, id, statePath: target })}\n`,
+  );
+  mkdirSync(dirname(newIndex), { recursive: true });
+  assertSafeTaskRoot(dirname(newIndex));
+  writeFileSync(newIndex, "", { flag: "wx", mode: 0o600 });
+  try {
+    // Reserve the new name so we cannot overwrite another task's empty directory.
+    mkdirSync(newRuntime);
+    try {
+      renameSync(oldRuntime, newRuntime);
+    } catch (error) {
+      rmdirSync(newRuntime);
+      throw error;
+    }
+    try {
+      atomicWriteTextFiles(updates, "Task rename");
+    } catch (error) {
+      try {
+        renameSync(newRuntime, oldRuntime);
+      } catch (rollbackError) {
+        throw new Error(
+          `Task rename failed (${String(error)}) and could not restore its directory (${String(rollbackError)}). Check ${oldRuntime} and ${newRuntime} before continuing.`,
+        );
+      }
+      throw error;
+    }
+  } catch (error) {
+    rmSync(newIndex);
+    throw error;
+  }
+
+  const staleIndexPaths = [];
+  for (const record of oldRecords) {
+    try {
+      removeBrokenTaskIndexEntry({
+        path: record.indexPath,
+        rawContent: record.rawContent,
+        reason: "Previous task ID",
+      });
+    } catch {
+      staleIndexPaths.push(record.indexPath);
+    }
+  }
+  return { statePath: target, staleIndexPaths };
+}
+
+async function renameListedTask(
+  ctx: ExtensionCommandContext,
+  task: DiscoveredTask,
+  root: string,
+  indexRecords: TaskIndexRecord[],
+): Promise<{ statePath?: string; detached?: boolean }> {
+  const current = ctx.sessionManager.getSessionFile();
+  const link = taskLink(ctx);
+  const open =
+    (current && pathWithin(dirname(task.path), resolve(current))) ||
+    (link?.id === task.state.id &&
+      resolve(link.statePath) === resolve(task.path));
+  const input = await ctx.ui.input(
+    open
+      ? `Rename ${task.state.id} and leave its current session`
+      : `New ID for ${task.state.id}`,
+    task.state.id,
+  );
+  if (input === undefined || !input.trim() || input === task.state.id)
+    return {};
+  const apply = (context: ExtensionContext): string | undefined => {
+    try {
+      const result = renameTask(task, root, input, indexRecords);
+      context.ui.notify(`Renamed ${task.state.id} to ${input}.`, "info");
+      if (result.staleIndexPaths.length)
+        context.ui.notify(
+          `Could not remove previous index entries: ${result.staleIndexPaths.join(", ")}`,
+          "warning",
+        );
+      return result.statePath;
+    } catch (error) {
+      context.ui.notify(
+        error instanceof Error ? error.message : String(error),
+        "error",
+      );
+    }
+  };
+  try {
+    validateTaskId(input);
+    if (!ctx.isIdle())
+      throw new Error("Wait for Pi to finish before renaming a task.");
+    if (!open) return { statePath: apply(ctx) };
+    assertTaskRenameDestinationAvailable(root, input);
+    if (ctx.ui.getEditorText().trim())
+      throw new Error(
+        "Submit or clear the unsent editor text before renaming the open task.",
+      );
+    const neutral = createNeutralSession(root);
+    if (pathWithin(dirname(task.path), resolve(neutral)))
+      throw new Error(
+        "The replacement session would be inside the task directory.",
+      );
+    const result = await ctx.switchSession(neutral, {
+      withSession: async (fresh) => {
+        apply(fresh);
+      },
+    });
+    return { detached: !result.cancelled };
+  } catch (error) {
+    ctx.ui.notify(
+      error instanceof Error ? error.message : String(error),
+      "error",
+    );
+    return {};
   }
 }
 
@@ -1053,7 +1343,7 @@ function taskGitStatus(root: string): [string, string] {
 
 function taskStatus(
   appVersion: string,
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "getAllTools" | "getActiveTools">,
   ctx: ExtensionContext,
   state: TaskState,
 ): StyledArtifact {
@@ -3647,8 +3937,30 @@ type TaskListRow = { label: string } & (
 
 type TaskListSelection = {
   index: number;
-  action: "open" | "status" | "delete";
+  action: "open" | "status" | "delete" | "rename";
+  deletion?: Promise<boolean>;
 };
+
+type TaskDeletionDialogs = Pick<
+  ExtensionCommandContext["ui"],
+  "confirm" | "select"
+>;
+
+type TaskListDelete = (
+  row: TaskListRow,
+  index: number,
+  dialogs: TaskDeletionDialogs,
+) => Promise<boolean>;
+
+function canRenameTaskRow(
+  row: TaskListRow,
+): row is Extract<TaskListRow, { kind: "task" }> {
+  return (
+    row.kind === "task" &&
+    row.task.layout === "current" &&
+    !row.task.relocatedFrom
+  );
+}
 
 function taskListRows(
   discovery: TaskDiscoveryResult,
@@ -3674,21 +3986,35 @@ function taskListRows(
       (b.lastSession ?? -Infinity) - (a.lastSession ?? -Infinity) ||
       a.label.localeCompare(b.label),
   );
+  const indexIssues = discovery.indexIssues.filter(
+    ({ record, missingProjectRoot }) => {
+      if (!all)
+        return !!record && resolve(record.projectRoot) === resolve(root);
+      // Keep the old locator out of cleanup when its task is available for relocation here.
+      return (
+        !missingProjectRoot ||
+        !record ||
+        !discovery.tasks.some(
+          (task) =>
+            task.relocatedFrom === resolve(record.projectRoot) &&
+            task.state.id === record.id,
+        )
+      );
+    },
+  );
   const indexPaths = new Set(
-    discovery.indexIssues.flatMap(({ path, record }) => [
+    indexIssues.flatMap(({ path, record }) => [
       resolve(path),
-      ...(all && record ? [resolve(record.statePath)] : []),
+      ...(record ? [resolve(record.statePath)] : []),
     ]),
   );
   return [
     ...tasks,
-    ...(all
-      ? discovery.indexIssues.map((issue) => ({
-          kind: "index" as const,
-          label: `⚠ Index · ${issue.record?.id ?? "unrecognized entry"} · ${issue.path} · ${issue.reason}`,
-          issue,
-        }))
-      : []),
+    ...indexIssues.map((issue) => ({
+      kind: "index" as const,
+      label: `⚠ Index · ${issue.record?.id ?? "unrecognized entry"} · ${issue.reason} · ${issue.path}`,
+      issue,
+    })),
     ...discovery.issues
       .filter(
         ({ path }) =>
@@ -3711,6 +4037,105 @@ function taskListRowPath(row: TaskListRow): string {
       : row.path;
 }
 
+async function taskListDeleteDialog(
+  ctx: ExtensionCommandContext,
+  title: string,
+  description: string,
+  choices: string[],
+  layout: "vertical" | "horizontal" = "vertical",
+): Promise<string | undefined> {
+  return ctx.ui.custom<string | undefined>(
+    (tui, theme, keybindings, done) => {
+      let selected = 0;
+      return {
+        render(width: number): string[] {
+          if (width < 5) return [];
+          const inner = width - 4;
+          const frame = (text: string) => theme.fg("dim", text);
+          const line = (text: string, style = (value: string) => value) => {
+            const clipped = truncateToWidth(text, inner);
+            return `${frame("│")} ${style(clipped)}${" ".repeat(inner - visibleWidth(clipped))} ${frame("│")}`;
+          };
+          const wrap = (text: string) =>
+            text
+              .split("\n")
+              .flatMap((part) =>
+                wrapTextWithAnsi(
+                  part.replace(/[\x00-\x1f\x7f-\x9f]/g, " "),
+                  inner,
+                ),
+              );
+          const choiceStyle = (index: number) =>
+            index === selected
+              ? (value: string) => theme.inverse(value)
+              : undefined;
+          const renderChoices = () => {
+            if (layout === "vertical")
+              return choices.flatMap((choice, index) =>
+                wrap(choice).map((text) => line(text, choiceStyle(index))),
+              );
+            const buttons = choices
+              .map((choice, index) => {
+                const label = `[ ${choice} ]`;
+                return choiceStyle(index)?.(label) ?? label;
+              })
+              .join("   ");
+            const padding = Math.max(
+              0,
+              Math.floor((inner - visibleWidth(buttons)) / 2),
+            );
+            return [line(" ".repeat(padding) + buttons)];
+          };
+          return [
+            frame(`╭${"─".repeat(width - 2)}╮`),
+            ...wrap(title).map((text) =>
+              line(text, (value) => theme.fg("warning", value)),
+            ),
+            ...wrap(description).map((text) => line(text)),
+            ...renderChoices(),
+            line(
+              `${layout === "horizontal" ? "←/→" : "↑/↓"} Select · Enter Confirm · Esc Cancel`,
+              frame,
+            ),
+            frame(`╰${"─".repeat(width - 2)}╯`),
+          ];
+        },
+        handleInput(data: string): void {
+          if (keybindings.matches(data, "tui.select.cancel")) done(undefined);
+          else if (keybindings.matches(data, "tui.select.confirm"))
+            done(choices[selected]);
+          else if (layout === "horizontal") {
+            if (keybindings.matches(data, "tui.editor.cursorLeft"))
+              selected = Math.max(0, selected - 1);
+            else if (keybindings.matches(data, "tui.editor.cursorRight"))
+              selected = Math.min(choices.length - 1, selected + 1);
+            else return;
+            tui.requestRender();
+          } else if (
+            keybindings.matches(data, "tui.select.up") ||
+            data === "k"
+          ) {
+            selected = (selected - 1 + choices.length) % choices.length;
+            tui.requestRender();
+          } else if (
+            keybindings.matches(data, "tui.select.down") ||
+            data === "j"
+          ) {
+            selected = (selected + 1) % choices.length;
+            tui.requestRender();
+          }
+        },
+        invalidate(): void {},
+      };
+    },
+    {
+      overlay: true,
+      overlayOptions: { anchor: "center", width: "55%", minWidth: 48 },
+      blocked: { kind: "permission", message: title },
+    },
+  );
+}
+
 /** Show one task list for browsing or selecting a target for confirmed deletion. */
 async function selectTaskListRow(
   ctx: ExtensionCommandContext,
@@ -3718,14 +4143,62 @@ async function selectTaskListRow(
   rows: TaskListRow[],
   initialIndex = 0,
   deleteOnly = false,
+  allowRename = false,
+  onDelete?: TaskListDelete,
 ): Promise<TaskListSelection | undefined> {
   return ctx.ui.custom<TaskListSelection | undefined>(
     (tui, theme, keybindings, done) => {
       let selectedIndex = initialIndex;
+      let asking = false;
+      const askToDelete = (row: TaskListRow, index: number) => {
+        if (!onDelete) {
+          done({ index, action: "delete" });
+          return;
+        }
+        asking = true;
+        let approved = false;
+        const deletion = Promise.resolve()
+          .then(() =>
+            onDelete(row, index, {
+              select: (title, choices) =>
+                taskListDeleteDialog(ctx, title, "", choices),
+              confirm: async (title, description) => {
+                if (approved) return ctx.ui.confirm(title, description);
+                approved =
+                  (await taskListDeleteDialog(
+                    ctx,
+                    title,
+                    description,
+                    ["No", "Yes"],
+                    "horizontal",
+                  )) === "Yes";
+                // Close the picker only when proceeding, before deletion may replace the session.
+                if (approved) done({ index, action: "delete", deletion });
+                return approved;
+              },
+            }),
+          )
+          .catch((error: unknown) => {
+            if (approved) throw error;
+            ctx.ui.notify(
+              error instanceof Error ? error.message : String(error),
+              "error",
+            );
+            return false;
+          })
+          .finally(() => {
+            asking = false;
+          });
+      };
       return {
         render(width: number): string[] {
           if (width < 5) return [];
           const innerWidth = width - 4;
+          const selectedRow = rows[selectedIndex];
+          const deleteHint =
+            selectedRow.kind === "warning"
+              ? " · Read-only warning"
+              : " · x Delete";
           const pageSize = Math.max(1, tui.terminal.rows - 11);
           const start = Math.max(
             0,
@@ -3768,23 +4241,26 @@ async function selectTaskListRow(
               );
             }),
             rule("├", "┤"),
-            panelRow(taskListRowPath(rows[selectedIndex]), frame),
+            panelRow(taskListRowPath(selectedRow), frame),
             panelRow(
               deleteOnly
-                ? "↑/↓ Move · x Delete · Esc Close"
-                : "↑/↓ Move · Enter Continue · s Status · x Delete · Esc Close",
+                ? `↑/↓ Move${deleteHint} · Esc Close`
+                : `↑/↓ Move${selectedRow.kind === "task" ? " · Enter Continue" : ""} · s Status${allowRename && canRenameTaskRow(selectedRow) ? " · r Rename" : ""}${deleteHint} · Esc Close`,
               frame,
             ),
             rule("╰", "╯"),
           ];
         },
         handleInput(data: string): void {
+          if (asking) return;
           const row = rows[selectedIndex];
           if (keybindings.matches(data, "tui.select.cancel")) done(undefined);
           else if (data === "x" && row.kind !== "warning")
-            done({ index: selectedIndex, action: "delete" });
+            askToDelete(row, selectedIndex);
           else if (!deleteOnly && data === "s")
             done({ index: selectedIndex, action: "status" });
+          else if (allowRename && data === "r" && canRenameTaskRow(row))
+            done({ index: selectedIndex, action: "rename" });
           else if (
             !deleteOnly &&
             row.kind === "task" &&
@@ -4043,6 +4519,7 @@ async function deleteTaskFiles(
 async function deleteBrokenIndexEntry(
   ctx: ExtensionCommandContext,
   issue: TaskIndexIssue,
+  dialogs: TaskDeletionDialogs = ctx.ui,
 ): Promise<void> {
   if (ctx.mode !== "tui") {
     ctx.ui.notify(
@@ -4053,9 +4530,20 @@ async function deleteBrokenIndexEntry(
   }
   if (!taskIndexSnapshotMatches(issue))
     throw new Error(`Task index entry changed or is unsafe: ${issue.path}`);
+  const assertProjectStillMissing = () => {
+    if (
+      issue.missingProjectRoot &&
+      issue.record &&
+      pathExistsWithoutFollowing(issue.record.projectRoot)
+    )
+      throw new Error(
+        `Indexed project is no longer missing; nothing was removed: ${issue.record.projectRoot}`,
+      );
+  };
+  assertProjectStillMissing();
 
   let taskDirectory: string | undefined;
-  if (issue.record) {
+  if (issue.record && !issue.missingProjectRoot) {
     try {
       taskDirectory = remainingTaskDirectory(issue.record);
     } catch (error) {
@@ -4068,7 +4556,7 @@ async function deleteBrokenIndexEntry(
 
   let removeTaskData = false;
   if (taskDirectory) {
-    const choice = await ctx.ui.select("Broken task index entry:", [
+    const choice = await dialogs.select("Broken task index entry:", [
       "Remove index record only",
       `Remove task directory and index record · ${taskDirectory}`,
     ]);
@@ -4091,11 +4579,12 @@ async function deleteBrokenIndexEntry(
   const description = removeTaskData
     ? `${mode === "permanent" ? "Permanently remove" : "Move to the OS trash"} the validated task directory ${taskDirectory}, then remove only this index record: ${issue.path}`
     : `Remove only this task index record. Task data will be left untouched: ${issue.path}`;
-  if (!(await ctx.ui.confirm(title, description))) return;
+  if (!(await dialogs.confirm(title, description))) return;
   if (!taskIndexSnapshotMatches(issue))
     throw new Error(
       `Task index entry changed; nothing was removed: ${issue.path}`,
     );
+  assertProjectStillMissing();
 
   if (removeTaskData && issue.record && taskDirectory && mode) {
     const latestDirectory = remainingTaskDirectory(issue.record);
@@ -4165,12 +4654,15 @@ async function deleteBrokenIndexEntry(
   );
 }
 
+// Return whether the original context was replaced. Run list continuation in the new context.
 async function deleteDiscoveredTask(
   ctx: ExtensionCommandContext,
   target: DiscoveredTask,
   currentRoot: string,
   indexRecords: TaskIndexRecord[],
-): Promise<void> {
+  afterDetach?: (ctx: ExtensionCommandContext) => Promise<void>,
+  dialogs: TaskDeletionDialogs = ctx.ui,
+): Promise<boolean> {
   if (target.relocatedFrom)
     throw new Error(
       `Task ${target.state.id} was moved from ${target.relocatedFrom}. Open it with /task ${target.state.id} and confirm relocation before deleting it.`,
@@ -4192,7 +4684,7 @@ async function deleteDiscoveredTask(
   const plan = taskDirectoryForDeletion(state, targetPath);
   const mode = effectiveDeletionMode(state, targetPath, plan.layout);
   const pathSummary = plan.targets.join("\n");
-  const confirmed = await ctx.ui.confirm(
+  const confirmed = await dialogs.confirm(
     mode === "trash"
       ? `Move task ${state.id} to the OS trash?`
       : `Permanently delete task ${state.id}?`,
@@ -4200,7 +4692,7 @@ async function deleteDiscoveredTask(
       ? `Move the selected task data for project ${state.projectRoot} at ${pathSummary} to the OS trash?`
       : `Permanently remove the selected task data for project ${state.projectRoot} at ${pathSummary}. This cannot be undone.`,
   );
-  if (!confirmed) return;
+  if (!confirmed) return false;
   const latest = loadState(targetPath, false);
   if (
     latest.id !== state.id ||
@@ -4295,16 +4787,20 @@ async function deleteDiscoveredTask(
         "The replacement session would be inside the task directory; deletion was cancelled.",
       );
     const result = await ctx.switchSession(neutral, {
-      withSession: async (fresh) => deleteConfirmedTask(fresh),
+      withSession: async (fresh) => {
+        await deleteConfirmedTask(fresh);
+        await afterDetach?.(fresh);
+      },
     });
     if (result.cancelled)
       ctx.ui.notify(
         "Deletion was cancelled; the task is unchanged.",
         "warning",
       );
-  } else {
-    await deleteConfirmedTask(ctx);
+    return !result.cancelled;
   }
+  await deleteConfirmedTask(ctx);
+  return false;
 }
 
 /** Register Pi commands and hooks using the version supplied by the root entry point. */
@@ -4947,8 +5443,8 @@ export default function taskExtension(
           const title = all
             ? "Tasks across indexed projects"
             : `Tasks in ${root}`;
-          const discovery = listTasksDetailed(root, all ? "global" : "project");
-          const rows = taskListRows(discovery, root, all);
+          let discovery = listTasksDetailed(root, all ? "global" : "project");
+          let rows = taskListRows(discovery, root, all);
           if (ctx.mode !== "tui" || !rows.length) {
             await showArtifact(
               ctx,
@@ -4958,75 +5454,150 @@ export default function taskExtension(
             return;
           }
           let index = 0;
-          while (true) {
-            const selection = await selectTaskListRow(ctx, title, rows, index);
-            if (!selection) return;
-            index = selection.index;
-            const row = rows[index];
-            if (selection.action === "status") {
-              const detail =
-                row.kind !== "task" ||
-                row.task.layout === "historical" ||
-                row.task.relocatedFrom
-                  ? `**State or index path:** \`${taskListRowPath(row)}\`\n\n${row.label}`
-                  : taskStatus(appVersion, pi, ctx, row.task.state);
-              await showArtifact(ctx, "Task status", detail);
-              continue;
-            }
-            if (!ctx.isIdle()) {
-              ctx.ui.notify(
-                "Wait for Pi to finish or cancel its current run before continuing or deleting a task.",
-                "warning",
+          const refresh = (preferredPath: string) => {
+            discovery = listTasksDetailed(root, all ? "global" : "project");
+            rows = taskListRows(discovery, root, all);
+            const match = rows.findIndex(
+              (row) => taskListRowPath(row) === preferredPath,
+            );
+            index =
+              match >= 0
+                ? match
+                : Math.max(0, Math.min(index, rows.length - 1));
+          };
+          const browse = async (
+            ctx: ExtensionCommandContext,
+            tools: Pick<ExtensionAPI, "getAllTools" | "getActiveTools">,
+          ): Promise<void> => {
+            const deleteRow: TaskListDelete = async (
+              row,
+              selectedIndex,
+              dialogs,
+            ) => {
+              if (!ctx.isIdle()) {
+                ctx.ui.notify(
+                  "Wait for Pi to finish or cancel its current run before deleting a task.",
+                  "warning",
+                );
+                return false;
+              }
+              index = selectedIndex;
+              if (row.kind === "index") {
+                await deleteBrokenIndexEntry(ctx, row.issue, dialogs);
+              } else if (row.kind === "task") {
+                // The Pi API is stale after detachment; snapshot the tool inventory for status.
+                const registeredTools = tools.getAllTools();
+                return deleteDiscoveredTask(
+                  ctx,
+                  row.task,
+                  root,
+                  discovery.indexRecords,
+                  async (fresh) => {
+                    refresh(row.task.path);
+                    await browse(fresh, {
+                      getAllTools: () => registeredTools,
+                      getActiveTools: () => [],
+                    });
+                  },
+                  dialogs,
+                );
+              }
+              return false;
+            };
+            while (rows.length) {
+              const displayedRows = rows;
+              const selection = await selectTaskListRow(
+                ctx,
+                title,
+                displayedRows,
+                index,
+                false,
+                !all,
+                deleteRow,
               );
-              continue;
-            }
-            if (selection.action === "delete") {
-              if (row.kind === "task")
-                await deleteDiscoveredTask(
+              if (!selection) return;
+              if (selection.action === "delete") {
+                const selectedPath = taskListRowPath(
+                  displayedRows[selection.index],
+                );
+                if (await selection.deletion) return;
+                refresh(selectedPath);
+                continue;
+              }
+              index = selection.index;
+              const row = rows[index];
+              if (selection.action === "status") {
+                const detail =
+                  row.kind !== "task" ||
+                  row.task.layout === "historical" ||
+                  row.task.relocatedFrom
+                    ? `**State or index path:** \`${taskListRowPath(row)}\`\n\n${row.label}`
+                    : taskStatus(appVersion, tools, ctx, row.task.state);
+                await showArtifact(ctx, "Task status", detail);
+                continue;
+              }
+              if (!ctx.isIdle()) {
+                ctx.ui.notify(
+                  "Wait for Pi to finish or cancel its current run before continuing, renaming, or deleting a task.",
+                  "warning",
+                );
+                continue;
+              }
+              if (selection.action === "rename") {
+                if (!canRenameTaskRow(row)) continue;
+                const result = await renameListedTask(
                   ctx,
                   row.task,
                   root,
                   discovery.indexRecords,
                 );
-              else if (row.kind === "index")
-                await deleteBrokenIndexEntry(ctx, row.issue);
+                if (result.detached) return;
+                if (result.statePath) refresh(result.statePath);
+                continue;
+              }
+              if (row.kind !== "task") continue;
+              if (ctx.ui.getEditorText().trim()) {
+                ctx.ui.notify(
+                  "Submit or clear the unsent editor text before switching tasks.",
+                  "warning",
+                );
+                return;
+              }
+              const task = row.task;
+              const taskRoot = task.discoveredRoot ?? task.state.projectRoot;
+              assertSafeTaskStatePath(taskRoot, task.path);
+              const mismatch = checkTaskLayout(task.path);
+              if (mismatch || task.layout === "historical") {
+                ctx.ui.notify(
+                  `${mismatch ?? "This task uses a historical layout."}\nThis task cannot be continued. Start a new task and use the contents of ${task.state.contextPath} as its context; this will not be done automatically.`,
+                  "warning",
+                );
+                continue;
+              }
+              const latest = loadState(task.path, false);
+              if (
+                latest.id !== task.state.id ||
+                resolve(latest.projectRoot) !== resolve(task.state.projectRoot)
+              )
+                throw new Error(
+                  "Task changed while choosing it; run /task list again.",
+                );
+              const state = await confirmTaskRelocation(
+                ctx,
+                { ...task, state: latest },
+                taskRoot,
+              );
+              if (state) await continueTaskSession(ctx, state);
               return;
             }
-            if (row.kind !== "task") continue;
-            if (ctx.ui.getEditorText().trim()) {
-              ctx.ui.notify(
-                "Submit or clear the unsent editor text before switching tasks.",
-                "warning",
-              );
-              return;
-            }
-            const task = row.task;
-            const taskRoot = task.discoveredRoot ?? task.state.projectRoot;
-            assertSafeTaskStatePath(taskRoot, task.path);
-            const mismatch = checkTaskLayout(task.path);
-            if (mismatch || task.layout === "historical") {
-              ctx.ui.notify(
-                `${mismatch ?? "This task uses a historical layout."}\nThis task cannot be continued. Start a new task and use the contents of ${task.state.contextPath} as its context; this will not be done automatically.`,
-                "warning",
-              );
-              continue;
-            }
-            const latest = loadState(task.path, false);
-            if (
-              latest.id !== task.state.id ||
-              resolve(latest.projectRoot) !== resolve(task.state.projectRoot)
-            )
-              throw new Error(
-                "Task changed while choosing it; run /task list again.",
-              );
-            const state = await confirmTaskRelocation(
+            await showArtifact(
               ctx,
-              { ...task, state: latest },
-              taskRoot,
+              "Task list",
+              taskListText(title, rows, all),
             );
-            if (state) await continueTaskSession(ctx, state);
-            return;
-          }
+          };
+          await browse(ctx, pi);
+          return;
         }
         const root = projectRoot(ctx.cwd);
         let versionPath: string | undefined;

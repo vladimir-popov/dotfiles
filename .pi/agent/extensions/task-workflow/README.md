@@ -159,8 +159,15 @@ projects. The first column shows the last saved session's modification time in l
 (`14:32 26.11.26`); the second shows the task ID, progress, and short description, plus the
 project in the global list. In the terminal UI, press **Enter** to continue in the saved session
 without starting a new turn, **s** to inspect status without switching sessions, or **x** to start
-deletion. Historical layouts can be inspected or deleted, but cannot be continued. Existing
-project-local IDs also appear in command completion.
+deletion. The confirmation appears over the list with **No** selected by default. Cancelling
+keeps the current selection; after deletion the list refreshes so you can select another task
+without running the command again. In the local `/task list`, press **r**
+on a current task to enter a new ID. Renaming
+moves its saved sessions, settings, and artifacts without rewriting artifact text or past messages.
+If the task is open, Pi first switches to a normal session; open the renamed task again with
+`/task list`. Historical or moved tasks cannot be renamed from the list. Historical layouts can
+be inspected or deleted, but cannot be continued. Existing project-local IDs also appear in
+command completion.
 
 If you rename a project directory, close Pi and start it from the new path. In the terminal UI,
 `/task` or `/task resume` can show project-local tasks marked as moved and ask for confirmation
@@ -268,9 +275,12 @@ Global discovery is bounded to the active project and project roots named by val
 shared task index. It checks the current `.agents/task-workflow/<task-id>/` and recognized
 historical `.agents/projects/<task-id>/` layouts; it does not recursively scan projects. Tasks or
 entries with unknown layouts or invalid data are shown in a warning color and preserved.
-`/task list all` can remove a broken index entry without touching task data. If a valid index record
-identifies a recognized task directory but its `state.json` is missing, the selector offers to
-remove only the index record or also the remaining task directory. Removing that directory
+Press **x** on an `Index` row to remove a broken index entry. `/task list` shows only broken index
+entries associated with the current project; `/task list all` also shows entries from missing
+projects. For missing projects, only the index entry can be removed. `Preserved` warnings are
+read-only. If a valid index record identifies a recognized task directory in an existing project
+but its `state.json` is missing, the selector offers to remove only the index record or also the
+remaining task directory. Removing that directory
 requires explicit selection and confirmation. Malformed records or unvalidated paths never
 authorize deleting task data. Outside the terminal UI, use an explicit ID for task deletion;
 broken index entries can only be removed in the terminal UI.

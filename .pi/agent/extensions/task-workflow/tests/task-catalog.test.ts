@@ -3,7 +3,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,8 +68,14 @@ test("bounds discovery to project and indexed roots, deduplicates candidates, an
     statePath: indexed.path,
   });
   writeFileSync(duplicate, raw);
+  const projectSettings = '{"mode":"semi-auto"}\n';
+  const localConfig = join(dirname(dirname(active.path)), "config.json");
+  const indexedConfig = join(dirname(dirname(indexed.path)), "config.json");
+  writeFileSync(localConfig, projectSettings);
+  writeFileSync(indexedConfig, projectSettings);
 
   const local = listTasksDetailed(active.state.projectRoot);
+  assert.deepEqual(local.issues, []);
   assert.deepEqual(
     local.tasks.map(({ path }) => path),
     [resolve(active.path)],
@@ -82,6 +90,9 @@ test("bounds discovery to project and indexed roots, deduplicates candidates, an
     [resolve(active.path), resolve(indexed.path)],
   );
   assert.deepEqual(global.historical, []);
+  assert.ok(!global.issues.some(({ path }) => path.endsWith("/config.json")));
+  assert.equal(readFileSync(localConfig, "utf8"), projectSettings);
+  assert.equal(readFileSync(indexedConfig, "utf8"), projectSettings);
   assert.equal(global.indexRecords.length, 4);
   assert.ok(
     global.indexIssues.some(
@@ -93,5 +104,39 @@ test("bounds discovery to project and indexed roots, deduplicates candidates, an
   assert.equal(
     readFileSync(indexed.path, "utf8"),
     JSON.stringify(indexed.state),
+  );
+
+  const movedRoot = join(base, "moved");
+  renameSync(indexed.state.projectRoot, movedRoot);
+  const moved = listTasksDetailed(movedRoot);
+  assert.equal(
+    moved.tasks[0]?.relocatedFrom,
+    resolve(indexed.state.projectRoot),
+  );
+  const afterMove = listTasksDetailed(active.state.projectRoot);
+  assert.deepEqual(afterMove.issues, []);
+  assert.ok(
+    afterMove.indexIssues.some(
+      ({ record, missingProjectRoot }) =>
+        record?.statePath === indexed.path && missingProjectRoot,
+    ),
+  );
+
+  const historicalConfig = join(
+    dirname(dirname(historical.path)),
+    "config.json",
+  );
+  const unexpectedFile = join(dirname(localConfig), "unexpected.txt");
+  writeFileSync(historicalConfig, projectSettings);
+  writeFileSync(unexpectedFile, "not a task");
+  rmSync(localConfig);
+  symlinkSync(unexpectedFile, localConfig);
+  assert.deepEqual(
+    listTasksDetailed(active.state.projectRoot)
+      .issues.map(({ path }) => path)
+      .sort(),
+    [historicalConfig, unexpectedFile, localConfig]
+      .map((path) => resolve(path))
+      .sort(),
   );
 });
