@@ -13,7 +13,8 @@ export type PhaseModel = {
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 };
 
-type SkillPhase = "research" | "roadmap" | "implement" | "review" | "commit";
+type SkillPhase =
+  "research" | "roadmap" | "prepare" | "implement" | "review" | "commit";
 
 /** Workflow phases that accept configurable tool lists. */
 export type ToolPhase = SkillPhase | "manual-review";
@@ -30,7 +31,10 @@ export type Config = {
   include?: string[] | null;
   exclude?: string[];
   phaseModels?: Partial<
-    Record<"research" | "roadmap" | "implement" | "review", PhaseModel | null>
+    Record<
+      "research" | "roadmap" | "prepare" | "implement" | "review",
+      PhaseModel | null
+    >
   >;
   skills?: Partial<Record<SkillPhase, string | null>>;
   phaseTools?: Partial<Record<ToolPhase, string[]>>;
@@ -116,6 +120,7 @@ export function materializedConfig(config: Config): Config {
     skills: {
       research: config.skills?.research ?? null,
       roadmap: config.skills?.roadmap ?? null,
+      prepare: configuredPhaseSkill(config, "prepare") ?? null,
       implement: config.skills?.implement ?? null,
       review: config.skills?.review ?? null,
       commit: config.skills?.commit ?? null,
@@ -134,12 +139,15 @@ export function materializedConfig(config: Config): Config {
   };
 }
 
-/** Read a phase skill override; null disables it. */
+/** Read a phase skill override. Prepare inherits Implement if omitted; null disables the skill. */
 export function configuredPhaseSkill(
   config: Config,
   phase: SkillPhase,
 ): string | null | undefined {
-  return config.skills?.[phase];
+  const skill = config.skills?.[phase];
+  return phase === "prepare" && skill === undefined
+    ? config.skills?.implement
+    : skill;
 }
 
 /** Return the configured Review skill name or its disabled label. */
@@ -358,7 +366,14 @@ export function createTaskConfig<Color>(
       for (const [phase, skill] of Object.entries(values.skills)) {
         if (
           !(
-            ["research", "roadmap", "implement", "review", "commit"] as string[]
+            [
+              "research",
+              "roadmap",
+              "prepare",
+              "implement",
+              "review",
+              "commit",
+            ] as string[]
           ).includes(phase)
         )
           throw new Error(`Unknown skills phase ${phase}: ${path}`);
@@ -384,6 +399,7 @@ export function createTaskConfig<Color>(
             [
               "research",
               "roadmap",
+              "prepare",
               "implement",
               "review",
               "manual-review",
@@ -419,6 +435,7 @@ export function createTaskConfig<Color>(
             [
               "research",
               "roadmap",
+              "prepare",
               "implement",
               "review",
               "manual-review",
@@ -484,7 +501,11 @@ export function createTaskConfig<Color>(
       )
         throw new Error(`phaseModels must be an object: ${path}`);
       for (const [phase, model] of Object.entries(values.phaseModels)) {
-        if (!["research", "roadmap", "implement", "review"].includes(phase))
+        if (
+          !["research", "roadmap", "prepare", "implement", "review"].includes(
+            phase,
+          )
+        )
           throw new Error(`Unknown phaseModels key ${phase}: ${path}`);
         if (model === null) continue;
         if (!model || typeof model !== "object" || Array.isArray(model))

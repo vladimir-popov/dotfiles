@@ -201,12 +201,20 @@ function configuredPhaseTools(
               ...READ_TOOLS,
               ...(phase === "review" ? config.reviewTools || [] : []),
             ];
+  const toolOverrides =
+    phase === "complete" ? undefined : config.phaseTools?.[phase];
+  const toolAdditions =
+    phase === "complete" ? undefined : config.additionalPhaseTools?.[phase];
   const baseTools =
-    phase === "complete"
-      ? READ_TOOLS
-      : (config.phaseTools?.[phase] ?? defaults);
+    toolOverrides ??
+    (phase === "prepare" ? config.phaseTools?.implement : undefined) ??
+    defaults;
   const additionalTools =
-    phase === "complete" ? [] : config.additionalPhaseTools?.[phase] || [];
+    toolAdditions ??
+    (phase === "prepare"
+      ? config.additionalPhaseTools?.implement
+      : undefined) ??
+    [];
   return includeArtifactTool(phase, baseTools, additionalTools, ARTIFACT_TOOL);
 }
 
@@ -255,7 +263,7 @@ Starting or opening a specific task requires an explicit ID.
 /task delete moves task data to the OS trash by default; permanent deletion is configurable.
 Code outside a recognized task directory remains untouched.
 Research gathers task context and investigates the code in one saved Pi session. Later phases use their own sessions.
-Each implementation session begins with final discussion of its current step; /task next finalizes that step and starts coding in the same session.
+Each step has a separate preparation session for final discussion. /task next finalizes the design, captures the baseline, and opens a fresh implementation session.
 The implementation session stays open for the step and is reused for repairs.
 Each review round uses a fresh read-only session. Reports use review-N-round-M.md, starting at round 0.
 Step status is derived from task state; step-N.md stores the design and step-result-N.md carries implementation knowledge downstream.
@@ -399,6 +407,7 @@ function rebaseSessionRefs(
     roadmap: sessions.roadmap
       ? rebaseMovedPath(sessions.roadmap, oldRoot, newRoot)
       : undefined,
+    prepare: rebaseMap(sessions.prepare),
     implement: rebaseMap(sessions.implement),
     review: sessions.review
       ? Object.fromEntries(
@@ -686,6 +695,7 @@ function relocateTask(
   addPath(relocated.sessions?.research);
   addPath(relocated.sessions?.roadmap);
   for (const sessions of [
+    relocated.sessions?.prepare,
     relocated.sessions?.implement,
     relocated.sessions?.commit,
   ])
@@ -861,6 +871,7 @@ function taskLastWorked(state: TaskState): string {
   const sessions = [
     state.sessions?.research,
     state.sessions?.roadmap,
+    ...Object.values(state.sessions?.prepare || {}),
     ...Object.values(state.sessions?.implement || {}),
     ...Object.values(state.sessions?.review || {}).flat(),
     ...Object.values(state.sessions?.manualReview || {}).flat(),
@@ -893,12 +904,10 @@ function taskProgress(state: TaskState): string {
   }
   if (state.phase === "research") return "Researching code";
   if (state.phase === "roadmap") return "Planning roadmap";
-  if (state.phase === "implement" && total && state.currentStep > total)
-    return `Complete (${state.completedSteps.length}/${total} steps)`;
-  if (state.phase === "implement")
-    return state.implementationStarted
-      ? `Implementing step ${state.currentStep}${total ? `/${total}` : ""}`
-      : `Preparing step ${state.currentStep}${total ? `/${total}` : ""}`;
+  if (state.phase === "prepare" || state.phase === "implement") {
+    const action = state.phase === "prepare" ? "Preparing" : "Implementing";
+    return `${action} step ${state.currentStep}${total ? `/${total}` : ""}`;
+  }
   if (state.phase === "manual-review")
     return `Manual review step ${state.currentStep}${total ? `/${total}` : ""}`;
   if (state.phase === "commit")
@@ -974,24 +983,12 @@ function taskStatusText(
   const config = effectiveConfig(state);
   const model = configuredModel(state.phase, state);
   const phaseStatus =
-    state.phase === "implement" && !state.implementationStarted
-      ? "implementation preparation"
-      : state.phase === "manual-review"
-        ? "manual review"
-        : state.phase;
+    state.phase === "manual-review" ? "manual review" : state.phase;
   const lines = [
     ["Version", appVersion],
     ["Task", state.id],
     ["Phase", phaseStatus],
     ["Current step", String(state.currentStep)],
-    [
-      "Implementation started",
-      state.phase === "implement"
-        ? state.implementationStarted
-          ? "yes"
-          : "no"
-        : "n/a",
-    ],
     ["Active session", sessionFor(state) || "none"],
     ["This session", ctx.sessionManager.getSessionFile() || "ephemeral"],
     ["Sessions directory", sessionDirectory(state)],
@@ -1412,8 +1409,7 @@ async function assessTransition(
           10_000,
         )
       : "";
-  const preparation =
-    state.phase === "implement" && !state.implementationStarted;
+  const preparation = state.phase === "prepare";
   const approvedRoadmapItem = preparation
     ? roadmapStepSummary(state) || "(not found)"
     : "(not applicable)";
@@ -1423,7 +1419,7 @@ async function assessTransition(
     // The session may already have been replaced.
   }
   try {
-    const systemPrompt = `You decide whether a task phase can advance. Analyze only the current phase's recent discussion and current review artifact. During implementation preparation (implementation has not started), the current roadmap item and the kickoff's summary of it are already approved; do not count them as a pending proposal. Check only newly discussed implementation details for unresolved questions or proposals. Return only JSON with fields openQuestions (array of strings), pendingProposal (string), manualReviewFindings (array of strings), and reason (string). Keep each field concise. For manual-review, manualReviewFindings must list concrete defects or requested code changes raised in the current phase discussion; do not count generic questions, resolved concerns, or optional suggestions. Include an accepted proposal that requires code changes. If the user explicitly requests another automated review of a changed worktree, include that request as an actionable finding to return to Implementation for review, not to edit code. For all other phases, return an empty manualReviewFindings array.
+    const systemPrompt = `You decide whether a task phase can advance. Analyze only the current phase's recent discussion and current review artifact. During the prepare phase, the current roadmap item and the kickoff's summary of it are already approved; do not count them as a pending proposal. Check only newly discussed implementation details for unresolved questions or proposals. Return only JSON with fields openQuestions (array of strings), pendingProposal (string), manualReviewFindings (array of strings), and reason (string). Keep each field concise. For manual-review, manualReviewFindings must list concrete defects or requested code changes raised in the current phase discussion; do not count generic questions, resolved concerns, or optional suggestions. Include an accepted proposal that requires code changes. If the user explicitly requests another automated review of a changed worktree, include that request as an actionable finding to return to Implementation for review, not to edit code. For all other phases, return an empty manualReviewFindings array.
 
 /task accept is an explicit user decision: agree to the assistant's latest concrete proposal as stated, including its recommended/default choices. No agreement note is needed. If the assistant asks "Keep this proposed version, or add optional feature X?", accept chooses the proposed version and declines X. The question is resolved, so openQuestions must be empty unless another independent decision is still required. Summarize the accepted version in pendingProposal. If there is no pending proposal, accept behaves like /task next.
 
@@ -1479,7 +1475,7 @@ An open question is a material uncertainty that still needs user input after app
         ...(evidence.excerpted ? { excerptedDiscussion: true } : {}),
       });
     } else {
-      text = `Task: ${state.id}\nPhase: ${state.phase}\nImplementation started: ${state.phase === "implement" ? state.implementationStarted : "n/a"}\nApproved roadmap item for current step: ${approvedRoadmapItem}\nCommand: /task ${command}\nCommand note: ${note || "(none)"}\n\nRecent discussion:\n${readinessDiscussion || "(none)"}\n\nCurrent review artifact, if any:\n${review || "(none)"}`;
+      text = `Task: ${state.id}\nPhase: ${state.phase}\nApproved roadmap item for current step: ${approvedRoadmapItem}\nCommand: /task ${command}\nCommand note: ${note || "(none)"}\n\nRecent discussion:\n${readinessDiscussion || "(none)"}\n\nCurrent review artifact, if any:\n${review || "(none)"}`;
     }
     const user: Message = {
       role: "user",
@@ -1812,25 +1808,32 @@ function roadmapStepSummary(
   }
 }
 
+const STEP_PHASES: readonly Phase[] = [
+  "prepare",
+  "implement",
+  "review",
+  "manual-review",
+  "commit",
+];
+
 function phaseLabel(state: TaskState): string {
   const phase =
     state.phase === "research"
       ? "Research"
       : state.phase === "roadmap"
         ? "Roadmap"
-        : state.phase === "implement"
-          ? state.implementationStarted
+        : state.phase === "prepare"
+          ? "Step preparation"
+          : state.phase === "implement"
             ? "Implementation"
-            : "Step preparation"
-          : state.phase === "review"
-            ? "Review"
-            : state.phase === "manual-review"
-              ? "Manual review"
-              : state.phase === "commit"
-                ? "Commit"
-                : "Complete";
-  if (!["implement", "review", "manual-review", "commit"].includes(state.phase))
-    return phase;
+            : state.phase === "review"
+              ? "Review"
+              : state.phase === "manual-review"
+                ? "Manual review"
+                : state.phase === "commit"
+                  ? "Commit"
+                  : "Complete";
+  if (!STEP_PHASES.includes(state.phase)) return phase;
   let total: number | undefined;
   try {
     total = stepCount(state);
@@ -1846,21 +1849,10 @@ function sessionDisplayName(
   phase = state.phase,
   step = state.currentStep,
 ): string {
-  const title = ["implement", "review", "manual-review", "commit"].includes(
-    phase,
-  )
-    ? stepTitle(state, step)
-    : undefined;
-  const part =
-    phase === "research"
-      ? "research"
-      : phase === "implement"
-        ? `${state.implementationStarted ? "implement" : "prepare"} ${step}`
-        : phase === "manual-review"
-          ? `manual review ${step}`
-          : phase === "review" || phase === "commit"
-            ? `${phase} ${step}`
-            : phase;
+  const stepPhase = STEP_PHASES.includes(phase);
+  const title = stepPhase ? stepTitle(state, step) : undefined;
+  const label = phase === "manual-review" ? "manual review" : phase;
+  const part = stepPhase ? `${label} ${step}` : label;
   return `${state.id} · ${part}${phase === "review" ? ` · r${state.reviewRound ?? 0}` : ""}${title ? ` · ${title}` : ""}`;
 }
 
@@ -1871,10 +1863,9 @@ function phaseHint(state: TaskState): string {
     return "Discuss findings; when ready, use /task next.";
   if (state.phase === "roadmap")
     return "When agreed, use /task next (or /task accept for a proposal).";
-  if (state.phase === "implement")
-    return state.implementationStarted
-      ? "Ready for review? Use /task next."
-      : `Final discussion for step ${state.currentStep}; /task next finalizes its plan, captures the baseline, and starts implementation.`;
+  if (state.phase === "prepare")
+    return `Final discussion for step ${state.currentStep}; /task next finalizes its plan, captures the baseline, and opens implementation.`;
+  if (state.phase === "implement") return "Ready for review? Use /task next.";
   if (state.phase === "review")
     return state.reviewPending
       ? "Review is pending; use /task resume or save the review before /task next."
@@ -1909,9 +1900,7 @@ function setPhaseWidget(
   waiting: boolean,
 ): void {
   const config = effectiveConfig(state);
-  const title = ["implement", "review", "manual-review", "commit"].includes(
-    state.phase,
-  )
+  const title = STEP_PHASES.includes(state.phase)
     ? stepTitle(state)
     : undefined;
   const fullPhase = phaseLabel(state);
@@ -2068,6 +2057,7 @@ function sessionReferencesExist(state: TaskState): boolean {
     state.sessions?.research,
     state.sessions?.roadmap,
     state.interruptedSession,
+    ...Object.values(state.sessions?.prepare || {}),
     ...Object.values(state.sessions?.implement || {}),
     ...Object.values(state.sessions?.manualReview || {}).flat(),
     ...Object.values(state.sessions?.commit || {}),
@@ -2099,7 +2089,10 @@ function configuredModel(
   const config = state ? effectiveConfig(state) : readConfig();
   if (phase === "complete" || phase === "commit" || phase === "manual-review")
     return undefined;
-  return config.phaseModels?.[phase];
+  const model = config.phaseModels?.[phase];
+  return phase === "prepare" && model === undefined
+    ? config.phaseModels?.implement
+    : model;
 }
 async function selectPhaseModel(
   pi: ExtensionAPI,
@@ -2134,7 +2127,7 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
     return `First discuss the task, constraints, and expected outcome; then inspect the project and discuss feasibility and questions. ${RESEARCH_CONTEXT_RULE}`;
   if (phase === "roadmap")
     return `Propose a numbered roadmap with a short bold title and brief explanation for each step. Discuss additions and update context when we agree on them.`;
-  if (phase === "implement") {
+  if (phase === "prepare") {
     const total = stepCount(state);
     const summary =
       roadmapStepSummary(state, step) || "the current roadmap item";
@@ -2178,7 +2171,7 @@ const { switchPhase, continueTaskSession, ensurePhaseSession } =
   });
 
 function resumeKickoff(state: TaskState): string {
-  if (state.phase === "implement" && !state.implementationStarted)
+  if (state.phase === "prepare")
     return `Resume final preparation for step ${state.currentStep}. Continue discussing the roadmap summary and agreed implementation/checks; read only relevant earlier step-result artifacts: ${previousStepResultPaths(state, state.currentStep).join(", ") || "none exist"}; update ${stepPath(state, state.currentStep)}. Do not edit project code until /task next finalizes the design and captures the baseline.`;
   if (state.phase === "manual-review")
     return `Resume manual review for step ${state.currentStep}. Read ${stepResultPath(state, state.currentStep)} if relevant and available. Inspect the implementation diff and changed project files. Do not edit project code. Use task_write_artifact for any agreed task-artifact updates. Use /task next when discussion is settled; use /task accept to approve a proposal. Findings return to implementation; an empty review proceeds to commit.`;
@@ -2401,15 +2394,9 @@ async function finalizeArtifact(
 }
 
 async function beginImplementation(
-  appVersion: string,
-  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   state: TaskState,
-): Promise<void> {
-  if (state.implementationStarted)
-    throw new Error(
-      "Implementation is already active. Use /task next when this step is ready for review.",
-    );
+): Promise<boolean> {
   const total = stepCount(state);
   if (state.currentStep > total)
     throw new Error(
@@ -2439,21 +2426,25 @@ async function beginImplementation(
   } finally {
     ctx.ui.setStatus("task-baseline", undefined);
   }
-  state.pendingBaselineDir = baseline.directory;
-  state.pendingGitRepository = gitRepository;
-  state.pendingAutoCommitEligible = baselineClean;
-  state.implementationStarted = true;
-  saveState(state);
-  pi.setSessionName(sessionDisplayName(state));
-  updatePhaseUi(appVersion, pi, ctx, state, false);
-  pi.sendMessage(
+  const hadBaseline = !!state.pendingBaselineDir;
+  const step = state.currentStep;
+  const switched = await switchPhase(
+    ctx,
+    state,
+    "implement",
+    step,
+    `Implement step ${step} in this Pi session. The agreed design is in ${stepPath(state, step)}. Read ${roadmapPath(state)}, the current code, and only earlier step-result artifacts relevant to this step: ${previousStepResultPaths(state, step).join(", ") || "none exist"}. Make only the agreed changes and run focused checks. Do not commit. When finished, summarize the changes and checks. I will use /task next to start review.`,
+    undefined,
+    undefined,
     {
-      customType: KICKOFF_TYPE,
-      content: `Implement step ${state.currentStep} in this Pi session. The agreed design is in ${stepPath(state, state.currentStep)}. Read ${roadmapPath(state)}, the current code, and only earlier step-result artifacts relevant to this step: ${previousStepResultPaths(state, state.currentStep).join(", ") || "none exist"}. Make only the agreed changes and run focused checks. Do not commit. When finished, summarize the changes and checks. I will use /task next to start review.`,
-      display: false,
+      pendingBaselineDir: baseline.directory,
+      pendingGitRepository: gitRepository,
+      pendingAutoCommitEligible: baselineClean,
     },
-    { triggerTurn: true },
   );
+  if (!switched && !hadBaseline)
+    rmSync(baseline.directory, { recursive: true, force: true });
+  return switched;
 }
 
 async function beginReview(
@@ -2619,7 +2610,6 @@ async function acceptReviewedStep(
       `The review is incomplete. Run /task resume to continue and save ${reviewPath(state, n)} before advancing.`,
     );
   if (await reviewedDiffChanged(state, n)) {
-    state.implementationStarted = true;
     const existing = state.sessions?.implement?.[String(n)];
     await switchPhase(
       ctx,
@@ -2640,7 +2630,6 @@ async function acceptReviewedStep(
     );
   const open = openReviewFindings(state, n);
   if (open) {
-    state.implementationStarted = true;
     const implement = state.sessions?.implement?.[String(n)];
     if (!implement || !existsSync(implement)) {
       const file = createPhaseSession(
@@ -2666,7 +2655,6 @@ async function acceptReviewedStep(
   state.awaitingReview = undefined;
   state.reviewPending = undefined;
   delete state.interruptedSession;
-  state.implementationStarted = false;
   delete state.commitPendingFiles;
   delete state.commitPendingHashes;
   delete state.commitResult;
@@ -2706,7 +2694,6 @@ async function returnToImplementationAfterManualReview(
 ): Promise<void> {
   const step = state.currentStep;
   state.completedSteps = state.completedSteps.filter((item) => item !== step);
-  state.implementationStarted = true;
   const existing = state.sessions?.implement?.[String(step)];
   await switchPhase(
     ctx,
@@ -2841,7 +2828,7 @@ async function advanceSemiAutomatically(
   state: TaskState,
 ): Promise<void> {
   const shouldAdvance =
-    (state.phase === "implement" && state.implementationStarted) ||
+    state.phase === "implement" ||
     (state.phase === "review" &&
       !state.reviewPending &&
       existsSync(reviewPath(state, state.currentStep))) ||
@@ -3005,7 +2992,7 @@ async function finishCommitPhase(
     rmSync(reviewPath);
   }
   state.reviewRound = undefined;
-  state.phase = more ? "implement" : "complete";
+  state.phase = more ? "prepare" : "complete";
   if (more) state.currentStep = n + 1;
   saveState(state);
   if (acceptedDifferences.length)
@@ -3018,9 +3005,9 @@ async function finishCommitPhase(
     return switchPhase(
       ctx,
       state,
-      "implement",
+      "prepare",
       n + 1,
-      phaseKickoff(state, "implement", n + 1),
+      phaseKickoff(state, "prepare", n + 1),
     );
   updatePhaseUi(appVersion, pi, ctx, state, true);
   pi.sendMessage({
@@ -3882,7 +3869,7 @@ export default function taskExtension(
         reason:
           "This task session is not the active phase. Use /task TASK-ID to continue the current session.",
       };
-    if (state.phase === "implement" && state.implementationStarted) return;
+    if (state.phase === "implement") return;
     const allowed = new Set(
       configuredPhaseTools(pi, effectiveConfig(state), state.phase),
     );
@@ -3890,7 +3877,7 @@ export default function taskExtension(
     return {
       block: true,
       reason:
-        state.phase === "implement"
+        state.phase === "prepare"
           ? "Use /task next to capture the baseline before editing code."
           : `The ${state.phase} phase cannot change project files. Code edits belong to implementation.`,
     };
@@ -3988,7 +3975,7 @@ export default function taskExtension(
       event.systemPromptOptions.sections.task_workflow = `This is an archived task session. The active phase is ${state.phase}. Do not edit files. Use /task ${state.id} to continue.`;
       return;
     }
-    const writable = state.phase === "implement" && state.implementationStarted;
+    const writable = state.phase === "implement";
     const config = effectiveConfig(state);
     event.systemPromptOptions.selectedTools = writable
       ? [
@@ -4005,9 +3992,9 @@ export default function taskExtension(
         ]
       : configuredPhaseTools(pi, config, state.phase);
     const contextEntry = `Start with the canonical context file: ${state.contextPath}. Use this path, not any older path in the conversation. Read it first on phase or mode entry, after resuming if needed to establish current context, or whenever it may have changed. Otherwise, reuse a current copy already read in this phase. Open linked notes and other files in the task's context directory only as needed.`;
-    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. ${contextEntry} ${ARTIFACT_OPERATION_RULE} ${ARTIFACT_LANGUAGE_RULE} Only /task commands change phases. Do not edit state.json, implementation diffs, saved session files, or project code outside Implementation Coding. ${state.phase === "commit" ? "This is the separate commit phase; task-artifact edits are allowed, but do not edit project code." : state.phase === "manual-review" ? "This is the manual review phase; do not edit project code or commit." : state.phase === "complete" ? "The task is complete; do not edit project code." : ""}`;
+    const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. ${contextEntry} ${ARTIFACT_OPERATION_RULE} ${ARTIFACT_LANGUAGE_RULE} Only /task commands change phases. Do not edit state.json, implementation diffs, saved session files, or project code outside the Implementation phase. ${state.phase === "commit" ? "This is the separate commit phase; task-artifact edits are allowed, but do not edit project code." : state.phase === "manual-review" ? "This is the manual review phase; do not edit project code or commit." : state.phase === "complete" ? "The task is complete; do not edit project code." : ""}`;
     const retainKnowledge =
-      (state.phase === "implement" && writable) ||
+      writable ||
       state.phase === "review" ||
       state.phase === "manual-review" ||
       state.phase === "commit"
@@ -4019,23 +4006,24 @@ export default function taskExtension(
         : state.phase === "roadmap"
           ? `Discuss the roadmap. Update context.md when agreed facts change, then present a complete revised numbered roadmap. Draft roadmap.md as decisions settle.`
           : state.phase === "implement"
-            ? writable
-              ? `Implement or repair step ${state.currentStep} in this session. Read ${roadmapPath(state)}, ${stepPath(state, state.currentStep)}, and relevant earlier step-result artifacts. Follow the current repair handoff below if present. Continue only unfinished work; do not use earlier repair inputs. Run focused checks. Do not commit. Use /task next when ready for review.`
-              : `This is final preparation for step ${state.currentStep}. Read ${roadmapPath(state)} and ${stepPath(state, state.currentStep)} if it exists. Read only earlier step-result artifacts relevant to this roadmap item: ${previousStepResultPaths(state, state.currentStep).join(", ") || "none exist"}. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed current-step design in ${stepPath(state, state.currentStep)}. Do not edit project code yet. /task next checks unresolved questions and proposals, finalizes the design, captures the baseline, and starts coding.`
-            : state.phase === "review"
-              ? `Review step ${state.currentStep} independently against the approved context, design, and implementation knowledge. Read ${stepPath(state, state.currentStep)}, the implementation diff, and relevant project code using read-only tools. Read the current implementation handoff at ${stepResultPath(state, state.currentStep)} if it exists, before drawing conclusions. Save ${reviewPath(state, state.currentStep)} as an English artifact using task_write_artifact with artifact "review", step ${state.currentStep}, and operation "create" (or "replace" when revising an existing report).
+            ? `Implement or repair step ${state.currentStep} in this session. Read ${roadmapPath(state)}, ${stepPath(state, state.currentStep)}, and relevant earlier step-result artifacts. Follow the current repair handoff below if present. Continue only unfinished work; do not use earlier repair inputs. Run focused checks. Do not commit. Use /task next when ready for review.`
+            : state.phase === "prepare"
+              ? `This is final preparation for step ${state.currentStep}. Read ${roadmapPath(state)} and ${stepPath(state, state.currentStep)} if it exists. Read only earlier step-result artifacts relevant to this roadmap item: ${previousStepResultPaths(state, state.currentStep).join(", ") || "none exist"}. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed current-step design in ${stepPath(state, state.currentStep)}. Do not edit project code yet. /task next checks unresolved questions and proposals, finalizes the design, captures the baseline, and starts coding.`
+              : state.phase === "review"
+                ? `Review step ${state.currentStep} independently against the approved context, design, and implementation knowledge. Read ${stepPath(state, state.currentStep)}, the implementation diff, and relevant project code using read-only tools. Read the current implementation handoff at ${stepResultPath(state, state.currentStep)} if it exists, before drawing conclusions. Save ${reviewPath(state, state.currentStep)} as an English artifact using task_write_artifact with artifact "review", step ${state.currentStep}, and operation "create" (or "replace" when revising an existing report).
 
 Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
-              : state.phase === "manual-review"
-                ? `This is the manual review phase for step ${state.currentStep}. Read ${stepResultPath(state, state.currentStep)} if relevant and available. The automated review found no remaining issues. Direct the user to inspect ${join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files. Do not conduct another automated review, edit code, or commit. Use task_write_artifact for any agreed task-artifact updates. Manual-review findings route to implementation; an empty review proceeds to commit.`
-                : state.phase === "commit"
-                  ? state.commitReady
-                    ? `Present and explain the commit result already saved in this session. Do not implement, review, or edit project code. Task-artifact edits remain available through task_write_artifact. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
-                    : "The commit result is not ready. Do not invent one or edit project code. Task-artifact edits remain available through task_write_artifact. Tell the user that /task next retries Git detection and commit-message generation, while /task accept skips the commit and continues if Git is unavailable."
-                  : "The task is complete. Do not edit project code through this task session; task-artifact edits remain available through task_write_artifact.";
+                : state.phase === "manual-review"
+                  ? `This is the manual review phase for step ${state.currentStep}. Read ${stepResultPath(state, state.currentStep)} if relevant and available. The automated review found no remaining issues. Direct the user to inspect ${join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files. Do not conduct another automated review, edit code, or commit. Use task_write_artifact for any agreed task-artifact updates. Manual-review findings route to implementation; an empty review proceeds to commit.`
+                  : state.phase === "commit"
+                    ? state.commitReady
+                      ? `Present and explain the commit result already saved in this session. Do not implement, review, or edit project code. Task-artifact edits remain available through task_write_artifact. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
+                      : "The commit result is not ready. Do not invent one or edit project code. Task-artifact edits remain available through task_write_artifact. Tell the user that /task next retries Git detection and commit-message generation, while /task accept skips the commit and continues if Git is unavailable."
+                    : "The task is complete. Do not edit project code through this task session; task-artifact edits remain available through task_write_artifact.";
     const phaseSkill =
       state.phase === "research" ||
       state.phase === "roadmap" ||
+      state.phase === "prepare" ||
       state.phase === "implement" ||
       state.phase === "review" ||
       state.phase === "commit"
@@ -4295,6 +4283,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
               skills: {
                 research: configuredPhaseSkill(global, "research") ?? null,
                 roadmap: configuredPhaseSkill(global, "roadmap") ?? null,
+                prepare: configuredPhaseSkill(global, "prepare") ?? null,
                 implement: configuredPhaseSkill(global, "implement") ?? null,
                 review: configuredPhaseSkill(global, "review") ?? null,
                 commit: configuredPhaseSkill(global, "commit") ?? null,
@@ -4471,14 +4460,12 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
         ) {
           const link = taskLink(ctx);
           if (link && existsSync(link.statePath)) {
-            const linkedState = JSON.parse(
-              readFileSync(link.statePath, "utf8"),
-            ) as TaskState;
+            const linkedState = loadState(link.statePath);
             const current = ctx.sessionManager.getSessionFile();
             if (
               link.id === linkedState.id &&
               resolve(link.statePath) === resolve(taskStatePath(linkedState)) &&
-              link.phase === linkedState.phase &&
+              sessionPhaseMatches(link.phase || "", linkedState.phase) &&
               (link.step || 1) === linkedState.currentStep &&
               !!current &&
               !!sessionFor(linkedState) &&
@@ -5009,10 +4996,9 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                   .filter(Boolean)
                   .join("; ")
               : "";
-          if (state.phase === "implement" && !state.implementationStarted) {
+          if (state.phase === "prepare") {
             await finalizeArtifact(ctx, state, "step", approval);
-            await beginImplementation(appVersion, pi, ctx, state);
-            sessionReplaced = true;
+            sessionReplaced = await beginImplementation(ctx, state);
             return;
           }
           if (researchContext !== undefined) {
@@ -5056,15 +5042,13 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
           if (state.phase === "roadmap") {
             await finalizeArtifact(ctx, state, "roadmap", approval);
             stepCount(state);
-            state.implementationStarted = false;
-            await switchPhase(
+            sessionReplaced = await switchPhase(
               ctx,
               state,
-              "implement",
+              "prepare",
               1,
-              phaseKickoff(state, "implement", 1),
+              phaseKickoff(state, "prepare", 1),
             );
-            sessionReplaced = true;
             return;
           }
           if (state.phase === "implement") {

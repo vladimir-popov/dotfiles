@@ -35,6 +35,7 @@ type ArtifactTool = Parameters<Host["registerTool"]>[0];
 type Phase =
   | "research"
   | "roadmap"
+  | "prepare"
   | "implement"
   | "review"
   | "manual-review"
@@ -49,6 +50,7 @@ type Message = {
 type Delivered = Message & { triggerTurn: boolean; session: string };
 type State = {
   phase: Phase;
+  currentStep?: number;
   implementationStarted?: boolean;
   commitReady?: boolean;
   interruptedSession?: string;
@@ -395,6 +397,12 @@ function fixture(
     saveKickoff(message: Message) {
       appendEntry({ type: "custom_message", ...message });
     },
+    saveAssistantSummary(text: string) {
+      appendEntry({
+        type: "message",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      });
+    },
     projectedMessages() {
       const compactedAt = branch.findLastIndex(
         (item) => (item as { type: string }).type === "compaction",
@@ -472,8 +480,8 @@ function assertReviewHandoff(f: Fixture, prompt: string) {
 for (const [phase, state, instruction] of [
   ["research", {}, /Gather task context/],
   ["roadmap", {}, /Discuss the roadmap/],
-  ["implement", { implementationStarted: false }, /final preparation/],
-  ["implement", { implementationStarted: true }, /Implement or repair/],
+  ["prepare", {}, /final preparation/],
+  ["implement", {}, /Implement or repair/],
   ["review", {}, /implementation diff/],
   ["manual-review", {}, /manual review phase/],
   ["commit", { commitReady: false }, /commit result is not ready/],
@@ -482,7 +490,10 @@ for (const [phase, state, instruction] of [
 ] as const) {
   it(`quietly reopens ${phase}: ${instruction.source}`, async (t) => {
     const f = fixture(t);
-    const original = f.savedPhase(phase, { ...state });
+    const original = f.savedPhase(phase, {
+      ...state,
+      ...(phase === "implement" && { pendingBaselineDir: "/saved-baseline" }),
+    });
     if (phase === "review") f.writeArtifact("step-result-1.md", noteMarker);
     await f.run(id);
     assert.equal(f.session(), original, f.notices.join("\n"));
@@ -493,8 +504,7 @@ for (const [phase, state, instruction] of [
     const prompt = assertContextEntry(f);
     assert.match(prompt.text, instruction);
     if (phase === "review") assertReviewHandoff(f, prompt.text);
-    const writable =
-      "implementationStarted" in state && state.implementationStarted;
+    const writable = phase === "implement";
     if (writable || ["review", "manual-review", "commit"].includes(phase)) {
       assert.match(
         prompt.text,
@@ -601,13 +611,33 @@ it("opens fresh Roadmap and Implementation preparation with focused kickoffs", a
   assert.match(f.messages[0].content, /Propose a numbered roadmap/);
   assertContextEntry(f, f.messages[0]);
   await f.run("next");
-  assert.equal(f.state().phase, "implement", f.notices.join("\n"));
+  assert.equal(f.state().phase, "prepare", f.notices.join("\n"));
   assert.equal(f.messages.length, 2);
   assert.ok(f.messages[1].triggerTurn);
   assert.match(f.messages[1].content, /Planned work: Update value/);
   assertContextEntry(f, f.messages[1]);
   assert.ok(f.checkWrite()?.block);
   assert.equal(readFileSync(f.contextPath, "utf8"), originalContext);
+});
+
+it("opens Step preparation for the next roadmap item after Commit", async (t) => {
+  const f = fixture(t);
+  await f.open(
+    f.savedPhase("commit", { commitReady: true, completedSteps: [1] }),
+  );
+  f.writeArtifact(
+    "roadmap.md",
+    roadmap.trimEnd() + "\n2. **Add coverage** — Test the updated value.\n",
+  );
+  await f.run("next");
+  assert.equal(f.state().phase, "prepare", f.notices.join("\n"));
+  assert.equal(f.state().currentStep, 2);
+  assert.deepEqual(f.state().sessions?.prepare, { "2": f.session() });
+  assert.match(
+    f.messages.at(-1)!.content,
+    /preparation session for step 2 of 2.*Add coverage/,
+  );
+  assert.ok(f.checkWrite()?.block);
 });
 
 it("resumes an interrupted saved phase after switching sessions, with just its existing kickoff", async (t) => {
@@ -635,15 +665,15 @@ it("requires the current implementation handoff when resuming a pending Review",
   assertReviewHandoff(f, assertContextEntry(f, kickoff).text);
 });
 
-it("dispatches same-session coding only after the baseline and write permission are saved", async (t) => {
+it("opens a fresh coding session only after the baseline and design are saved", async (t) => {
   const f = fixture(t);
-  const file = f.savedPhase("implement");
-  await f.open(file);
+  const preparation = f.savedPhase("prepare");
+  await f.open(preparation);
   writeFileSync(f.source, baselineSource);
   assert.ok(f.checkWrite()?.block);
   const captureChecks: boolean[] = [];
   let atDispatch:
-    | { design: string; started?: boolean; baseline: string; blocked: boolean }
+    | { design: string; phase: Phase; baseline: string; blocked: boolean }
     | undefined;
   f.setStatusObserver((key, value) => {
     if (
@@ -651,12 +681,12 @@ it("dispatches same-session coding only after the baseline and write permission 
       value?.startsWith("Snapshotting project files")
     )
       captureChecks.push(
-        !!f.checkWrite()?.block && !f.state().implementationStarted,
+        !!f.checkWrite()?.block && f.state().phase === "prepare",
       );
   });
   f.setMessageObserver((message) => {
     if (!message.triggerTurn) return;
-    const { pendingBaselineDir, implementationStarted } = f.state();
+    const { pendingBaselineDir, phase } = f.state();
     assert.ok(pendingBaselineDir);
     const manifest = JSON.parse(
       readFileSync(join(pendingBaselineDir, "manifest.json"), "utf8"),
@@ -665,34 +695,119 @@ it("dispatches same-session coding only after the baseline and write permission 
     assert.ok(snapshot);
     atDispatch = {
       design: readFileSync(join(dirname(f.contextPath), "step-1.md"), "utf8"),
-      started: implementationStarted,
+      phase,
       baseline: readFileSync(join(pendingBaselineDir, snapshot), "utf8"),
       blocked: !!f.checkWrite()?.block,
     };
   });
   await f.run("next");
-  assert.deepEqual(f.switches, [file]);
+  const implementation = f.session();
+  assert.notEqual(implementation, preparation);
+  assert.deepEqual(f.switches, [preparation, implementation]);
+  assert.deepEqual(f.state().sessions?.prepare, { "1": preparation });
+  assert.deepEqual(f.state().sessions?.implement, { "1": implementation });
   assert.ok(captureChecks.length > 0);
   assert.ok(captureChecks.every(Boolean));
   assert.deepEqual(
     atDispatch,
     {
       design: codingDesign,
-      started: true,
+      phase: "implement",
       baseline: baselineSource,
       blocked: false,
     },
     f.notices.join("\n"),
   );
   assert.equal(f.messages.length, 1);
-  assert.equal(f.messages[0].session, file);
+  assert.equal(f.messages[0].session, implementation);
   assert.match(f.messages[0].content, /Implement step 1/);
   assert.ok(assertContextEntry(f, f.messages[0]).tools.includes("write"));
+  assert.ok(
+    !f.entryMessages().some(({ content }) => content.includes(stalePath)),
+  );
+  await f.open(preparation);
+  assert.ok(f.checkWrite()?.block);
+  assert.match(f.prompt().text, /archived task session/);
+});
+
+it("reopens legacy preparation without replaying its kickoff and moves to a new coding session", async (t) => {
+  const f = fixture(t);
+  const legacy = f.savedPhase("implement", { implementationStarted: false });
+  await f.run(id);
+  assert.equal(f.session(), legacy, f.notices.join("\n"));
+  assert.deepEqual(f.messages, []);
+  assert.match(f.prompt().text, /Phase prepare/);
+  assert.ok(f.checkWrite()?.block);
+  writeFileSync(f.source, baselineSource);
+  await f.run("next");
+  assert.equal(f.state().phase, "implement", f.notices.join("\n"));
+  assert.equal(f.state().implementationStarted, undefined);
+  assert.notEqual(f.session(), legacy);
+  assert.deepEqual(f.state().sessions?.prepare, { "1": legacy });
+  assert.deepEqual(f.state().sessions?.implement, { "1": f.session() });
+});
+
+it("keeps the preparation session active and recaptures the baseline after a cancelled switch", async (t) => {
+  const f = fixture(t);
+  const preparation = f.savedPhase("prepare");
+  await f.open(preparation);
+  writeFileSync(f.source, baselineSource);
+  f.cancelNextSwitch();
+  await f.run("next");
+  assert.match(f.notices.at(-1) ?? "", /cancelled.*saved prepare phase/);
+  assert.equal(f.session(), preparation);
+  assert.equal(f.state().phase, "prepare");
+  assert.equal(f.state().pendingBaselineDir, undefined);
+  assert.equal(f.state().sessions?.implement, undefined);
+  assert.deepEqual(readdirSync(join(dirname(f.statePath), "baselines")), []);
+  assert.deepEqual(f.messages, []);
+  assert.ok(f.checkWrite()?.block);
+
+  writeFileSync(f.source, "export const value = 17;\n");
+  await f.run("next");
+  assert.equal(f.state().phase, "implement", f.notices.join("\n"));
+  const baseline = f.state().pendingBaselineDir!;
+  const { paths } = JSON.parse(
+    readFileSync(join(baseline, "manifest.json"), "utf8"),
+  );
+  const snapshot = new Map<string, string>(paths).get("example.ts")!;
+  assert.equal(
+    readFileSync(join(baseline, snapshot), "utf8"),
+    readFileSync(f.source, "utf8"),
+  );
+});
+
+it("supports independent preparation tools and skill with legacy implementation settings as defaults", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("prepare"));
+  const legacy = {
+    phaseTools: { implement: ["grep"] },
+    additionalPhaseTools: { implement: ["find"] },
+    skills: { implement: "coding-skill" },
+  };
+  writeFileSync(f.configPath, JSON.stringify(legacy));
+  assert.deepEqual(f.prompt().tools, ["grep", "task_write_artifact", "find"]);
+  assert.match(f.prompt().text, /coding-skill/);
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({
+      phaseTools: { ...legacy.phaseTools, prepare: ["read"] },
+      additionalPhaseTools: { ...legacy.additionalPhaseTools, prepare: [] },
+      skills: { ...legacy.skills, prepare: null },
+    }),
+  );
+  assert.deepEqual(f.prompt().tools, ["read", "task_write_artifact"]);
+  assert.doesNotMatch(f.prompt().text, /coding-skill/);
+  writeFileSync(f.source, baselineSource);
+  await f.run("next");
+  assert.equal(f.state().phase, "implement", f.notices.join("\n"));
+  assert.match(f.prompt().text, /coding-skill/);
+  assert.ok(f.prompt().tools.includes("write"));
 });
 
 it("uses task-scoped snapshot filters, including null overriding an inherited include", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   writeFileSync(
     f.configPath,
     JSON.stringify({ include: ["never.ts"], exclude: ["*.ts"] }),
@@ -723,14 +838,13 @@ it("uses task-scoped snapshot filters, including null overriding an inherited in
 
 it("keeps preparation read-only and does not dispatch coding on baseline failure", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   writeFileSync(f.configPath, JSON.stringify({ snapshotMaxFiles: 1 }));
   writeFileSync(f.source, baselineSource);
   writeFileSync(join(f.cwd, "other.ts"), baselineSource);
   await f.run("next");
   assert.match(f.notices.join("\n"), /Snapshot limit exceeded/);
-  assert.equal(f.state().phase, "implement");
-  assert.ok(!f.state().implementationStarted);
+  assert.equal(f.state().phase, "prepare");
   assert.equal(f.state().pendingBaselineDir, undefined);
   assert.ok(f.checkWrite()?.block);
   assert.deepEqual(f.messages, []);
@@ -850,8 +964,7 @@ function initGit(f: Fixture) {
 for (const destination of ["review", "manual-review", "commit"] as const) {
   it(`preserves caller effects when the switch to ${destination} is cancelled`, async (t) => {
     const f = fixture(t);
-    const file = f.savedPhase("implement");
-    await f.open(file);
+    await f.open(f.savedPhase("prepare"));
     initGit(f);
     writeFileSync(
       f.configPath,
@@ -913,7 +1026,7 @@ for (const destination of ["review", "manual-review", "commit"] as const) {
       assert.equal(state.sessions?.review, undefined);
       assert.equal(
         readdirSync(join(dirname(f.statePath), "sessions")).length,
-        1,
+        2,
       );
     } else {
       assert.equal(state.phase, destination);
@@ -933,8 +1046,7 @@ for (const destination of ["review", "manual-review", "commit"] as const) {
 
 it("carries automated and manual repairs through verified Commit and preserves reusable findings", async (t) => {
   const f = fixture(t);
-  const file = f.savedPhase("implement");
-  await f.open(file);
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   writeFileSync(
     f.configPath,
@@ -947,6 +1059,7 @@ it("carries automated and manual repairs through verified Commit and preserves r
   );
   const originalContext = readFileSync(f.contextPath, "utf8");
   await f.run("next");
+  const file = f.session();
   const baseline = f.state().pendingBaselineDir;
   assert.ok(baseline, f.notices.join("\n"));
   const changeValue = (value: number) =>
@@ -1118,6 +1231,7 @@ it("carries automated and manual repairs through verified Commit and preserves r
   assert.ok(earlierBranchPrompt.includes(staleReview.content));
   assert.doesNotMatch(earlierBranchPrompt, /Use the documented example value/);
 
+  f.saveAssistantSummary(transcriptMarker);
   await f.run("next");
   saveReview();
   const reviewedDiff = readFileSync(diffPath, "utf8");
@@ -1238,7 +1352,7 @@ for (const format of [
 
 it("reviews and commits a dangling symlink even when it is the only change", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   writeFileSync(
     f.configPath,
@@ -1277,7 +1391,7 @@ it("reviews and commits a dangling symlink even when it is the only change", asy
 
 it("finishes a saved manual Commit with a legacy symlink hash", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   writeFileSync(
     f.configPath,
@@ -1319,7 +1433,7 @@ it("finishes a saved manual Commit with a legacy symlink hash", async (t) => {
 
 it("requires fresh Review before auto-committing a legacy symlink snapshot", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   const baselineCommit = git("rev-parse", "HEAD");
   writeFileSync(
@@ -1376,7 +1490,7 @@ it("requires fresh Review before auto-committing a legacy symlink snapshot", asy
 
 it("accepts omitted reviewed files only after the reviewed paths are clean", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   writeFileSync(
     f.configPath,
@@ -1469,7 +1583,7 @@ it("accepts omitted reviewed files only after the reviewed paths are clean", asy
 
 it("rejects a committed symlink in place of a newly reviewed regular file", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   writeFileSync(
     f.configPath,
@@ -1510,7 +1624,7 @@ it("rejects a committed symlink in place of a newly reviewed regular file", asyn
 
 it("rejects a committed gitlink in place of a reviewed deletion", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   writeFileSync(
     f.configPath,
@@ -1562,7 +1676,7 @@ it("rejects a committed gitlink in place of a reviewed deletion", async (t) => {
 
 it("finishes semi-auto Commit without a model turn or a placeholder result", async (t) => {
   const f = fixture(t);
-  await f.open(f.savedPhase("implement"));
+  await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
   writeFileSync(
     f.configPath,

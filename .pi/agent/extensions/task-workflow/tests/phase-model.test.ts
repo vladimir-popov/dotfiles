@@ -23,6 +23,7 @@ test("selects phase and step references, using the last stored review round", ()
     sessions: {
       research: "research",
       roadmap: "roadmap",
+      prepare: { "1": "prepare-1", "2": "prepare-2" },
       implement: { "1": "implement-1", "2": "implement-2" },
       review: { "1": [], "2": ["review-first", "review-last"] },
       manualReview: { "1": [], "2": ["manual-first", "manual-last"] },
@@ -32,6 +33,8 @@ test("selects phase and step references, using the last stored review round", ()
   assert.equal(sessionFor(task), "review-last");
   assert.equal(sessionFor(task, "research", 42), "research");
   assert.equal(sessionFor(task, "roadmap", 42), "roadmap");
+  assert.equal(sessionFor(task, "prepare"), "prepare-2");
+  assert.equal(sessionFor(task, "prepare", 1), "prepare-1");
   assert.equal(sessionFor(task, "implement"), "implement-2");
   assert.equal(sessionFor(task, "implement", 1), "implement-1");
   assert.equal(sessionFor(task, "manual-review"), "manual-last");
@@ -72,6 +75,7 @@ test("updates only the selected reference, appends duplicate rounds, and preserv
   const expected = {
     research: "research-new",
     roadmap: "roadmap-new",
+    prepare: { "2": "prepare-2" },
     implement: { "1": "implement-1", "2": "implement-new" },
     review: { "1": ["review-1"], "2": ["review-2", "review-2"] },
     manualReview: { "1": ["manual-1"], "2": ["manual-2", "manual-2"] },
@@ -81,6 +85,7 @@ test("updates only the selected reference, appends duplicate rounds, and preserv
   setSessionFor(task, "research", expected.research);
   setSessionFor(task, "roadmap", "roadmap-old");
   setSessionFor(task, "roadmap", expected.roadmap);
+  setSessionFor(task, "prepare", "prepare-2");
   setSessionFor(task, "implement", "implement-1", 1);
   setSessionFor(task, "implement", "implement-old");
   setSessionFor(task, "implement", "implement-new");

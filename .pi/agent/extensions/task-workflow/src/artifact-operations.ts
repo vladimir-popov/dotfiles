@@ -228,7 +228,8 @@ export function writeArtifactOperation({
 
 /**
  * Checks whether a saved session's phase label remains valid for the task's current phase.
- * Commit sessions continue as Manual review or Complete without creating another session.
+ * Legacy Commit and Implementation links can follow migrated task state. Callers
+ * must still check that the session path matches the task’s saved reference.
  */
 export function sessionPhaseMatches(
   linkedPhase: string,
@@ -238,6 +239,7 @@ export function sessionPhaseMatches(
     linkedPhase === taskPhase ||
     (linkedPhase === "commit" &&
       (taskPhase === "manual-review" || taskPhase === "complete")) ||
+    (linkedPhase === "implement" && taskPhase === "prepare") ||
     (linkedPhase === "collect" && taskPhase === "research")
   );
 }

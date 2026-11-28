@@ -2,6 +2,7 @@
 export type Phase =
   | "research"
   | "roadmap"
+  | "prepare"
   | "implement"
   | "review"
   | "manual-review"
@@ -12,6 +13,7 @@ export type Phase =
 export type SessionRefs = {
   research?: string;
   roadmap?: string;
+  prepare?: Record<string, string>;
   implement?: Record<string, string>;
   review?: Record<string, string[]>;
   manualReview?: Record<string, string[]>;
@@ -43,7 +45,6 @@ export type TaskState = {
   reviewRound?: number;
   reviewPending?: boolean;
   interruptedSession?: string;
-  implementationStarted?: boolean;
   sessions?: SessionRefs;
 };
 
@@ -61,6 +62,7 @@ export function sessionFor(
   if (!sessions) return undefined;
   if (phase === "research") return sessions.research;
   if (phase === "roadmap") return sessions.roadmap;
+  if (phase === "prepare") return sessions.prepare?.[String(step)];
   if (phase === "implement") return sessions.implement?.[String(step)];
   if (phase === "manual-review")
     return sessions.manualReview?.[String(step)]?.at(-1);
@@ -86,6 +88,7 @@ export function setSessionFor(
   const sessions = (state.sessions ??= {});
   if (phase === "research") sessions.research = file;
   else if (phase === "roadmap") sessions.roadmap = file;
+  else if (phase === "prepare") (sessions.prepare ??= {})[String(step)] = file;
   else if (phase === "implement")
     (sessions.implement ??= {})[String(step)] = file;
   else if (phase === "review")

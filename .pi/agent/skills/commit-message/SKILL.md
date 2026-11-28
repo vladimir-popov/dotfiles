@@ -36,7 +36,10 @@ adjacent text. After wrapping, check every line's character count and reread the
 description for natural flow. Do not return it until it meets both the length
 and readability requirements. The limit does not apply to the title.
 
-Do not indent title and description lines, including wrapped lines.
+Output the commit message as plain text. Put the title and every description line
+at the left margin, with no leading spaces or tabs. Do not wrap the message in
+Markdown code fences (including ` ```text `), a blockquote, or any other container.
+Separate the title and description with one blank line.
 
 Describe only changes supported by the supplied or inspected diff and relevant
 context. Mention behavior changes and tests only when supported by evidence. Do

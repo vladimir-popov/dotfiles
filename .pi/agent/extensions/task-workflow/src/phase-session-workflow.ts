@@ -32,7 +32,7 @@ type PhaseSessionPorts<Context, Fresh> = {
 export function createPhaseSessionWorkflow<Context, Fresh>(
   ports: PhaseSessionPorts<Context, Fresh>,
 ) {
-  /** Save a destination, switch sessions, and restore only the entry state snapshot on cancellation or error. */
+  /** Save the destination and its updates before switching; restore the entry snapshot on cancellation or error. */
   async function switchPhase(
     ctx: Context,
     state: TaskState,
@@ -41,11 +41,13 @@ export function createPhaseSessionWorkflow<Context, Fresh>(
     kickoff: PhaseKickoff,
     existing?: string,
     afterSwitch?: (fresh: Fresh) => Promise<void>,
+    destinationUpdates?: Partial<TaskState>,
   ): Promise<boolean> {
     const previous = JSON.parse(JSON.stringify(state)) as TaskState;
     const parent = ports.currentFile(ctx);
     const file =
       existing || ports.createPhaseSession(state, phase, step, parent);
+    Object.assign(state, destinationUpdates);
     state.phase = phase;
     state.currentStep = step;
     delete state.interruptedSession;
@@ -57,7 +59,7 @@ export function createPhaseSessionWorkflow<Context, Fresh>(
         saveState(previous);
         ports.notify(
           ctx,
-          `Session switch was cancelled. Use /task ${state.id} to open its saved ${state.phase} phase.`,
+          `Session switch was cancelled. Use /task ${state.id} to open its saved ${previous.phase} phase.`,
           "warning",
         );
         return false;
@@ -86,8 +88,6 @@ export function createPhaseSessionWorkflow<Context, Fresh>(
         ports.currentFile(ctx),
       );
       setSessionFor(state, phase, file, step);
-      if (phase === "implement")
-        state.implementationStarted = !!state.pendingBaselineDir;
       saveState(state);
     }
     return file;

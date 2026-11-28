@@ -1,10 +1,11 @@
 import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { TaskState } from "./phase-model.ts";
+import { setSessionFor, type TaskState } from "./phase-model.ts";
 
 const TASK_PHASES: ReadonlySet<string> = new Set([
   "research",
   "roadmap",
+  "prepare",
   "implement",
   "review",
   "manual-review",
@@ -73,11 +74,13 @@ export function checkTaskLayout(path: string): string | undefined {
 }
 
 /**
- * Decode version-1 state and normalize the legacy manual-review marker in memory.
- * The legacy flag is retained for existing callers; loading never writes files.
+ * Decode version-1 state and normalize legacy preparation and manual-review
+ * markers in memory. Loading never rewrites saved state or session files.
  */
 export function loadState(path: string, maintainLegacyFiles = true): TaskState {
-  const data = JSON.parse(readFileSync(path, "utf8")) as TaskState;
+  const data = JSON.parse(readFileSync(path, "utf8")) as TaskState & {
+    implementationStarted?: boolean;
+  };
   if (
     data.version !== 1 ||
     !data.id ||
@@ -87,6 +90,23 @@ export function loadState(path: string, maintainLegacyFiles = true): TaskState {
   ) {
     throw new Error(`Invalid task state: ${path}`);
   }
+  const step = String(data.currentStep);
+  // Older tasks could be saved before the start flag or baseline existed.
+  if (
+    data.phase === "implement" &&
+    (data.implementationStarted === false ||
+      (data.implementationStarted === undefined &&
+        !data.pendingBaselineDir &&
+        !data.sessions?.prepare?.[step]))
+  ) {
+    data.phase = "prepare";
+    const legacySession = data.sessions?.implement?.[step];
+    if (legacySession) {
+      setSessionFor(data, "prepare", legacySession);
+      delete data.sessions!.implement![step];
+    }
+  }
+  delete data.implementationStarted;
   if (data.phase === "commit" && data.manualReviewPending) {
     const step = String(data.currentStep);
     const legacySession = data.sessions?.commit?.[step];
