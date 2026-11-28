@@ -5,9 +5,13 @@ restricted research tool set. Mode state is session-runtime-local, starts off, a
 
 ## Commands
 
-- `/ro` or `/ro toggle` toggles read-only mode.
+- `/ro`, `/ro toggle`, or **Alt+R** toggles read-only mode.
 - `/ro on` enables it; `/ro off` disables it.
 - `/ro status` reports the current mode.
+
+**Alt+R** works while you are composing a prompt and while Pi is working. It does not edit or
+submit the editor draft. Switching does not cancel tool calls that have already been approved or
+started. On macOS, configure Option as Meta in your terminal if Alt shortcuts are not recognized.
 
 Arguments are case-insensitive. Invalid or extra arguments display usage without changing mode.
 The footer status shows `🚀` when an editing tool is active, `👀` when all active tools are

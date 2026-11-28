@@ -15,8 +15,8 @@ function readToolList(value: unknown, settingName: string): string[] {
 }
 
 /**
- * Adds `/ro` to switch between the initial tool set and a restricted research set.
- * Tool access is configured in the `pi-modes` section of settings.json.
+ * Switches between the initial and read-only tool sets with `/ro` or Alt+R.
+ * The shortcut leaves the editor draft untouched. Tool lists come from settings.json.
  */
 export default function readOnlyModeExtension(pi: ExtensionAPI): void {
   let readOnly = false;
@@ -48,6 +48,10 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
     ctx.ui.notify(`Read-only mode ${readOnly ? "on" : "off"}.`, "info");
   }
 
+  function toggleMode(ctx: ExtensionContext): void {
+    setMode(!readOnly, ctx);
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     const settings = pi.getSettings() as Record<string, unknown>;
     const modesSettings = (settings["pi-modes"] ?? {}) as PiModesSettings;
@@ -77,7 +81,7 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
           setMode(false, ctx);
           return;
         case "toggle":
-          setMode(!readOnly, ctx);
+          toggleMode(ctx);
           return;
         case "status":
           ctx.ui.notify(`Read-only mode is ${readOnly ? "on" : "off"}.`, "info");
@@ -86,6 +90,11 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
           ctx.ui.notify(`${USAGE}\nUnknown argument: ${tokens[0]}`, "warning");
       }
     },
+  });
+
+  pi.registerShortcut("alt+r", {
+    description: "Toggle read-only mode (/ro)",
+    handler: toggleMode,
   });
 
   pi.on("tool_call", async (event, ctx) => {
