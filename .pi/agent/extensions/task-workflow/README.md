@@ -1,10 +1,16 @@
 # Task workflow
 
-**Version: 2.10.0**
+**Version: 2.11.0**
 
 A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-specific context and tool permissions. It guides tasks through research, planning, implementation, and review, using purpose-specific sessions and artifacts to manage context while limiting tool access at each stage.
 
 ## Changelog
+
+### 2.11.0
+
+- Redesigned `/task status` with a task description, phase tools, a phase-specific step
+  checklist, Git information, and the source of explicitly configured phase skills.
+- Added total token usage and estimated cost across saved task sessions.
 
 ### 2.10.0
 
@@ -160,7 +166,7 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task list all`             | Use the same list across indexed projects; also shows broken index entries. |
 | `/task delete [TASK-ID]`    | Delete a project-local task after a separate confirmation. Without an ID, choose from a selector in the terminal UI.                                                                                                                                              |
 | `/task delete --global [ID]` | Select and delete a task across indexed projects after a separate confirmation. An ID is required outside the terminal UI.                                                                                                                                    |
-| `/task status`              | Show the phase, step, session paths, review status, and settings without adding text to the conversation.                                                                                                                                                        |
+| `/task status`              | Show the phase, tools, step checklist, usage, settings, and session paths without adding text to the conversation. |
 | `/task config`              | Show the full effective configuration for the active task without changing it.                                                                                                                                                                                  |
 | `/task config change`       | Edit mode, deletion mode, manual review, and auto-commit in the terminal UI and save them in the active task's `config.json`.                                                                                                                                                  |
 | `/task config init project` | Create `.agents/task-workflow/config.json` with inherited settings; refuses to overwrite an existing file.                                                                                                                                                      |
@@ -170,6 +176,18 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 | `/task next`                | Advance after checking the current discussion. In implementation preparation, finalize the design and begin work. Manual-review findings return to implementation; an empty review proceeds to commit. In commit, verify files or retry Git detection. |
 | `/task accept [NOTE]`       | Agree to pending proposals and advance. In semi-auto manual review, accept the proposed solution; accepted findings return to implementation, otherwise proceed to commit. In Commit, accept differences from review if all reviewed paths are clean, or skip the commit if Git is unavailable. |
 | `/task help`                | Show a short command summary outside the conversation.                                                                                                                                                                                                           |
+
+`/task status` shows up to three lines of the task description, tools for the current phase,
+and workflow settings, starting with Git information. The roadmap checklist appears from step
+preparation through commit, marking completed steps and highlighting the current step. Explicit
+phase skill assignments show the winning configuration scope (`global`, `project`, or `task`).
+`Task session` is where
+the workflow resumes; `Open Pi session` is shown only when it differs.
+
+`Total Usage` covers saved task sessions, for example `~ 1.2M tokens · $3.427`. It includes
+cached tokens and abandoned branches without counting history copied by a fork twice. The dollar
+amount is Pi's recorded cost estimate, not an invoice or subscription charge. If known session
+data is missing or unreadable, the total is marked `(partial)`.
 
 ### Hotkeys
 
@@ -861,4 +879,4 @@ artifacts; step completion is recorded in `state.json`.
 
 ### Tree navigation
 
-`/tree` changes the conversation branch but does not roll task artifacts or project code back. The extension blocks it in task sessions by default. Set `allowTreeNavigation: true` to remove this block; all branches still share the latest artifacts and state. `/task status` shows the setting.
+`/tree` changes the conversation branch but does not roll task artifacts or project code back. The extension blocks it in task sessions by default. Set `allowTreeNavigation: true` to remove this block; all branches still share the latest artifacts and state. `/task config` shows the setting.

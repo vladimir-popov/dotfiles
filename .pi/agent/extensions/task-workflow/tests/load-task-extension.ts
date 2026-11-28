@@ -33,15 +33,20 @@ const hostModules = new Map([
     "@earendil-works/pi-tui",
     `export const truncateToWidth = (value, width) => value.slice(0, width);
     export const visibleWidth = (value) => value.length;
+    export const wrapTextWithAnsi = (value, width) => {
+      const lines = [];
+      for (let i = 0; i < value.length; i += width) lines.push(value.slice(i, i + width));
+      return lines.length ? lines : [""];
+    };
+    export const stripTerminalSequences = (value) => value;
+    export const parseColor = (value) => value;
     export const ${[
       "decodeKittyPrintable",
       "getNativeClipboard",
       "Markdown",
-      "parseColor",
       "Text",
       "matchesKey",
       "sliceByColumn",
-      "stripTerminalSequences",
     ]
       .map((name) => `${name} = () => {}`)
       .join(", ")};`,

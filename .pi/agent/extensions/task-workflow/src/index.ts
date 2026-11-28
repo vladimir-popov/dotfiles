@@ -29,6 +29,8 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
+  type Theme,
+  type ThemeStyle,
 } from "@earendil-works/pi-coding-agent";
 import { uuidv7, type Message } from "@earendil-works/pi-ai";
 import {
@@ -43,6 +45,7 @@ import {
   stripTerminalSequences,
   truncateToWidth,
   visibleWidth,
+  wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
@@ -58,6 +61,7 @@ import {
 import {
   sessionFor,
   setSessionFor,
+  TASK_PHASES,
   type Phase,
   type SessionRefs,
   type TaskState,
@@ -99,6 +103,7 @@ import {
   assertTaskIndexRecordsUnchanged,
 } from "./task-catalog.ts";
 import { parseArguments } from "./task-arguments.ts";
+import { formatTaskUsage } from "./task-usage.ts";
 import {
   createTaskConfig,
   configuredPhaseSkill,
@@ -229,11 +234,12 @@ function phaseActiveTools(
   pi: ExtensionAPI,
   config: Config,
   phase: Phase,
+  inheritedTools?: readonly string[],
 ): string[] {
   if (phase !== "implement") return configuredPhaseTools(pi, config, phase);
   return [
     ...new Set([
-      ...pi.getActiveTools(),
+      ...(inheritedTools ?? pi.getActiveTools()),
       "read",
       "bash",
       "edit",
@@ -272,7 +278,7 @@ const HELP = `Task workflow
                             Enter continues, s shows status, x starts deletion
 /task delete [TASK-ID]      Delete a project-local task
 /task delete --global [ID]  Select and delete a task across projects
-/task status                Show task state, current session, and artifact paths
+/task status                Show task state, usage, current session, and artifact paths
 /task config                Show effective settings for the current task
 /task config change         Change task mode, deletion, manual review, and auto-commit in the terminal UI
 /task config init project   Create a project config with inherited settings
@@ -867,22 +873,39 @@ function taskDisplayState(task: DiscoveredTask, root: string): TaskState {
 }
 
 function taskDescription(state: TaskState): string {
+  const excerpt = taskDescriptionExcerpt(state);
+  if (!excerpt) return "No description yet";
+  return excerpt.length > 90 ? `${excerpt.slice(0, 87)}...` : excerpt;
+}
+
+function taskDescriptionExcerpt(
+  state: TaskState,
+  paragraph = false,
+): string | undefined {
+  const lines: string[] = [];
   try {
     const content = readFileSync(state.contextPath, "utf8");
     for (const line of content.split(/\r?\n/)) {
       const text = line.trim();
-      if (!text || text.startsWith("#") || text === "---") continue;
+      if (!text || text.startsWith("#") || text === "---") {
+        if (lines.length) break;
+        continue;
+      }
+      const listItem = /^([-*+] |\d+\. )/.test(text);
+      if (lines.length && listItem) break;
       const plain = text
         .replace(/^[-*]\s+/, "")
         .replace(/\*\*/g, "")
         .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
         .replace(/\s+/g, " ");
-      if (plain) return plain.length > 90 ? `${plain.slice(0, 87)}...` : plain;
+      if (!plain) continue;
+      lines.push(plain);
+      if (!paragraph || listItem) break;
     }
   } catch {
     /* The task can still be listed without its context. */
   }
-  return "No description yet";
+  return lines.join(" ") || undefined;
 }
 
 function taskLastSessionTime(
@@ -1003,73 +1026,229 @@ function requireTask(
   return linked;
 }
 
-function taskStatusText(
+type StyledArtifact = {
+  text: string;
+  render: (theme: Theme, width: number) => string[];
+  renderTitle: (theme: Theme, width: number) => string;
+};
+
+function taskGitStatus(root: string): [string, string] {
+  if (!hasGitRepository(root)) return ["Git repository", "no"];
+  try {
+    return [
+      "Git branch",
+      git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
+    ];
+  } catch {
+    try {
+      return [
+        "Git branch",
+        `detached HEAD (${git(root, ["rev-parse", "--short", "HEAD"])})`,
+      ];
+    } catch {
+      return ["Git branch", "unknown"];
+    }
+  }
+}
+
+function taskStatus(
   appVersion: string,
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   state: TaskState,
-): string {
+): StyledArtifact {
   const config = effectiveConfig(state);
-  const model = configuredModel(state.phase, state);
-  const phaseStatus =
+  const stateFile = taskStatePath(state);
+  const taskSession = sessionFor(state);
+  const currentSession = ctx.sessionManager.getSessionFile();
+  const link = taskLink(ctx);
+  const attached =
+    link?.id === state.id &&
+    !!link.statePath &&
+    resolve(link.statePath) === resolve(stateFile);
+  const active = attached && sessionMatches(ctx, state);
+  const sessionFiles = sessionReferences(state);
+  if (attached && currentSession) sessionFiles.push(currentSession);
+
+  type Part = { text: string; style: ThemeStyle };
+  const part = (text: string, style: ThemeStyle = {}): Part => ({
+    text: stripTerminalSequences(text).replace(/[\x00-\x1f\x7f]/g, " "),
+    style,
+  });
+  const lines: { parts: Part[]; path?: boolean }[] = [];
+  const line = (...parts: Part[]) => lines.push({ parts });
+  const phase = {
+    fg: parseStatusColor(config.statusColors?.currentPhase ?? "blue"),
+  };
+  const section = { fg: parseColor("#c6aef1"), bold: true };
+  const amber = { fg: parseColor("#f5a623") };
+  const green = { fg: parseColor("#4caf50") };
+  const gray = { fg: parseColor("#888888") };
+  const muted = { fg: "dim" } as const;
+  const title = part(`Task: ${state.id}`, {
+    fg: parseStatusColor(config.statusColors?.taskName ?? "brightGreen"),
+    bold: true,
+  });
+
+  const description = part(taskDescriptionExcerpt(state, true) ?? "").text;
+  const descriptionLines = (width: number): string[] => {
+    if (!description) return [];
+    const wrapped = wrapTextWithAnsi(description, width);
+    if (wrapped.length > 3) {
+      wrapped[2] = `${truncateToWidth(wrapped[2], width - 1, "").trimEnd()}…`;
+      wrapped.length = 3;
+    }
+    return [...wrapped, ""];
+  };
+  const phaseName =
     state.phase === "manual-review" ? "manual review" : state.phase;
-  const lines = [
-    ["Version", appVersion],
-    ["Task", state.id],
-    ["Phase", phaseStatus],
-    ["Current step", String(state.currentStep)],
-    ["Active session", sessionFor(state) || "none"],
-    ["This session", ctx.sessionManager.getSessionFile() || "ephemeral"],
-    ["Sessions directory", sessionDirectory(state)],
-    ["Artifacts", taskDir(state)],
-    ["Git repository", hasGitRepository(state.projectRoot) ? "yes" : "no"],
-    ["Completed steps", state.completedSteps.join(", ") || "none"],
-    ["Awaiting review", state.awaitingReview || "none"],
-    [
-      "Open review findings",
-      state.phase === "review" &&
-      !state.reviewPending &&
-      existsSync(reviewPath(state, state.currentStep))
-        ? openReviewFindings(state, state.currentStep)
-        : state.reviewPending
-          ? "review artifact pending"
-          : "none",
+  line(part(`Phase: ${phaseName}`, { ...phase, bold: true }));
+  const tools = phaseActiveTools(
+    pi,
+    config,
+    state.phase,
+    active ? pi.getActiveTools() : [],
+  );
+  line(
+    part("Phase tools:", { ...phase, bold: true }),
+    part(` ${tools.join(", ") || "none"}`, phase),
+  );
+  if (attached && !active)
+    line(
+      part(
+        "Tools are disabled in this session. Open the task to use its phase tools.",
+        muted,
+      ),
+    );
+
+  if (STEP_PHASES.includes(state.phase)) {
+    line();
+    line(part("Steps:", { ...amber, bold: true }));
+    try {
+      for (const { number, title } of roadmapSteps(state)) {
+        const current = number === state.currentStep;
+        const done = state.completedSteps.includes(number);
+        const bg = current ? parseColor("#3b322a") : undefined;
+        line(
+          part("  ", { bg }),
+          part(current ? "➤" : done ? "☑" : "☐", {
+            ...(current ? amber : done ? green : gray),
+            bg,
+          }),
+          part(
+            ` Step ${number}${title ? `: ${title}` : ""}${current ? "  " : ""}`,
+            { bold: current, bg },
+          ),
+        );
+      }
+    } catch {
+      line(part("  Roadmap unavailable", muted));
+    }
+  }
+
+  line();
+  line(
+    part(
+      `Total Usage: ${formatTaskUsage(sessionDirectory(state), sessionFiles)}`,
+      {
+        fg: parseColor("#7edad0"),
+        bold: true,
+      },
+    ),
+  );
+  line();
+  for (const [label, value] of [
+    taskGitStatus(state.projectRoot),
+    ["Mode", config.mode ?? "manual"],
+    ["Manual review (semi-auto)", (config.manualReview ?? true) ? "on" : "off"],
+    ["Auto-commit", config.autoCommit ? "on" : "off"],
+  ])
+    line(part(`${label}:`, section), part(` ${value}`, muted));
+
+  const skillScopes = [
+    ["task", readScopedConfig(taskConfigPath(state)).skills],
+    ["project", readScopedConfig(projectConfigPath(state.projectRoot)).skills],
+    ["global", readConfig().skills],
+  ] as const;
+  const skills = TASK_PHASES.flatMap((phase) => {
+    const source = skillScopes.find(
+      ([, skills]) => skills?.[phase] !== undefined,
+    );
+    return source
+      ? [{ phase, scope: source[0], skill: source[1]?.[phase] }]
+      : [];
+  });
+  if (skills.length) {
+    line();
+    line(part("Configured phase skills:", section));
+    for (const { phase, scope, skill } of skills) {
+      line(
+        part(`  ${phase}: ${skill ?? "disabled"}`),
+        part(` (${scope})`, muted),
+      );
+    }
+  }
+
+  const pathLine = (label: string, path: string) => {
+    const home = homedir();
+    const display = path.startsWith(`${home}${sep}`)
+      ? `~${path.slice(home.length)}`
+      : path;
+    line(part(`${label}:`, section));
+    lines.push({ parts: [part(display, muted)], path: true });
+  };
+  line();
+  if (
+    !taskSession ||
+    !currentSession ||
+    resolve(taskSession) !== resolve(currentSession)
+  ) {
+    if (currentSession || taskSession)
+      pathLine("Open Pi session", currentSession || "ephemeral");
+  }
+  pathLine("Task session", taskSession || "none");
+  pathLine("Task state", stateFile);
+  line();
+  line(part(`Version: ${appVersion}`, muted));
+
+  const styled = (theme: Theme, { text, style }: Part) =>
+    theme.style(text, style);
+  return {
+    text: [
+      title.text,
+      ...descriptionLines(90),
+      ...lines.map(({ parts, path }) =>
+        ((path ? "  " : "") + parts.map(({ text }) => text).join("")).trimEnd(),
+      ),
+    ].join("\n"),
+    render: (theme, width) => [
+      ...descriptionLines(width),
+      ...lines.flatMap(({ parts, path }) => {
+        if (path) {
+          // Wrap before indenting: a long path is a single word, and wrapping
+          // it together with leading spaces can produce an empty first row.
+          const indent = width > 2 ? "  " : "";
+          const [span] = parts;
+          return wrapTextWithAnsi(span.text, width - indent.length).map(
+            (text) => indent + styled(theme, { ...span, text }),
+          );
+        }
+        return parts.length
+          ? wrapTextWithAnsi(
+              parts.map((span) => styled(theme, span)).join(""),
+              width,
+            )
+          : [""];
+      }),
     ],
-    [
-      "Commit result",
-      state.phase === "commit"
-        ? state.commitReady
-          ? "ready"
-          : "pending"
-        : "none",
-    ],
-    [
-      "Pending commit files",
-      state.commitPendingFiles?.join(", ") ||
-        (state.phase === "commit" || state.phase === "manual-review"
-          ? state.pendingFiles?.join(", ")
-          : undefined) ||
-        "none",
-    ],
-    ["Phase skill", configuredPhaseSkill(config, state.phase) ?? "(disabled)"],
-    ["Mode", effectiveSetting(state, "mode")],
-    [
-      "Manual review (semi-auto)",
-      effectiveSetting(state, "manualReview") ? "on" : "off",
-    ],
-    ["Auto-commit", effectiveSetting(state, "autoCommit") ? "on" : "off"],
-    ["/tree", config.allowTreeNavigation === true ? "allowed" : "blocked"],
-    [
-      "Phase model",
-      model ? `${model.provider}/${model.model}` : "Inherited Pi model",
-    ],
-    ["Research tools available", researchAllowedTools(pi).join(", ") || "none"],
-    [
-      "Snapshot limits",
-      `${config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES} files, ${config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB} MiB`,
-    ],
-  ];
-  return lines.map(([label, value]) => `**${label}:** \`${value}\``).join("\n");
+    renderTitle: (theme, width) => {
+      const text = truncateToWidth(styled(theme, title), width);
+      return (
+        " ".repeat(Math.max(0, Math.floor((width - visibleWidth(text)) / 2))) +
+        text
+      );
+    },
+  };
 }
 
 function noteReviewArtifactWritten(
@@ -1125,20 +1304,30 @@ function writeArtifact(
   return path;
 }
 
-function stepCount(state: TaskState): number {
+function roadmapSteps(state: TaskState): { number: number; title: string }[] {
   const text = readFileSync(roadmapPath(state), "utf8");
-  const numbers = [...text.matchAll(/^([1-9]\d*)\.[ \t]+(?=\S)/gm)].map(
-    (match) => Number(match[1]),
+  const steps = [...text.matchAll(/^([1-9]\d*)\.[ \t]+(\S[^\r\n]*)/gm)].map(
+    ([, number, content]) => ({
+      number: Number(number),
+      title: (
+        content.match(/^\*\*(.+?)\*\*/)?.[1] ??
+        content.split(/\s+[-–—]\s+/, 1)[0]
+      ).trim(),
+    }),
   );
   if (
-    !numbers.length ||
-    numbers.some((number, index) => number !== index + 1)
+    !steps.length ||
+    steps.some(({ number }, index) => number !== index + 1)
   ) {
     throw new Error(
       "roadmap.md must contain a top-level numbered list with consecutive steps starting at 1.",
     );
   }
-  return numbers.length;
+  return steps;
+}
+
+function stepCount(state: TaskState): number {
+  return roadmapSteps(state).length;
 }
 
 function reviewFindingSections(report: string): string[] {
@@ -1655,15 +1844,21 @@ An open question is a material uncertainty that still needs user input after app
 async function showArtifact(
   ctx: ExtensionContext,
   title: string,
-  content: string,
+  content: string | StyledArtifact,
 ): Promise<void> {
   if (ctx.mode !== "tui") {
-    ctx.ui.notify(`${title}\n\n${content}`, "info");
+    ctx.ui.notify(
+      `${title}\n\n${typeof content === "string" ? content : content.text}`,
+      "info",
+    );
     return;
   }
   await ctx.ui.custom<void>(
     (tui, theme, _keys, done) => {
-      const markdown = new Markdown(content, 0, 0, getMarkdownTheme());
+      const markdown =
+        typeof content === "string"
+          ? new Markdown(content, 0, 0, getMarkdownTheme())
+          : undefined;
       type Point = { line: number; column: number };
       type Selection = { anchor: Point; focus: Point };
       let scroll = 0;
@@ -1760,7 +1955,10 @@ async function showArtifact(
       return {
         render(width: number): string[] {
           const inner = Math.max(1, width - 4);
-          const lines = markdown.render(inner);
+          const lines =
+            typeof content === "string"
+              ? markdown!.render(inner)
+              : content.render(theme, inner);
           const height = Math.max(1, Math.floor(tui.terminal.rows * 0.75) - 4);
           innerWidth = inner;
           markdownLines = lines;
@@ -1774,7 +1972,11 @@ async function showArtifact(
           };
           return [
             theme.fg("accent", `┌${"─".repeat(Math.max(0, width - 2))}┐`),
-            row(theme.bold(title)),
+            row(
+              typeof content === "string"
+                ? theme.bold(title)
+                : content.renderTitle(theme, inner),
+            ),
             ...visibleLines.map((line, index) =>
               row(selectedLine(line, scroll + index)),
             ),
@@ -1849,7 +2051,7 @@ async function showArtifact(
           tui.requestRender();
         },
         invalidate(): void {
-          markdown.invalidate();
+          markdown?.invalidate();
         },
       };
     },
@@ -1870,7 +2072,7 @@ async function inspectTask(
     await showArtifact(
       ctx,
       "Task status",
-      taskStatusText(appVersion, pi, ctx, state),
+      taskStatus(appVersion, pi, ctx, state),
     );
     return;
   }
@@ -2190,8 +2392,8 @@ function treeMatches(
   return sourceContent.equals(destinationContent);
 }
 
-function sessionReferencesExist(state: TaskState): boolean {
-  const files = [
+function sessionReferences(state: TaskState): string[] {
+  return [
     state.sessions?.research,
     state.sessions?.roadmap,
     state.interruptedSession,
@@ -2201,7 +2403,10 @@ function sessionReferencesExist(state: TaskState): boolean {
     ...Object.values(state.sessions?.commit || {}),
     ...Object.values(state.sessions?.review || {}).flat(),
   ].filter((file): file is string => !!file);
-  return files.every((file) => existsSync(file));
+}
+
+function sessionReferencesExist(state: TaskState): boolean {
+  return sessionReferences(state).every((file) => existsSync(file));
 }
 
 function sessionMatches(ctx: ExtensionContext, state: TaskState): boolean {
@@ -4757,14 +4962,9 @@ export default function taskExtension(
                 row.kind !== "task" ||
                 row.task.layout === "historical" ||
                 row.task.relocatedFrom
-                  ? row.label
-                  : taskStatusText(appVersion, pi, ctx, row.task.state);
-              const location = `**State or index path:** \`${taskListRowPath(row)}\``;
-              await showArtifact(
-                ctx,
-                "Task status",
-                `${location}\n\n${detail}`,
-              );
+                  ? `**State or index path:** \`${taskListRowPath(row)}\`\n\n${row.label}`
+                  : taskStatus(appVersion, pi, ctx, row.task.state);
+              await showArtifact(ctx, "Task status", detail);
               continue;
             }
             if (!ctx.isIdle()) {

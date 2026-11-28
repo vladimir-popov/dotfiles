@@ -106,9 +106,14 @@ function fixture(
   const shortcutHandlers = new Map<string, Shortcut["handler"]>();
   const artifactChoices: string[][] = [];
   const overlays: boolean[] = [];
+  const overlayStyleCalls: Array<
+    [string, { fg?: unknown; bg?: unknown; bold?: boolean }]
+  > = [];
+  const statusScreens: string[][] = [];
   const listScreens: string[][] = [];
   const listInputs: string[][] = [];
   let uiMode: "print" | "tui" = "print";
+  let renderStatus = false;
   let idle = true;
   let editorText = "";
   const state = (): State => JSON.parse(readFileSync(statePath, "utf8"));
@@ -230,6 +235,11 @@ function fixture(
           theme: {
             fg(key: string, value: string): string;
             inverse(value: string): string;
+            bold(value: string): string;
+            style(
+              value: string,
+              options: { fg?: unknown; bg?: unknown; bold?: boolean },
+            ): string;
           },
           keys: { matches(input: string, key: string): boolean },
           done: (value: unknown) => void,
@@ -239,8 +249,30 @@ function fixture(
         },
         options: { overlay?: boolean },
       ) {
+        const theme = {
+          fg: (_key: string, value: string) => value,
+          inverse: (value: string) => value,
+          bold: (value: string) => value,
+          style: (
+            value: string,
+            options: { fg?: unknown; bg?: unknown; bold?: boolean },
+          ) => {
+            overlayStyleCalls.push([value, options]);
+            return value;
+          },
+        };
         if (options.overlay) {
           overlays.push(options.overlay);
+          if (renderStatus) {
+            const component = factory(
+              { terminal: { rows: 60 }, requestRender() {} },
+              theme,
+              { matches: () => false },
+              () => {},
+            );
+            statusScreens.push(component.render(100));
+            assert.ok(component.render(30).every((line) => line.length === 30));
+          }
           return;
         }
         const inputs = listInputs.shift();
@@ -249,7 +281,7 @@ function fixture(
         let closed = false;
         const component = factory(
           { terminal: { rows: 24 }, requestRender() {} },
-          { fg: (_key, value) => value, inverse: (value) => value },
+          theme,
           { matches: (input, key) => key === `tui.select.${input}` },
           (value) => {
             selection = value;
@@ -365,16 +397,17 @@ function fixture(
     writeArtifact("step-1.md", "# Preparation draft\n");
     const linkPhase = phase === "complete" ? "commit" : phase;
     const file = join(runtime, `${linkPhase}.jsonl`);
+    const step = more.currentStep ?? 1;
     const refs =
       linkPhase === "research" || linkPhase === "roadmap"
         ? { [linkPhase]: file }
         : linkPhase === "manual-review" || linkPhase === "review"
           ? {
               [linkPhase === "manual-review" ? "manualReview" : "review"]: {
-                "1": [file],
+                [step]: [file],
               },
             }
-          : { [linkPhase]: { "1": file } };
+          : { [linkPhase]: { [step]: file } };
     writeState({ phase, sessions: refs, ...more });
     writeFileSync(
       file,
@@ -382,7 +415,7 @@ function fixture(
         {
           type: "custom",
           customType: "task-workflow-link",
-          data: { id, statePath, phase: linkPhase, step: 1 },
+          data: { id, statePath, phase: linkPhase, step },
         },
         {
           type: "custom_message",
@@ -442,6 +475,12 @@ function fixture(
     shortcuts,
     artifactChoices,
     overlays,
+    overlayStyleCalls,
+    statusScreens,
+    renderStatusOverlays() {
+      renderStatus = true;
+      uiMode = "tui";
+    },
     listScreens,
     setListInputs: (...inputs: string[][]) => {
       uiMode = "tui";
@@ -706,20 +745,153 @@ it("shows status and Markdown by command while busy without repairing task state
   mkdirSync(dirname(file));
   renameSync(saved, file);
   await f.open(file);
+  writeFileSync(
+    file,
+    [
+      { type: "session", version: 3 },
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: {
+            input: 200_000,
+            output: 10_000,
+            cacheRead: 1_000_000,
+            cacheWrite: 0,
+            cost: { total: 3.427 },
+          },
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
   f.writeState({ phase: "research" });
   const state = readFileSync(f.statePath, "utf8");
   f.setBusy();
 
   await f.run("status");
+  assert.match(f.notices.at(-1) ?? "", /Task status[\s\S]*Phase: research/);
   assert.match(
     f.notices.at(-1) ?? "",
-    /Task status[\s\S]*\*\*Phase:\*\* `research`/,
+    /Total Usage: ~ 1\.2M tokens · \$3\.427/,
+  );
+  assert.doesNotMatch(f.notices.at(-1) ?? "", /\bSteps:/);
+  assert.match(
+    f.notices.at(-1) ?? "",
+    /Open Pi session:\n  [^\n]+\nTask session:\n  none\nTask state:/,
   );
   await f.run("show note.md");
   assert.equal(f.notices.at(-1), `note.md\n\n${noteMarker}`);
   assert.equal(readFileSync(f.statePath, "utf8"), state);
   assert.deepEqual(f.messages, []);
   assert.deepEqual(f.modelCalls, []);
+});
+
+it("renders the grouped and colored status for preparation", async (t) => {
+  const f = fixture(t);
+  const file = f.savedPhase("prepare", { currentStep: 2, completedSteps: [1] });
+  f.writeArtifact(
+    "context.md",
+    `# Context\n\nKeep decisions across phases.\n${"More detail about the workflow. ".repeat(12)}\n`,
+  );
+  f.writeArtifact(
+    "roadmap.md",
+    "1. **First** — Details\n2. **Second** — Details\n3. Third — Details\n",
+  );
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({
+      skills: { roadmap: "make-roadmap", review: "global-review" },
+    }),
+  );
+  writeFileSync(
+    join(dirname(dirname(f.statePath)), "config.json"),
+    JSON.stringify({ skills: { review: "project-review" } }),
+  );
+  writeFileSync(
+    join(dirname(f.statePath), "config.json"),
+    JSON.stringify({ skills: { prepare: null } }),
+  );
+  await f.open(file);
+  f.renderStatusOverlays();
+  await f.run("status");
+
+  const screen = f.statusScreens.at(-1);
+  assert.ok(screen);
+  const title = `Task: ${id}`;
+  assert.equal(
+    screen[1].indexOf(title),
+    2 + Math.floor((96 - title.length) / 2),
+  );
+  const text = screen.map((line) => line.slice(2, -2).trimEnd()).join("\n");
+  assert.match(
+    text,
+    /Keep decisions across phases\. More detail[^\n]*\n[^\n]+\n[^\n]+…\n\nPhase: prepare\nPhase tools: read, grep, find, ls, task_write_artifact/,
+  );
+  assert.match(
+    text,
+    /Steps:\n  ☑ Step 1: First\n  ➤ Step 2: Second\n  ☐ Step 3: Third\n\nTotal Usage:/,
+  );
+  assert.match(
+    text,
+    /Total Usage:[^\n]*\n\nGit repository: no\nMode: manual\nManual review \(semi-auto\): on\nAuto-commit: off/,
+  );
+  assert.match(
+    text,
+    /Configured phase skills:\n  roadmap: make-roadmap \(global\)\n  prepare: disabled \(task\)\n  review: project-review \(project\)/,
+  );
+  assert.match(text, /Task session:[\s\S]*Task state:[\s\S]*Version:/);
+  assert.doesNotMatch(text, /Open Pi session:|global-review/);
+  const styles = new Map(f.overlayStyleCalls);
+  assert.equal(
+    styles.get("Phase: prepare")?.fg,
+    styles.get("Phase tools:")?.fg,
+  );
+  assert.equal(styles.get("Steps:")?.fg, styles.get("➤")?.fg);
+  assert.equal(styles.get(" Step 2: Second  ")?.bold, true);
+  assert.ok(styles.get(" Step 2: Second  ")?.bg);
+  assert.equal(styles.get("Mode:")?.fg, styles.get("Task session:")?.fg);
+  assert.equal(styles.get("Git repository:")?.fg, styles.get("Mode:")?.fg);
+  assert.equal(styles.get(" manual")?.fg, "dim");
+});
+
+it("shows the Git branch above Mode and hides the checklist on Roadmap and Complete", async (t) => {
+  const f = fixture(t);
+  execFileSync("git", ["init", "-q", "-b", "feature/status"], { cwd: f.cwd });
+  await f.open(f.savedPhase("roadmap"));
+  await f.run("status");
+  const planning = f.notices.at(-1) ?? "";
+  assert.match(planning, /Git branch: feature\/status\nMode: manual/);
+  assert.doesNotMatch(
+    planning,
+    /\bSteps:|Git repository:|Configured phase skills:/,
+  );
+
+  const archived = f.savedPhase("complete", { completedSteps: [1] });
+  await f.run("status");
+  const complete = f.notices.at(-1) ?? "";
+  assert.match(complete, /Phase: complete/);
+  assert.doesNotMatch(complete, /\bSteps:|☑|➤|Current step:|Completed steps:/);
+  assert.ok(complete.includes(archived));
+  assert.match(
+    complete,
+    /Open Pi session:[\s\S]*Task session:[\s\S]*Task state:/,
+  );
+
+  f.renderStatusOverlays();
+  await f.run("status");
+  const screen = f.statusScreens
+    .at(-1)
+    ?.map((row) => row.slice(2, -2).trimEnd());
+  assert.ok(screen);
+  const sessionLabel = screen.indexOf("Task session:");
+  const stateLabel = screen.indexOf("Task state:");
+  assert.ok(screen.indexOf("Open Pi session:") < sessionLabel);
+  assert.ok(stateLabel > sessionLabel + 2, "the long session path wraps");
+  const pathRows = screen.slice(sessionLabel + 1, stateLabel);
+  assert.ok(pathRows.every((row) => /^  \S/.test(row)));
+  assert.equal(pathRows.map((row) => row.slice(2)).join(""), archived);
 });
 
 it("opens the inspection views from shortcuts while busy without clearing the draft", async (t) => {
