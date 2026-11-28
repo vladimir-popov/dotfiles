@@ -8,9 +8,25 @@ A [Pi](https://pi.dev/) extension for LLM-assisted coding tasks with phase-speci
 
 ### 2.11.0
 
-- Redesigned `/task status` with a task description, phase tools, a phase-specific step
-  checklist, Git information, and the source of explicitly configured phase skills.
-- Added total token usage and estimated cost across saved task sessions.
+- Split step preparation into its own phase and saved session. Implementation starts only
+  after the design is approved and the baseline is saved. Review findings return directly
+  to the existing implementation session.
+- Added a configurable automated-review checkpoint after two repair returns by default.
+  Users can continue, revisit the design, or defer named nonblocking findings. Follow-up
+  reviews focus on changes since the previous round, with the full step diff still available.
+- Standardized phase prompts and default skills, with scoped overrides and explicit disabling.
+  Phase tool restrictions now apply on session open; `/ro` and Alt+R cannot override them.
+- Simplified commit drafting to plain text and allowed title-only auto-commits. In manual
+  Commit, `/task accept` can keep intentional differences from review once all reviewed
+  paths are clean; `/task next` still stops on those differences.
+- Unified task browsing under `/task list` (current project) and `/task list all` (indexed
+  projects), replacing `/task browse`. The interactive list sorts by session recency and
+  supports resuming, inspecting status, and confirmed deletion or broken-index cleanup.
+- Redesigned `/task status` to show the description, phase tools, step progress where relevant,
+  Git information, and the source of explicit skill settings. It reports total tokens and
+  estimated cost across saved task sessions, marking incomplete totals as `(partial)`.
+- Made `/task status`, `/task show`, and their shortcuts available while Pi is working,
+  without altering task state or clearing the editor draft.
 
 ### 2.10.0
 
