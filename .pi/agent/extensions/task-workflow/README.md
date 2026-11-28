@@ -166,7 +166,11 @@ Describe the task over ordinary messages. Use `/task next` when the current disc
 
 ### Hotkeys
 
-The extension binds **Alt+N** to `/task next`, **Alt+A** to `/task accept`, **Alt+S** to `/task status`, and **Alt+W** to `/task show` by default. They invoke the same commands and checks as the slash forms. Hotkeys work when Pi is idle and the input editor is empty; otherwise the extension shows a reminder and leaves the draft untouched. Run Pi's `/hotkeys` to inspect active bindings. On macOS, your terminal may need Option configured as Meta for Alt shortcuts to work.
+The extension binds **Alt+N** to `/task next`, **Alt+A** to `/task accept`, **Alt+S** to
+`/task status`, and **Alt+W** to `/task show` by default. Status and Show work while Pi is
+working, and their shortcuts leave any unsent draft untouched. Other task shortcuts require Pi
+to be idle and the editor to be empty. Run Pi's `/hotkeys` to inspect active bindings. On macOS,
+your terminal may need Option configured as Meta for Alt shortcuts to work.
 
 `/task show` and Alt+W open a selector containing the existing `.md` files directly in the task
 artifact directory, including review rounds for active steps. `/task show roadmap.md` opens one

@@ -31,6 +31,7 @@ const roadmap = "1. **Update value** — Update the example.\n";
 type Host = Parameters<typeof taskExtension>[0];
 type Handler = Parameters<Host["registerCommand"]>[1]["handler"];
 type CommandContext = Parameters<Handler>[1];
+type Shortcut = Parameters<Host["registerShortcut"]>[1];
 type ArtifactTool = Parameters<Host["registerTool"]>[0];
 type Phase =
   | "research"
@@ -97,6 +98,12 @@ function fixture(
     writeFileSync(join(runtime, "config.json"), JSON.stringify(startup.task));
   }
   const shortcuts: [string, string][] = [];
+  const shortcutHandlers = new Map<string, Shortcut["handler"]>();
+  const artifactChoices: string[][] = [];
+  const overlays: boolean[] = [];
+  let uiMode: "print" | "tui" = "print";
+  let idle = true;
+  let editorText = "";
   const state = (): State => JSON.parse(readFileSync(statePath, "utf8"));
   const writeState = (values: State) =>
     writeFileSync(
@@ -156,8 +163,9 @@ function fixture(
     registerTool(tool: ArtifactTool) {
       if (tool.name === "task_write_artifact") artifactTool = tool;
     },
-    registerShortcut(key: string, definition: { description: string }) {
+    registerShortcut(key: string, definition: Shortcut) {
       shortcuts.push([key, definition.description]);
+      shortcutHandlers.set(key, definition.handler);
     },
     registerCommand(command: string, definition: { handler: Handler }) {
       if (command === "task") handler = definition.handler;
@@ -172,8 +180,10 @@ function fixture(
   } as unknown as Host);
   const ctx = {
     cwd,
-    mode: "print",
-    isIdle: () => true,
+    get mode() {
+      return uiMode;
+    },
+    isIdle: () => idle,
     model: { contextWindow: 128_000, maxTokens: 4096 },
     getSystemPromptOptions: () => ({
       skills: [
@@ -181,6 +191,14 @@ function fixture(
       ],
     }),
     ui: {
+      getEditorText: () => editorText,
+      async select(_title: string, options: string[]) {
+        artifactChoices.push(options);
+        return "note.md";
+      },
+      async custom(_factory: unknown, options: { overlay: boolean }) {
+        overlays.push(options.overlay);
+      },
       async confirm(title: string, description: string) {
         confirmations.push({ title, description });
         return false;
@@ -346,6 +364,19 @@ function fixture(
     contextPath,
     configPath,
     shortcuts,
+    artifactChoices,
+    overlays,
+    setBusy: (mode: "print" | "tui" = "print") => {
+      idle = false;
+      uiMode = mode;
+      editorText = "Unsent draft";
+    },
+    editorText: () => editorText,
+    async pressShortcut(key: string) {
+      const shortcut = shortcutHandlers.get(key);
+      assert.ok(shortcut);
+      await shortcut(ctx as unknown as CommandContext);
+    },
     state,
     statePath,
     writeState,
@@ -572,6 +603,45 @@ it("registers global startup shortcut overrides and ignores project and task bin
     ["alt+a", "/task accept"],
     ["alt+w", "/task show"],
   ]);
+});
+
+it("shows status and Markdown by command while busy without repairing task state", async (t) => {
+  const f = fixture(t);
+  const saved = f.savedPhase("research");
+  const file = join(dirname(f.statePath), "sessions", "research.jsonl");
+  mkdirSync(dirname(file));
+  renameSync(saved, file);
+  await f.open(file);
+  f.writeState({ phase: "research" });
+  const state = readFileSync(f.statePath, "utf8");
+  f.setBusy();
+
+  await f.run("status");
+  assert.match(
+    f.notices.at(-1) ?? "",
+    /Task status[\s\S]*\*\*Phase:\*\* `research`/,
+  );
+  await f.run("show note.md");
+  assert.equal(f.notices.at(-1), `note.md\n\n${noteMarker}`);
+  assert.equal(readFileSync(f.statePath, "utf8"), state);
+  assert.deepEqual(f.messages, []);
+  assert.deepEqual(f.modelCalls, []);
+});
+
+it("opens the inspection views from shortcuts while busy without clearing the draft", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("research"));
+  f.setBusy("tui");
+  await f.pressShortcut("alt+s");
+  await f.pressShortcut("alt+w");
+  assert.deepEqual(f.overlays, [true, true]);
+  assert.equal(f.artifactChoices.length, 1);
+  assert.ok(f.artifactChoices[0].includes("note.md"));
+  assert.equal(f.editorText(), "Unsent draft");
+  await f.pressShortcut("alt+n");
+  assert.match(f.notices.at(-1) ?? "", /Wait for Pi to finish/);
+  assert.deepEqual(f.messages, []);
+  assert.deepEqual(f.modelCalls, []);
 });
 
 it("discovers an indexed task but refuses to advance it from an archived session", async (t) => {

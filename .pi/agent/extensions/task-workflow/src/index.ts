@@ -959,6 +959,7 @@ function requireTask(
     link.phase === linked.phase ||
     ((link.phase as string) === "collect" && linked.phase === "research");
   if (
+    maintainLegacyFiles &&
     !sessionFor(linked) &&
     currentSession &&
     existsSync(currentSession) &&
@@ -1580,7 +1581,7 @@ An open question is a material uncertainty that still needs user input after app
 }
 
 async function showArtifact(
-  ctx: ExtensionCommandContext,
+  ctx: ExtensionContext,
   title: string,
   content: string,
 ): Promise<void> {
@@ -1782,6 +1783,53 @@ async function showArtifact(
     },
     { overlay: true, overlayOptions: { anchor: "center", width: "85%" } },
   );
+}
+
+async function inspectTask(
+  appVersion: string,
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  command: "show" | "status",
+  args: string[],
+): Promise<void> {
+  const state = requireTask(ctx, false);
+  if (command === "status") {
+    if (args.length) throw new Error("Usage: /task status");
+    await showArtifact(
+      ctx,
+      "Task status",
+      taskStatusText(appVersion, pi, ctx, state),
+    );
+    return;
+  }
+  if (args.length > 1) throw new Error("Usage: /task show [FILE.md]");
+  const files = markdownArtifacts(state);
+  if (!files.length) {
+    await showArtifact(ctx, "Task artifacts", "No Markdown artifacts found.");
+    return;
+  }
+  const name =
+    args[0] ||
+    (ctx.mode === "tui"
+      ? await ctx.ui.select("Show task artifact:", files)
+      : undefined);
+  if (!name) {
+    if (ctx.mode !== "tui")
+      await showArtifact(
+        ctx,
+        "Task artifacts",
+        files.map((file) => `- ${file}`).join("\n"),
+      );
+    return;
+  }
+  if (!files.includes(name))
+    throw new Error(
+      `Markdown artifact ${name} was not found. Use /task show to choose an available file.`,
+    );
+  const path = join(taskDir(state), name);
+  if (!lstatSync(path).isFile())
+    throw new Error(`Artifact is no longer a regular file: ${path}`);
+  await showArtifact(ctx, name, readFileSync(path, "utf8"));
 }
 
 function stepTitle(
@@ -3729,24 +3777,31 @@ export default function taskExtension(
   pi: ExtensionAPI,
 ): void {
   for (const { command, key } of configuredHotkeys()) {
+    const [action, ...shortcutArgs] = parseArguments(command);
     pi.registerShortcut(key, {
       description: `/task ${command}`,
-      handler: (ctx) => {
-        if (!ctx.isIdle()) {
-          if (command === "status") {
-            try {
-              ctx.ui.notify(
-                `Task status\n\n${taskStatusText(appVersion, pi, ctx, requireTask(ctx, false))}`,
-                "info",
-              );
-            } catch (error) {
-              ctx.ui.notify(
-                error instanceof Error ? error.message : String(error),
-                "warning",
-              );
-            }
-            return;
+      handler: async (ctx) => {
+        if (
+          !action?.quoted &&
+          (action?.value === "show" || action?.value === "status")
+        ) {
+          try {
+            await inspectTask(
+              appVersion,
+              pi,
+              ctx,
+              action.value,
+              shortcutArgs.map((arg) => arg.value),
+            );
+          } catch (error) {
+            ctx.ui.notify(
+              error instanceof Error ? error.message : String(error),
+              "warning",
+            );
           }
+          return;
+        }
+        if (!ctx.isIdle()) {
           ctx.ui.notify(
             `⚠️ Wait for Pi to finish before using /task ${command}.`,
             "warning",
@@ -4842,51 +4897,11 @@ export default function taskExtension(
             );
           return;
         }
-        const state = acceptState ?? requireTask(ctx, command !== "status");
-        if (command === "status") {
-          if (args.length) throw new Error("Usage: /task status");
-          await showArtifact(
-            ctx,
-            "Task status",
-            taskStatusText(appVersion, pi, ctx, state),
-          );
+        if (command === "status" || command === "show") {
+          await inspectTask(appVersion, pi, ctx, command, args);
           return;
         }
-        if (command === "show") {
-          if (args.length > 1) throw new Error("Usage: /task show [FILE.md]");
-          const files = markdownArtifacts(state);
-          if (!files.length) {
-            await showArtifact(
-              ctx,
-              "Task artifacts",
-              "No Markdown artifacts found.",
-            );
-            return;
-          }
-          const name =
-            args[0] ||
-            (ctx.mode === "tui"
-              ? await ctx.ui.select("Show task artifact:", files)
-              : undefined);
-          if (!name) {
-            if (ctx.mode !== "tui")
-              await showArtifact(
-                ctx,
-                "Task artifacts",
-                files.map((file) => `- ${file}`).join("\n"),
-              );
-            return;
-          }
-          if (!files.includes(name))
-            throw new Error(
-              `Markdown artifact ${name} was not found. Use /task show to choose an available file.`,
-            );
-          const path = join(taskDir(state), name);
-          if (!lstatSync(path).isFile())
-            throw new Error(`Artifact is no longer a regular file: ${path}`);
-          await showArtifact(ctx, name, readFileSync(path, "utf8"));
-          return;
-        }
+        const state = acceptState ?? requireTask(ctx);
         if (command === "next" || command === "accept") {
           transitionStatus = true;
           ctx.ui.setStatus(
