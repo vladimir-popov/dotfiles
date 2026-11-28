@@ -48,6 +48,18 @@ export type TaskState = {
   commitResult?: string;
   reviewRound?: number;
   reviewPending?: boolean;
+  /** Name of the latest round's snapshot directory inside the step baseline. */
+  reviewSnapshot?: string;
+  /** The current round has a delta and a preceding report to review against. */
+  reviewFocused?: boolean;
+  /** Repair returns under the current approved design, not the review round number. */
+  reviewRepairReturns?: number;
+  /** A paused review cannot advance until the user chooses a checkpoint action. */
+  reviewPaused?: boolean;
+  /** Exact finding headings the user explicitly deferred on this step. */
+  reviewDeferredFindings?: string[];
+  /** Recheck the full step after approving a revised design. */
+  reviewNeedsFull?: boolean;
   interruptedSession?: string;
   sessions?: SessionRefs;
 };

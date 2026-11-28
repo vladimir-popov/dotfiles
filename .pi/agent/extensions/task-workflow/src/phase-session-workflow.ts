@@ -46,7 +46,13 @@ export function createPhaseSessionWorkflow<Context, Fresh>(
     const previous = JSON.parse(JSON.stringify(state)) as TaskState;
     const parent = ports.currentFile(ctx);
     const file =
-      existing || ports.createPhaseSession(state, phase, step, parent);
+      existing ||
+      ports.createPhaseSession(
+        { ...state, ...destinationUpdates },
+        phase,
+        step,
+        parent,
+      );
     Object.assign(state, destinationUpdates);
     state.phase = phase;
     state.currentStep = step;

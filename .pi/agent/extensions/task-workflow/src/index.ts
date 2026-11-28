@@ -103,6 +103,7 @@ import {
   createTaskConfig,
   configuredPhaseSkill,
   DEFAULT_HOTKEYS,
+  DEFAULT_REVIEW_CYCLES_BEFORE_PAUSE,
   DEFAULT_SNAPSHOT_MAX_FILES,
   DEFAULT_SNAPSHOT_MAX_MIB,
   effectivePhaseSkills,
@@ -114,7 +115,11 @@ import {
   type PhaseModel,
   type ToolPhase,
 } from "./task-config.ts";
-import { PHASE_DEFINITIONS, RESEARCH_CONTEXT_RULE } from "./phase-prompts.ts";
+import {
+  PHASE_DEFINITIONS,
+  RESEARCH_CONTEXT_RULE,
+  reviewRoundScope,
+} from "./phase-prompts.ts";
 import {
   applyTaskArtifact,
   artifactPath,
@@ -137,6 +142,7 @@ import {
   type Baseline,
   changedPaths,
   captureBaseline,
+  captureReviewSnapshot,
   loadBaseline,
   implementationDiff,
   reviewFileHash,
@@ -177,6 +183,7 @@ const ARTIFACT_LANGUAGE_RULE =
 const KICKOFF_TYPE = "task-workflow-kickoff";
 const REPAIR_KICKOFF_TYPE = "task-workflow-repair";
 const STALE_REVIEW_KICKOFF_TYPE = "task-workflow-stale-review";
+const REDESIGN_KICKOFF_TYPE = "task-workflow-approved-redesign";
 const STALE_REVIEW_NOTICE = "Project files changed since review began.";
 const RESEARCH_RESUME_TYPE = "task-workflow-research-resume";
 const PHASE_WIDGET = "task-workflow-phase";
@@ -285,7 +292,10 @@ Code outside a recognized task directory remains untouched.
 Research gathers task context and investigates the code in one saved Pi session. Later phases use their own sessions.
 Each step has a separate preparation session for final discussion. /task next finalizes the design, captures the baseline, and opens a fresh implementation session.
 The implementation session stays open for the step and is reused for repairs.
-Each review round uses a fresh read-only session. Reports use review-N-round-M.md, starting at round 0.
+Each review round uses a fresh read-only session. The first round reviews the full step; follow-ups verify the previous report and changes since that round.
+After the configured number of repair returns (reviewCyclesBeforePause, default 2), open findings pause advancement.
+/task review-checkpoint continue | redesign | defer "[Minor] Exact title" ["Another title"]
+Use continue to allow one more repair return, redesign to revisit the step design, or defer to postpone named nonblocking findings.
 Step status is derived from task state; step-N.md stores the design and step-result-N.md carries implementation knowledge downstream.
 An accepted review enters manual review in semi-auto mode if manualReview is enabled.
 Otherwise it proceeds directly to commit. Manual-review findings return to implementation;
@@ -935,6 +945,7 @@ function taskProgress(state: TaskState): string {
   if (state.phase === "complete")
     return `Complete (${state.completedSteps.length}${total ? `/${total}` : ""} steps)`;
   const step = state.awaitingReview || state.currentStep;
+  if (state.reviewPaused) return `Review checkpoint for step ${step} (paused)`;
   if (state.reviewPending)
     return `Reviewing step ${step}${total ? `/${total}` : ""} (review pending)`;
   let findings = "";
@@ -1133,13 +1144,57 @@ function stepCount(state: TaskState): number {
   return numbers.length;
 }
 
+function reviewFindingSections(report: string): string[] {
+  return report.split(/(?=^### )/m);
+}
+
+function reviewFindingTitle(section: string): string {
+  return /^### ([^\r\n]+)/.exec(section)?.[1].trim() ?? "";
+}
+
+function nonblockingFinding(title: string): boolean {
+  return /^\[(?:Minor|Suggestion|Nit|P3|Optional)\](?:\s|$)/i.test(title);
+}
+
+function isOpenFinding(
+  section: string,
+  deferred: readonly string[] = [],
+): boolean {
+  const title = reviewFindingTitle(section);
+  const statuses = [...section.matchAll(/^Status: (\w+)[ \t]*\r?$/gm)];
+  const status = statuses.length === 1 ? statuses[0][1] : undefined;
+  return (
+    !!title &&
+    status !== "resolved" &&
+    status !== "dismissed" &&
+    !(
+      status === "deferred" &&
+      nonblockingFinding(title) &&
+      deferred.includes(title)
+    )
+  );
+}
+
 function openReviewFindings(state: TaskState, step: number): number {
-  const content = readFileSync(reviewPath(state, step), "utf8");
-  return content
-    .split(/^### /m)
-    .slice(1)
-    .filter((section) => !/^Status: (resolved|dismissed)$/m.test(section))
+  return reviewFindingSections(
+    readFileSync(reviewPath(state, step), "utf8"),
+  ).filter((section) => isOpenFinding(section, state.reviewDeferredFindings))
     .length;
+}
+
+function notifyReviewCheckpoint(ctx: ExtensionContext, state: TaskState): void {
+  const report = reviewPath(state, state.currentStep);
+  const findings = existsSync(report)
+    ? reviewFindingSections(readFileSync(report, "utf8"))
+        .filter((section) =>
+          isOpenFinding(section, state.reviewDeferredFindings),
+        )
+        .map(reviewFindingTitle)
+    : [];
+  ctx.ui.notify(
+    `Review checkpoint after ${state.reviewRepairReturns ?? 0} repair returns. Open findings (${report}):\n${findings.map((finding) => `- ${finding}`).join("\n") || "(none available)"}\nChoose /task review-checkpoint continue, redesign, or defer \"[Minor] Exact title\".`,
+    "warning",
+  );
 }
 
 async function draftCommitMessage(
@@ -1951,9 +2006,11 @@ function phaseHint(state: TaskState): string {
     return `Final discussion for step ${state.currentStep}; /task next finalizes its plan, captures the baseline, and opens implementation.`;
   if (state.phase === "implement") return "Ready for review? Use /task next.";
   if (state.phase === "review")
-    return state.reviewPending
-      ? "Review is pending; use /task resume or save the review before /task next."
-      : "Discuss findings; when ready, use /task next.";
+    return state.reviewPaused
+      ? "Review paused; choose an action with /task review-checkpoint."
+      : state.reviewPending
+        ? "Review is pending; use /task resume or save the review before /task next."
+        : "Discuss findings; when ready, use /task next.";
   if (state.phase === "manual-review")
     return "Discuss manual-review findings; /task next advances when settled, /task accept approves a proposal.";
   if (state.phase === "commit")
@@ -2225,7 +2282,7 @@ function phaseKickoff(state: TaskState, phase: Phase, step: number): string {
     return `The automated review found no remaining issues. This is the manual review phase for step ${step}. Read ${stepResultPath(state, step)} if relevant and available. Inspect implementation-${step}.diff and the changed project files. Do not edit project code. Use task_write_artifact for any agreed task-artifact updates. Use /task next when the discussion is settled; use /task accept to approve a proposed solution. Findings return to implementation; an empty review proceeds to commit.`;
   if (phase === "commit")
     return `Review has been accepted. This is the separate commit phase for step ${step}. Check the commit result shown in this session; if generation failed, use /task next to retry. Commit the reviewed files if a manual commit is pending, then use /task next to continue. If Git is unavailable, /task next retries detection and /task accept skips the commit and continues.`;
-  return `Review step ${step}. Read ${stepPath(state, step)} and ${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently against the approved scope and inspect relevant project code. Save the review at ${reviewPath(state, step)} using task_write_artifact with artifact "review", step ${step}, and operation "create" (or "replace" if revising an existing report). Do not edit project code or advance the workflow. Discuss findings with me and update their statuses only after we agree.`;
+  return `Review step ${step}. ${reviewRoundScope(state, step)} Inspect relevant project code. Save the review at ${reviewPath(state, step)} using task_write_artifact with artifact "review", step ${step}, and operation "create" (or "replace" if revising an existing report). Do not edit project code or advance the workflow. Discuss findings with me and update their statuses only after we agree.`;
 }
 
 const { switchPhase, continueTaskSession, ensurePhaseSession } =
@@ -2268,7 +2325,7 @@ function resumeKickoff(state: TaskState): string {
   const reviewReminder =
     state.phase === "review" &&
     (state.reviewPending || !existsSync(reviewReport))
-      ? ` The review is still pending; finish reviewing the implementation and save ${reviewReport} before advancing.`
+      ? ` The review is still pending. ${reviewRoundScope(state, step)} Save ${reviewReport} before advancing.`
       : "";
   return `Resume task ${state.id} in its current ${state.phase} phase from the saved conversation. Review recent messages and the current project state, continue unfinished work, and update the artifacts required by this phase. Do not repeat completed work or advance phases.${reviewReminder}`;
 }
@@ -2283,7 +2340,7 @@ function hasPendingResume(state: TaskState): boolean {
   const pendingReview =
     state.phase === "review" &&
     (state.reviewPending || !existsSync(reviewPath(state, reviewStep)));
-  return interrupted || pendingReview;
+  return !state.reviewPaused && (interrupted || pendingReview);
 }
 
 async function resumeOrOpenTask(
@@ -2490,9 +2547,19 @@ async function beginImplementation(
     throw new Error(
       `The design for current step ${state.currentStep} is missing. Discuss it in this session before starting implementation.`,
     );
-  const gitRepository = hasGitRepository(state.projectRoot);
-  const baselineClean = gitRepository && changedPaths(state).length === 0;
-  if (gitRepository && effectiveSetting(state, "autoCommit") && !baselineClean)
+  const gitRepository =
+    state.pendingGitRepository ?? hasGitRepository(state.projectRoot);
+  const baselineClean =
+    state.pendingAutoCommitEligible ??
+    (!state.pendingBaselineDir &&
+      gitRepository &&
+      changedPaths(state).length === 0);
+  if (
+    !state.pendingBaselineDir &&
+    gitRepository &&
+    effectiveSetting(state, "autoCommit") &&
+    !baselineClean
+  )
     throw new Error(
       "autoCommit requires a clean code working tree before implementation.",
     );
@@ -2512,13 +2579,22 @@ async function beginImplementation(
   }
   const hadBaseline = !!state.pendingBaselineDir;
   const step = state.currentStep;
+  const kickoff = `Implement step ${step} in this Pi session. The agreed design is in ${stepPath(state, step)}. Read ${roadmapPath(state)}, the current code, and only earlier step-result artifacts relevant to this step: ${previousStepResultPaths(state, step).join(", ") || "none exist"}. Make only the agreed changes and run focused checks. Do not commit. When finished, summarize the changes and checks. I will use /task next to start review.`;
+  const existing = state.reviewNeedsFull
+    ? state.sessions?.implement?.[String(step)]
+    : undefined;
   const switched = await switchPhase(
     ctx,
     state,
     "implement",
     step,
-    `Implement step ${step} in this Pi session. The agreed design is in ${stepPath(state, step)}. Read ${roadmapPath(state)}, the current code, and only earlier step-result artifacts relevant to this step: ${previousStepResultPaths(state, step).join(", ") || "none exist"}. Make only the agreed changes and run focused checks. Do not commit. When finished, summarize the changes and checks. I will use /task next to start review.`,
-    undefined,
+    state.reviewNeedsFull
+      ? {
+          customType: REDESIGN_KICKOFF_TYPE,
+          content: `The newly approved design supersedes earlier repair handoffs.\n\n${kickoff}`,
+        }
+      : kickoff,
+    existing && existsSync(existing) ? existing : undefined,
     undefined,
     {
       pendingBaselineDir: baseline.directory,
@@ -2540,51 +2616,112 @@ async function beginReview(
       "The implementation baseline is missing. Restart the step before review.",
     );
   const n = state.currentStep;
+  const baseline = loadBaseline(state.pendingBaselineDir);
+  const config = effectiveConfig(state);
+  const previousDir =
+    state.reviewSnapshot && /^review-[a-z0-9]{6}$/i.test(state.reviewSnapshot)
+      ? join(baseline.directory, state.reviewSnapshot)
+      : undefined;
+  const previous =
+    !state.reviewNeedsFull &&
+    state.phase === "implement" &&
+    state.reviewRound !== undefined &&
+    previousDir &&
+    existsSync(join(previousDir, "manifest.json")) &&
+    existsSync(reviewPath(state, n))
+      ? loadBaseline(previousDir)
+      : undefined;
+  const diffPath = join(taskDir(state), `implementation-${n}.diff`);
+  const savedDiff = existsSync(diffPath) ? readFileSync(diffPath) : undefined;
   ctx.ui.setStatus("task-diff", "Comparing project files");
-  let changes: { diff: string; files: string[] };
+  let snapshot: string | undefined;
+  let diffWritten = false;
+  let progressVisible = true;
+  let switched = false;
   try {
-    changes = await implementationDiff(
+    const changes = await implementationDiff(
       state,
-      loadBaseline(state.pendingBaselineDir),
-      effectiveConfig(state),
+      baseline,
+      config,
       (message) => ctx.ui.setStatus("task-diff", message),
     );
-  } finally {
+    snapshot = await captureReviewSnapshot(
+      state,
+      baseline,
+      changes.patches,
+      previous,
+      config,
+    );
+    const updates: Partial<TaskState> = {
+      reviewRound: (state.reviewRound ?? -1) + 1,
+      reviewPending: true,
+      reviewSnapshot: basename(snapshot),
+      reviewFocused: !!previous,
+      reviewNeedsFull: undefined,
+      awaitingReview: n,
+      pendingFiles: changes.files,
+      pendingHashes: Object.fromEntries(
+        changes.files.map((file) => [
+          file,
+          reviewFileHash(state.projectRoot, file),
+        ]),
+      ),
+      pendingSummary:
+        state.phase === "implement"
+          ? lastAssistantSummary(ctx)
+          : state.pendingSummary,
+    };
+    writeFileSync(diffPath, changes.diff ? `${changes.diff}\n` : "", "utf8");
+    diffWritten = true;
     ctx.ui.setStatus("task-diff", undefined);
+    progressVisible = false;
+    switched = await switchPhase(
+      ctx,
+      state,
+      "review",
+      n,
+      phaseKickoff({ ...state, ...updates }, "review", n),
+      undefined,
+      undefined,
+      updates,
+    );
+    return switched;
+  } finally {
+    if (!switched) {
+      if (snapshot) rmSync(snapshot, { recursive: true, force: true });
+      if (diffWritten) {
+        if (savedDiff) writeFileSync(diffPath, savedDiff);
+        else rmSync(diffPath, { force: true });
+      }
+    } else if (previousDir) {
+      rmSync(previousDir, { recursive: true, force: true });
+    }
+    if (progressVisible) ctx.ui.setStatus("task-diff", undefined);
   }
-  state.reviewRound =
-    state.reviewRound === undefined ? 0 : state.reviewRound + 1;
-  writeFileSync(
-    join(taskDir(state), `implementation-${n}.diff`),
-    changes.diff ? `${changes.diff}\n` : "",
-    "utf8",
-  );
-  state.pendingFiles = changes.files;
-  state.pendingHashes = Object.fromEntries(
-    changes.files.map((file) => [
-      file,
-      reviewFileHash(state.projectRoot, file),
-    ]),
-  );
-  if (state.phase === "implement")
-    state.pendingSummary = lastAssistantSummary(ctx);
-  state.awaitingReview = n;
-  state.reviewPending = true;
-  return switchPhase(ctx, state, "review", n, phaseKickoff(state, "review", n));
 }
 
-function automatedRepairSource(report: string): string {
-  return `Automated review report: ${report}. Read this report and fix findings marked Status: open or with no status; only findings explicitly marked resolved or dismissed are closed.`;
+function automatedRepairSource(
+  report: string,
+  deferred: readonly string[] = [],
+): string {
+  const approved = deferred.length
+    ? deferred.map((title) => `\n- ${title}`).join("")
+    : " (none)";
+  return `Automated review report: ${report}. Read this report and fix findings marked Status: open or with no recognized closed status. Do not act on resolved or dismissed findings. Treat Status: deferred as closed only for nonblocking findings with a heading in this user-approved list:${approved}`;
 }
 
 function repairInstructions(source: string): string {
   return `Return to Implementation for repair. Use only the findings supplied by this handoff, within the approved scope. Run focused checks; do not commit. Use /task next when ready for another automated review.\n\n${source}`;
 }
 
-function repairKickoff(input: { reportName: string } | { findings: string[] }) {
+function repairKickoff(
+  input:
+    | { reportName: string; deferred?: readonly string[] }
+    | { findings: string[] },
+) {
   const source =
     "reportName" in input
-      ? automatedRepairSource(input.reportName)
+      ? automatedRepairSource(input.reportName, input.deferred)
       : `Manual-review findings:\n${input.findings.map((finding) => `- ${finding}`).join("\n")}`;
   return {
     customType: REPAIR_KICKOFF_TYPE,
@@ -2610,7 +2747,8 @@ function isRepairContext(message: {
   if (typeof content !== "string") return false;
   if (
     message.customType === REPAIR_KICKOFF_TYPE ||
-    message.customType === STALE_REVIEW_KICKOFF_TYPE
+    message.customType === STALE_REVIEW_KICKOFF_TYPE ||
+    message.customType === REDESIGN_KICKOFF_TYPE
   )
     return true;
   // Recognize repair kickoffs saved by earlier versions without treating user text as a handoff.
@@ -2661,7 +2799,10 @@ function resolveRepairContext(
   )
     return "The current automated repair report could not be identified. Do not use earlier findings. Use /task next for another review.";
   return repairInstructions(
-    automatedRepairSource(join(taskDir(state), reportName)),
+    automatedRepairSource(
+      join(taskDir(state), reportName),
+      state.reviewDeferredFindings,
+    ),
   );
 }
 
@@ -2687,7 +2828,7 @@ async function acceptReviewedStep(
   ctx: ExtensionCommandContext,
   state: TaskState,
   approval: string,
-): Promise<void> {
+): Promise<boolean> {
   const n = state.awaitingReview || state.currentStep;
   if (state.reviewPending || !existsSync(reviewPath(state, n)))
     throw new Error(
@@ -2695,7 +2836,7 @@ async function acceptReviewedStep(
     );
   if (await reviewedDiffChanged(state, n)) {
     const existing = state.sessions?.implement?.[String(n)];
-    await switchPhase(
+    return switchPhase(
       ctx,
       state,
       "implement",
@@ -2703,7 +2844,6 @@ async function acceptReviewedStep(
       staleReviewKickoff(),
       existing && existsSync(existing) ? existing : undefined,
     );
-    return;
   }
   if (approval)
     writeArtifact(
@@ -2714,25 +2854,16 @@ async function acceptReviewedStep(
     );
   const open = openReviewFindings(state, n);
   if (open) {
-    const implement = state.sessions?.implement?.[String(n)];
-    if (!implement || !existsSync(implement)) {
-      const file = createPhaseSession(
-        state,
-        "implement",
-        n,
-        ctx.sessionManager.getSessionFile(),
-      );
-      setSessionFor(state, "implement", file, n);
+    const limit =
+      effectiveConfig(state).reviewCyclesBeforePause ??
+      DEFAULT_REVIEW_CYCLES_BEFORE_PAUSE;
+    if ((state.reviewRepairReturns ?? 0) >= limit) {
+      state.reviewPaused = true;
+      saveState(state);
+      notifyReviewCheckpoint(ctx, state);
+      return false;
     }
-    await switchPhase(
-      ctx,
-      state,
-      "implement",
-      n,
-      repairKickoff({ reportName: basename(reviewPath(state, n)) }),
-      state.sessions!.implement![String(n)],
-    );
-    return;
+    return returnForAutomatedRepair(ctx, state, n);
   }
   if (!state.completedSteps.includes(n)) state.completedSteps.push(n);
   state.completedSteps.sort((a, b) => a - b);
@@ -2763,12 +2894,145 @@ async function acceptReviewedStep(
     );
     setSessionFor(state, "manual-review", file, n);
     saveState(state);
-    await switchPhase(ctx, state, "manual-review", n, "", file, async (fresh) =>
-      setPhaseWidget(appVersion, fresh, state, true),
+    return switchPhase(
+      ctx,
+      state,
+      "manual-review",
+      n,
+      "",
+      file,
+      async (fresh) => setPhaseWidget(appVersion, fresh, state, true),
     );
-    return;
   }
   await beginCommitPhase(appVersion, ctx, state, n);
+  return true;
+}
+
+function returnForAutomatedRepair(
+  ctx: ExtensionCommandContext,
+  state: TaskState,
+  step: number,
+) {
+  const implement = state.sessions?.implement?.[String(step)];
+  return switchPhase(
+    ctx,
+    state,
+    "implement",
+    step,
+    repairKickoff({
+      reportName: basename(reviewPath(state, step)),
+      deferred: state.reviewDeferredFindings,
+    }),
+    implement && existsSync(implement) ? implement : undefined,
+    undefined,
+    {
+      reviewPaused: undefined,
+      reviewRepairReturns: (state.reviewRepairReturns ?? 0) + 1,
+    },
+  );
+}
+
+async function handleReviewCheckpoint(
+  ctx: ExtensionCommandContext,
+  state: TaskState,
+  args: string[],
+) {
+  if (!ctx.isIdle())
+    throw new Error("Wait for Pi to finish or cancel its current run first.");
+  if (
+    state.phase !== "review" ||
+    !state.reviewPaused ||
+    !sessionMatches(ctx, state)
+  )
+    throw new Error(
+      "Open the active paused review before choosing a checkpoint action.",
+    );
+  const step = state.currentStep;
+  const report = reviewPath(state, step);
+  const [action, ...titles] = args;
+  if (action === "redesign" && !titles.length) {
+    return switchPhase(
+      ctx,
+      state,
+      "prepare",
+      step,
+      `Revisit the design and acceptance checks for step ${step} using the open findings in ${report} and the current implementation diff. Look for a shared cause before proposing more fixes. Keep work within the approved roadmap and do not edit code until the revised design is approved.\n\n${phaseKickoff(state, "prepare", step)}`,
+      undefined,
+      undefined,
+      {
+        reviewPaused: undefined,
+        reviewNeedsFull: true,
+        reviewRepairReturns: 0,
+      },
+    );
+  }
+  if (action === "continue" && !titles.length) {
+    if (state.reviewPending || !existsSync(report))
+      throw new Error(`Save ${report} first.`);
+    if (await reviewedDiffChanged(state, step)) {
+      const existing = state.sessions?.implement?.[String(step)];
+      return switchPhase(
+        ctx,
+        state,
+        "implement",
+        step,
+        staleReviewKickoff(),
+        existing && existsSync(existing) ? existing : undefined,
+        undefined,
+        { reviewPaused: undefined },
+      );
+    }
+    if (openReviewFindings(state, step))
+      return returnForAutomatedRepair(ctx, state, step);
+  } else if (action === "defer" && titles.length) {
+    if (state.reviewPending || !existsSync(report))
+      throw new Error(`Save ${report} first.`);
+    if (await reviewedDiffChanged(state, step))
+      throw new Error(
+        "The worktree changed since review. Choose continue to review the new changes first.",
+      );
+    const sections = reviewFindingSections(readFileSync(report, "utf8"));
+    for (const title of new Set(titles)) {
+      const indices = sections.flatMap((section, i) =>
+        reviewFindingTitle(section) === title ? [i] : [],
+      );
+      if (
+        indices.length !== 1 ||
+        !nonblockingFinding(title) ||
+        !isOpenFinding(sections[indices[0]], state.reviewDeferredFindings)
+      )
+        throw new Error(`Not a unique open nonblocking finding: ${title}`);
+      const i = indices[0];
+      const section = sections[i].replace(/^Status: [^\r\n]*(?:\r?\n|$)/gm, "");
+      sections[i] = section.replace(
+        /^(### [^\r\n]+)(\r?\n|$)/,
+        "$1\nStatus: deferred\n",
+      );
+    }
+    state.reviewDeferredFindings = [
+      ...new Set([...(state.reviewDeferredFindings ?? []), ...titles]),
+    ];
+    writeArtifact(state, "review", sections.join(""), step);
+    if (
+      sections.some((section) =>
+        isOpenFinding(section, state.reviewDeferredFindings),
+      )
+    ) {
+      notifyReviewCheckpoint(ctx, state);
+      return false;
+    }
+  } else {
+    throw new Error(
+      'Use /task review-checkpoint continue, redesign, or defer "[Minor] Exact title".',
+    );
+  }
+  delete state.reviewPaused;
+  saveState(state);
+  ctx.ui.notify(
+    "Review checkpoint cleared. Use /task next to verify and advance.",
+    "info",
+  );
+  return false;
 }
 
 async function returnToImplementationAfterManualReview(
@@ -2922,6 +3186,7 @@ async function advanceSemiAutomatically(
   const shouldAdvance =
     state.phase === "implement" ||
     (state.phase === "review" &&
+      !state.reviewPaused &&
       !state.reviewPending &&
       existsSync(reviewPath(state, state.currentStep))) ||
     (state.phase === "commit" &&
@@ -3083,7 +3348,13 @@ async function finishCommitPhase(
       );
     rmSync(reviewPath);
   }
-  state.reviewRound = undefined;
+  delete state.reviewRound;
+  delete state.reviewSnapshot;
+  delete state.reviewFocused;
+  delete state.reviewRepairReturns;
+  delete state.reviewPaused;
+  delete state.reviewDeferredFindings;
+  delete state.reviewNeedsFull;
   state.phase = more ? "prepare" : "complete";
   if (more) state.currentStep = n + 1;
   saveState(state);
@@ -4136,6 +4407,7 @@ export default function taskExtension(
         "delete",
         "status",
         "resume",
+        "review-checkpoint",
         "next",
         "accept",
         "show",
@@ -4230,6 +4502,7 @@ export default function taskExtension(
                   "status",
                   "config",
                   "resume",
+                  "review-checkpoint",
                   "next",
                   "accept",
                   "skip-commit",
@@ -4366,6 +4639,9 @@ export default function taskExtension(
               reviewTools: global.reviewTools ?? [],
               allowTreeNavigation: global.allowTreeNavigation ?? false,
               hotkeys: { ...DEFAULT_HOTKEYS, ...global.hotkeys },
+              reviewCyclesBeforePause:
+                global.reviewCyclesBeforePause ??
+                DEFAULT_REVIEW_CYCLES_BEFORE_PAUSE,
               snapshotMaxFiles:
                 global.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
               snapshotMaxMiB: global.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB,
@@ -4929,6 +5205,12 @@ export default function taskExtension(
           return;
         }
         const state = acceptState ?? requireTask(ctx);
+        if (command === "review-checkpoint") {
+          const switched = await handleReviewCheckpoint(ctx, state, args);
+          if (!switched)
+            setPhaseWidget(appVersion, ctx, requireTask(ctx), true);
+          return;
+        }
         if (command === "next" || command === "accept") {
           transitionStatus = true;
           ctx.ui.setStatus(
@@ -4950,6 +5232,10 @@ export default function taskExtension(
             throw new Error(
               "Approval note is too long; keep it under 4000 characters.",
             );
+          if (state.phase === "review" && state.reviewPaused) {
+            notifyReviewCheckpoint(ctx, state);
+            return;
+          }
           const reviewStep = state.awaitingReview || state.currentStep;
           if (
             state.phase === "review" &&
@@ -5089,8 +5375,14 @@ export default function taskExtension(
             return;
           }
           if (state.phase === "review") {
-            await acceptReviewedStep(appVersion, ctx, state, approval);
-            sessionReplaced = true;
+            sessionReplaced = await acceptReviewedStep(
+              appVersion,
+              ctx,
+              state,
+              approval,
+            );
+            if (state.reviewPaused)
+              setPhaseWidget(appVersion, ctx, state, true);
             return;
           }
         }

@@ -52,8 +52,12 @@ flowchart LR
     A["Research"] -->|/task next| B["Roadmap"]
     B -->|/task next| C["Step preparation"]
     C -->|/task next: finalize design; capture baseline| D["Implement"]
-    D -->|/task next: save implementation-N.diff; start review round 0| E["Review"]
-    E -->|/task next: open findings; preserve round; repair| D
+    D -->|/task next: full review or focused follow-up| E["Review"]
+    E -->|open findings within the repair budget| D
+    E -->|open findings at the limit| P["Review checkpoint"]
+    P -->|continue| D
+    P -->|redesign| C
+    P -->|defer; no findings remain open| E
     E -->|clear: semi-auto with manualReview enabled| F["Manual review"]
     E -->|clear: manual mode or manualReview disabled| G["Commit phase"]
     F -->|/task next: findings| D
@@ -66,7 +70,8 @@ flowchart LR
 
 Research gathers task context and investigates code in one saved conversation. Each step's
 preparation and implementation have separate saved sessions. Review findings return directly
-to the implementation session for repairs. Each review round opens a fresh session. A
+to the implementation session for repairs, subject to the review checkpoint. Each review round
+opens a fresh session, but follow-ups focus on the previous report and changes since then. A
 clear review opens a separate commit phase. In semi-auto mode with `manualReview` enabled,
 it opens a separate manual-review phase first. The next step cannot start until the commit phase
 finishes. The approved design and implementation handoff remain; workflow status lives in task
@@ -443,9 +448,9 @@ for fixed and dismissed for rejected. Do not edit project code or advance the wo
 approved artifacts and diff to inspect, the report to save, and the requirement to discuss findings:
 
 ```text
-Review step ${step}. Read ${stepPath(state, step)} and
-${join(taskDir(state), `implementation-${step}.diff`)}. Review the changes independently
-against the approved scope and inspect relevant project code. Save the review at
+Review step ${step}. Read the approved design and acceptance checks. In round 0, review the full
+step diff independently. In a follow-up, read the previous report and the changes since that
+round. Verify fixes and regressions; consult the full step diff when needed. Save the review at
 ${reviewPath(state, step)} using task_write_artifact with artifact "review", step ${step},
 and operation "create" (or "replace" if revising an existing report). Do not edit project code or
 advance the workflow. Discuss findings with me and update their statuses only after we agree.
@@ -457,8 +462,8 @@ advance the workflow. Discuss findings with me and update their statuses only af
 tool remains available. The report is saved in the task directory as `review-N-round-M.md`, with
 rounds beginning at 0 and increasing for each new review session.
 
-Each report starts with `# Review: step N`, then `## Summary` and `## Findings`. For every finding,
-a short exact excerpt from `implementation-N.diff` appears in a fenced `diff` block immediately
+Each report starts with `# Review: step N`, then `## Summary` and `## Findings`. When available,
+a short exact excerpt from the relevant diff appears in a fenced `diff` block immediately
 before `### [Severity] Short title`. The finding then has exactly one `Status: open` line, a precise
 `Location:`, and a concise explanation of the defect and concrete impact. Style preferences are
 not defects. If there are no findings, `## Findings` contains `No findings.` and no finding headings
@@ -471,9 +476,26 @@ saved Implementation session with a kickoff that identifies the exact current ro
 The extension resolves that report under the current artifact directory, including after a project
 move. Implementation reads it and addresses only open findings. If the reviewed diff has
 changed, the workflow asks for a fresh review instead of handing off stale findings. After repair,
-`/task next` starts a fresh Review round. Once no findings remain open, the workflow proceeds to
-Manual review only in semi-auto mode when `manualReview` is enabled; otherwise it proceeds to
-Commit.
+`/task next` starts a focused follow-up. It uses the preceding report, the delta between the two
+review snapshots (including changes reverted to the original baseline), and the design's
+acceptance checks. Carry forward unresolved findings. A new unrelated finding must be substantial,
+concrete, and reproducible. The full `implementation-N.diff` remains available. A revised design
+or missing prior evidence requires a full review instead.
+
+**Checkpoint.** `reviewCyclesBeforePause` defaults to `2`. After two returns for automated-review
+findings, the next report with open findings pauses before a third return. Restarts, `/task resume`,
+`/task next`, and `/task accept` do not override a saved pause. A return because files changed
+since review does not use the repair budget. In the paused review, choose:
+
+- `/task review-checkpoint continue` — allow one more repair return without resetting the budget.
+- `/task review-checkpoint redesign` — revisit the step design and acceptance checks, preserving
+  the original baseline. A new design starts a new repair budget and receives a full review.
+- `/task review-checkpoint defer "[Minor] Exact title"` — explicitly defer a named nonblocking
+  finding. Supply multiple quoted titles if needed. The checkpoint stays paused while any finding
+  remains open. If none remain, use `/task next` for normal verification and advancement.
+
+A clear review proceeds to Manual review only in semi-auto mode with `manualReview` enabled;
+otherwise it proceeds to Commit. Neither a pause nor a checkpoint action itself approves a commit.
 
 #### Manual review (optional)
 
@@ -673,6 +695,7 @@ with different models for implementation and review:
 {
   "mode": "manual",
   "manualReview": true,
+  "reviewCyclesBeforePause": 2,
   "autoCommit": false,
   "statusColors": {
     "taskName": "brightGreen",
@@ -725,8 +748,9 @@ The model IDs above are examples. Use a provider and model available in your Pi 
 | `reviewTools`         | Array of tool names; `[]`                                                            | Replaces the additional review tool list from broader scopes. These tools are added to the automated review's built-in set: `read`, `grep`, `find`, `ls`, and `task_write_artifact`. The same `reviewTools` are available in manual review; `task_write_artifact` is always included. Add only tools the configured procedure needs and that you trust for read-only project work. For example, enable a delegation tool explicitly with `"reviewTools": ["subagent"]` (use the actual tool name provided by your environment).                                                                                                                                                                                                                                                                                                              |
 | `allowTreeNavigation` | Boolean; `false`                                                                     | Allows Pi's `/tree` command inside task sessions when `true`. Branches still share the same task state and artifacts.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `hotkeys`             | Object; `{ "next": "alt+n", "accept": "alt+a", "status": "alt+s", "show": "alt+w" }` | Maps `/task` command text to a key. Set a command to `null` to disable its default; omitted commands keep defaults. Each active key must be unique within this extension. Hotkey registrations are global and apply when Pi starts or reloads the extension; project/task-specific hotkeys are not supported.                                                                                                                                                                                                                            |
-| `snapshotMaxFiles`    | Positive integer; `4000`                                                             | Maximum number of files included in the baseline before implementation. Without Git this covers all regular project files except the exclusions described below; with Git it covers existing changed files needing a copy. Exceeding the limit stops implementation before copying.                                                                                                                                                                                                                                                      |
-| `snapshotMaxMiB`      | Integer from `1` to `1000000`; `100`                                                 | Maximum combined size, in MiB, of files copied into the baseline. Exceeding it stops implementation before copying.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `reviewCyclesBeforePause` | Nonnegative integer; `2` | Repair returns allowed per approved design before the review checkpoint. `0` pauses on the first report with open findings. Set globally or override per project or task. |
+| `snapshotMaxFiles`    | Positive integer; `4000`                                                             | Maximum number of files copied for an implementation baseline or review snapshot. Without Git this covers all regular project files except the exclusions described below; with Git it covers existing changed files needing a copy. Exceeding the limit stops implementation before copying.                                                                                                                                                                                                                                                      |
+| `snapshotMaxMiB`      | Integer from `1` to `1000000`; `100`                                                 | Maximum combined size, in MiB, of files copied into an implementation baseline or review snapshot.                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ### Model settings
 

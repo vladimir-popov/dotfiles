@@ -245,9 +245,8 @@ export async function implementationDiff(
   baseline: Baseline,
   config: Config,
   onProgress?: (message: string) => void,
-): Promise<{ diff: string; files: string[] }> {
-  const parts: string[] = [];
-  const files: string[] = [];
+): Promise<{ diff: string; files: string[]; patches: Map<string, string> }> {
+  const patches = new Map<string, string>();
   const includes = config.include?.length ? config.include : undefined;
   const excludes = config.exclude ?? [];
   const matchesFilters = createFileFilter(includes, excludes);
@@ -298,10 +297,7 @@ export async function implementationDiff(
         ? git(state.projectRoot, ["diff", "--binary", "HEAD", "--", file])
         : diffNoIndex(state.projectRoot, null, current, file);
     }
-    if (patch) {
-      parts.push(patch);
-      files.push(file);
-    }
+    if (patch) patches.set(file, patch);
     if (index % 100 === 0) {
       onProgress?.(
         `Comparing project files: ${index + 1}/${candidates.length}`,
@@ -309,7 +305,94 @@ export async function implementationDiff(
       await new Promise<void>((done) => setImmediate(done));
     }
   }
-  return { diff: parts.join("\n\n"), files };
+  return {
+    diff: [...patches.values()].join("\n\n"),
+    files: [...patches.keys()],
+    patches,
+  };
+}
+
+function reviewEntry(path: string): string | null {
+  const entry = worktreeEntry(path);
+  return entry?.isFile() || entry?.isSymbolicLink() ? path : null;
+}
+
+/** Store changed entries under the step baseline and, when possible, write the round delta.
+ * Includes reverted paths, even if they no longer appear in the full step diff.
+ */
+export async function captureReviewSnapshot(
+  state: TaskState,
+  baseline: Baseline,
+  patches: ReadonlyMap<string, string>,
+  previous: Baseline | undefined,
+  config: Config,
+): Promise<string> {
+  const maxFiles = config.snapshotMaxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES;
+  const maxBytes =
+    (config.snapshotMaxMiB ?? DEFAULT_SNAPSHOT_MAX_MIB) * 1024 * 1024;
+  const directory = mkdtempSync(join(baseline.directory, "review-"));
+  const paths: Array<[string, string | null]> = [];
+  let bytes = 0;
+  let copied = 0;
+  try {
+    for (const file of patches.keys()) {
+      const source = reviewEntry(join(state.projectRoot, file));
+      if (!source) {
+        paths.push([file, null]);
+        continue;
+      }
+      const entry = lstatSync(source);
+      bytes += entry.size;
+      if (++copied > maxFiles || bytes > maxBytes)
+        throw new Error(
+          "Review snapshot exceeds snapshotMaxFiles or snapshotMaxMiB.",
+        );
+      const name = String(paths.length);
+      const target = join(directory, name);
+      if (entry.isSymbolicLink()) {
+        await fsPromises.symlink(await fsPromises.readlink(source), target);
+      } else {
+        await fsPromises.copyFile(source, target, fsConstants.COPYFILE_FICLONE);
+        await fsPromises.chmod(target, entry.mode & 0o777);
+      }
+      paths.push([file, name]);
+    }
+    writeFileSync(
+      join(directory, "manifest.json"),
+      JSON.stringify({ gitRepository: baseline.gitRepository, paths }),
+    );
+    if (previous) {
+      const snapshots = new Map(paths);
+      const delta: string[] = [];
+      for (const file of new Set([
+        ...previous.paths.keys(),
+        ...patches.keys(),
+      ])) {
+        if (!previous.paths.has(file)) {
+          delta.push(patches.get(file)!);
+          continue;
+        }
+        const before = previous.paths.get(file) ?? null;
+        const name = snapshots.get(file);
+        const after = name
+          ? join(directory, name)
+          : snapshots.has(file)
+            ? null
+            : reviewEntry(join(state.projectRoot, file));
+        if (!before && !after) continue;
+        const patch = diffNoIndex(state.projectRoot, before, after, file);
+        if (patch) delta.push(patch);
+      }
+      writeFileSync(
+        join(directory, "changes.diff"),
+        delta.join("\n\n") + (delta.length ? "\n" : ""),
+      );
+    }
+    return directory;
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function fileHash(root: string, file: string): string | null {

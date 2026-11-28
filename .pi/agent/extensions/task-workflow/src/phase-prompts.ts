@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, TaskState } from "./phase-model.ts";
 import {
@@ -12,6 +13,27 @@ import { taskDir } from "./task-state.ts";
 /** Shared research handoff rule for the phase prompt and the kickoff. */
 export const RESEARCH_CONTEXT_RULE =
   "Keep context.md as a standalone task summary with constraints, accepted decisions, and annotated links to supporting notes. Record durable findings in topical Markdown notes as you discover them, including evidence, rationale, and nonblocking uncertainties. Keep the links current; do not rely on the transition to recover findings from history.";
+
+/** Describe the review inputs and scope for the saved round, including resumed turns. */
+export function reviewRoundScope(state: TaskState, step: number): string {
+  const full = join(taskDir(state), `implementation-${step}.diff`);
+  const design = stepPath(state, step);
+  const previous = state.reviewRound
+    ? reviewPath(state, step, state.reviewRound - 1)
+    : undefined;
+  const delta =
+    state.reviewFocused && state.pendingBaselineDir && state.reviewSnapshot
+      ? join(state.pendingBaselineDir, state.reviewSnapshot, "changes.diff")
+      : undefined;
+  if (!previous || !existsSync(previous) || !delta || !existsSync(delta)) {
+    const carry =
+      previous && existsSync(previous)
+        ? ` Read the preceding report in ${previous} and account for its unresolved findings.`
+        : "";
+    return `Read the approved design and acceptance checks in ${design} and independently review the full step diff in ${full}.${carry}`;
+  }
+  return `This is a focused follow-up, not a fresh audit. Read the preceding report in ${previous}, the changes since that round in ${delta}, and the approved design and acceptance checks in ${design}. Verify open findings and the agreed checks, including adjacent scenarios that exercise the same rule, and check for regressions caused by the delta. Carry forward unresolved findings; explain the disposition of each earlier open finding. You may consult the full step diff in ${full} for context or evidence. Add a new unrelated finding only if it is substantial, concrete, and reproducible.`;
+}
 
 type PhasePromptInput = { state: TaskState; researchTools: readonly string[] };
 type PhaseDefinition = {
@@ -45,9 +67,9 @@ export const PHASE_DEFINITIONS: Readonly<Record<Phase, PhaseDefinition>> = {
     defaultSkill: "task-review",
     prompt: ({
       state,
-    }) => `Review step ${state.currentStep} independently against the approved context, design, and implementation knowledge. Read ${stepPath(state, state.currentStep)}, the implementation diff, and relevant project code using read-only tools. Read the current implementation handoff at ${stepResultPath(state, state.currentStep)} if it exists, before drawing conclusions. Save ${reviewPath(state, state.currentStep)} as an English artifact using task_write_artifact with artifact "review", step ${state.currentStep}, and operation "create" (or "replace" when revising an existing report).
+    }) => `Review step ${state.currentStep} against the approved context, design, and implementation knowledge. ${reviewRoundScope(state, state.currentStep)} Inspect relevant project code using read-only tools. Read the current implementation handoff at ${stepResultPath(state, state.currentStep)} if it exists, before drawing conclusions. Save ${reviewPath(state, state.currentStep)} as an English artifact using task_write_artifact with artifact "review", step ${state.currentStep}, and operation "create" (or "replace" when revising an existing report).
 
-Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`,
+Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For each open finding, provide a short exact excerpt from the relevant diff, when available, in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Use the same heading for a carried open finding. In a follow-up, list verified fixes as bullets under ## Previous findings; do not reopen unchanged findings previously resolved, dismissed, or deferred by the user. Only the user may defer a finding through the checkpoint command. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`,
   },
   "manual-review": {
     defaultSkill: "task-manual-review",

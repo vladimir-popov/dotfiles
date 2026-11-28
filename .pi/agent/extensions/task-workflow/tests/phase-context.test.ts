@@ -61,6 +61,10 @@ type State = {
   commitPendingHashes?: Record<string, string | null>;
   reviewPending?: boolean;
   reviewRound?: number;
+  reviewSnapshot?: string;
+  reviewFocused?: boolean;
+  reviewPaused?: boolean;
+  reviewRepairReturns?: number;
   sessions?: Record<string, unknown>;
 };
 
@@ -189,6 +193,15 @@ function fixture(
       name = value;
     },
     sendMessage: deliver,
+    async sendUserMessage(
+      command: string,
+      options: { expandPromptTemplates?: boolean },
+    ) {
+      assert.equal(options.expandPromptTemplates, true);
+      assert.equal(command, "/task next");
+      dispatchedCommands.push(command);
+      await run("next");
+    },
   } as unknown as Host);
   const ctx = {
     cwd,
@@ -488,6 +501,7 @@ function fixture(
       cancelNextSwitch = true;
     },
     open: (file: string) => ctx.switchSession(file),
+    settle: () => fire("agent_settled", { aborted: false }),
     run,
   };
 }
@@ -1163,17 +1177,19 @@ for (const destination of ["review", "manual-review", "commit"] as const) {
     );
     assert.equal(f.switches.length, before.switches);
     assert.equal(f.dispatchedCommands.length, before.dispatched);
-    assert.match(readFileSync(diffPath, "utf8"), /\+export const value = 2;/);
     assert.equal(state.pendingBaselineDir, baseline);
     if (destination === "review") {
       assert.equal(state.phase, "implement");
-      assert.equal(state.reviewPending, true);
+      assert.equal(state.reviewPending, undefined);
+      assert.equal(state.reviewRound, undefined);
+      assert.equal(existsSync(diffPath), false);
       assert.equal(state.sessions?.review, undefined);
       assert.equal(
         readdirSync(join(dirname(f.statePath), "sessions")).length,
         2,
       );
     } else {
+      assert.match(readFileSync(diffPath, "utf8"), /\+export const value = 2;/);
       assert.equal(state.phase, destination);
       assert.deepEqual(state.completedSteps, [1]);
       const sessions = state.sessions?.[
@@ -1188,6 +1204,187 @@ for (const destination of ["review", "manual-review", "commit"] as const) {
     }
   });
 }
+
+it("pauses after two repair returns and requires an explicit decision after resume", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("prepare"));
+  initGit(f);
+  await f.run("next");
+  const implementation = f.session();
+  const artifacts = dirname(f.contextPath);
+  const writeFinding = async (
+    content = "### [Major] Incorrect value\nStatus: open\n",
+  ) => f.editArtifact({ artifact: "review", operation: "create", content });
+  for (let round = 0; round <= 2; round++) {
+    writeFileSync(f.source, `export const value = ${round + 2};\n`);
+    await f.run("next");
+    const state = f.state();
+    assert.equal(state.phase, "review", f.notices.join("\n"));
+    assert.equal(state.reviewRound, round);
+    const kickoff = f.messages.at(-1)!.content;
+    if (!round) {
+      assert.match(kickoff, /full step diff/);
+      assert.doesNotMatch(kickoff, /preceding report|changes\.diff/);
+    } else {
+      assert.match(kickoff, new RegExp(`review-1-round-${round - 1}\\.md`));
+      assert.match(kickoff, /focused follow-up.*acceptance checks/);
+      const delta = readFileSync(
+        join(state.pendingBaselineDir!, state.reviewSnapshot!, "changes.diff"),
+        "utf8",
+      );
+      assert.ok(delta.includes(`-export const value = ${round + 1};`));
+      assert.ok(delta.includes(`+export const value = ${round + 2};`));
+      assert.match(
+        readFileSync(join(artifacts, "implementation-1.diff"), "utf8"),
+        /-export const value = 1;/,
+      );
+    }
+    await writeFinding();
+    await f.run("next");
+  }
+  assert.equal(f.state().reviewPaused, true);
+  assert.equal(f.state().reviewRepairReturns, 2);
+  const review = f.session();
+  await f.open(implementation);
+  const messages = f.messages.length;
+  await f.run("resume");
+  assert.equal(f.session(), review);
+  assert.equal(
+    f.messages.length,
+    messages,
+    "resume must not restart a paused run",
+  );
+  writeFileSync(f.configPath, JSON.stringify({ reviewCyclesBeforePause: 20 }));
+  for (const command of [
+    "next",
+    "accept",
+    'review-checkpoint defer "[Major] Incorrect value"',
+  ]) {
+    await f.run(command);
+    assert.equal(f.state().reviewPaused, true);
+    assert.equal(f.session(), review);
+  }
+  f.cancelNextSwitch();
+  await f.run("review-checkpoint continue");
+  assert.equal(f.state().reviewPaused, true);
+  assert.equal(f.state().reviewRepairReturns, 2);
+  await f.run("review-checkpoint continue");
+  assert.equal(f.session(), implementation);
+  assert.equal(f.state().reviewRepairReturns, 3);
+  assert.equal(f.state().reviewPaused, undefined);
+  writeFileSync(f.source, baselineSource);
+  await f.run("next");
+  const state = f.state();
+  const delta = readFileSync(
+    join(state.pendingBaselineDir!, state.reviewSnapshot!, "changes.diff"),
+    "utf8",
+  );
+  assert.match(delta, /-export const value = 4;/);
+  assert.match(delta, /\+export const value = 1;/);
+  assert.equal(
+    readFileSync(join(artifacts, "implementation-1.diff"), "utf8"),
+    "",
+  );
+  await writeFinding("No findings.\n");
+  await f.run("next");
+  assert.equal(f.state().phase, "commit", f.notices.join("\n"));
+  assert.equal(f.state().reviewRound, 3);
+});
+
+it("uses scoped checkpoint limits and defers only explicitly selected nonblocking findings", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("prepare"));
+  initGit(f);
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({
+      mode: "semi-auto",
+      manualReview: false,
+      reviewCyclesBeforePause: 3,
+    }),
+  );
+  writeFileSync(
+    join(dirname(dirname(f.statePath)), "config.json"),
+    JSON.stringify({ reviewCyclesBeforePause: 1 }),
+  );
+  writeFileSync(
+    join(dirname(f.statePath), "config.json"),
+    JSON.stringify({ reviewCyclesBeforePause: 0 }),
+  );
+  await f.run("next");
+  writeFileSync(f.source, "export const value = 2;\n");
+  await f.run("next");
+  const report = join(dirname(f.contextPath), "review-1-round-0.md");
+  await f.editArtifact({
+    artifact: "review",
+    operation: "create",
+    content:
+      "### [Minor] First\nStatus: open\n\n### [Minor] Second\nStatus: deferred\n",
+  });
+  await f.settle();
+  assert.equal(f.state().reviewPaused, true);
+  const dispatched = f.dispatchedCommands.length;
+  assert.ok(dispatched > 0);
+  await f.settle();
+  assert.equal(
+    f.dispatchedCommands.length,
+    dispatched,
+    "semi-auto must not advance a saved checkpoint",
+  );
+  await f.run('review-checkpoint defer "[Minor] First"');
+  assert.equal(
+    f.state().reviewPaused,
+    true,
+    "an unapproved deferral remains open",
+  );
+  assert.match(readFileSync(report, "utf8"), /First\nStatus: deferred/);
+  assert.match(f.notices.at(-1) ?? "", /\[Minor\] Second/);
+  await f.run('review-checkpoint defer "[Minor] Second"');
+  assert.equal(f.state().reviewPaused, undefined);
+  assert.equal(f.state().phase, "review");
+  await f.run("next");
+  assert.equal(f.state().phase, "commit", f.notices.join("\n"));
+});
+
+it("revisits the design without discarding the original step baseline", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("prepare"));
+  initGit(f);
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({ reviewCyclesBeforePause: 0, autoCommit: true }),
+  );
+  await f.run("next");
+  const baseline = f.state().pendingBaselineDir;
+  const implementation = f.session();
+  writeFileSync(f.source, "export const value = 2;\n");
+  await f.run("next");
+  await f.editArtifact({
+    artifact: "review",
+    operation: "create",
+    content: "### [Major] Design flaw\nStatus: open\n",
+  });
+  await f.run("next");
+  assert.equal(f.state().reviewPaused, true);
+  await f.run("review-checkpoint redesign");
+  assert.equal(f.state().phase, "prepare");
+  assert.match(
+    f.messages.at(-1)!.content,
+    /Revisit the design.*review-1-round-0\.md/,
+  );
+  await f.run("next");
+  assert.equal(f.state().phase, "implement", f.notices.join("\n"));
+  assert.equal(f.state().pendingBaselineDir, baseline);
+  assert.equal(f.session(), implementation);
+  assert.match(
+    f.messages.at(-1)!.content,
+    /supersedes earlier repair handoffs/,
+  );
+  await f.run("next");
+  assert.equal(f.state().reviewRound, 1);
+  assert.equal(f.state().reviewFocused, false);
+  assert.match(f.messages.at(-1)!.content, /full step diff/);
+});
 
 it("carries automated and manual repairs through verified Commit and preserves reusable findings", async (t) => {
   const f = fixture(t);

@@ -26,6 +26,8 @@ export type Config = {
   deleteMode?: DeleteMode;
   autoCommit?: boolean;
   manualReview?: boolean;
+  /** Number of repair returns permitted before a review checkpoint. */
+  reviewCyclesBeforePause?: number;
   include?: string[] | null;
   exclude?: string[];
   phaseModels?: Partial<
@@ -49,6 +51,9 @@ export type Config = {
     >
   >;
 };
+
+/** Default number of repair returns allowed before a review checkpoint. */
+export const DEFAULT_REVIEW_CYCLES_BEFORE_PAUSE = 2;
 
 /** Default maximum number of files copied into an implementation baseline. */
 export const DEFAULT_SNAPSHOT_MAX_FILES = 4_000;
@@ -114,6 +119,8 @@ export function materializedConfig(config: Config): Config {
     deleteMode: config.deleteMode ?? "trash",
     autoCommit: config.autoCommit ?? false,
     manualReview: config.manualReview ?? true,
+    reviewCyclesBeforePause:
+      config.reviewCyclesBeforePause ?? DEFAULT_REVIEW_CYCLES_BEFORE_PAUSE,
     phaseModels: config.phaseModels ?? {},
     skills: effectivePhaseSkills(config),
     reviewTools: config.reviewTools ?? [],
@@ -185,6 +192,15 @@ export function createTaskConfig<Color>(
       typeof values.manualReview !== "boolean"
     )
       throw new Error(`manualReview must be a boolean: ${path}`);
+    if (
+      values.reviewCyclesBeforePause !== undefined &&
+      (typeof values.reviewCyclesBeforePause !== "number" ||
+        !Number.isSafeInteger(values.reviewCyclesBeforePause) ||
+        values.reviewCyclesBeforePause < 0)
+    )
+      throw new Error(
+        `reviewCyclesBeforePause must be a nonnegative integer: ${path}`,
+      );
     if (values.skills !== undefined) {
       if (
         !values.skills ||
