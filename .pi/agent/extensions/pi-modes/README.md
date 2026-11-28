@@ -13,6 +13,10 @@ restricted research tool set. Mode state is session-runtime-local, starts off, a
 submit the editor draft. Switching does not cancel tool calls that have already been approved or
 started. On macOS, configure Option as Meta in your terminal if Alt shortcuts are not recognized.
 
+If another extension owns the session's tool set, mode changes are refused with a warning and
+`/ro status` explains why. To opt in, listen for `tool-mode:before-change` on `pi.events` and
+call `request.deny(reason)` synchronously. The footer still describes Pi's active tools.
+
 Arguments are case-insensitive. Invalid or extra arguments display usage without changing mode.
 The footer status shows `🚀` when an editing tool is active, `👀` when all active tools are
 read-only, or `⁉️ (tool_a, tool_b)` when active tools are missing from both configured lists.

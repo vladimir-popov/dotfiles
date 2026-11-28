@@ -156,7 +156,16 @@ function fixture(
   >();
   let handler: Handler | undefined;
   let artifactTool: ArtifactTool | undefined;
+  let activeTools = ["read", "write"];
+  let askToolModeChange:
+    ((request: { deny(reason: string): void }) => void) | undefined;
   taskExtension({
+    events: {
+      on(channel: string, handler: typeof askToolModeChange) {
+        assert.equal(channel, "tool-mode:before-change");
+        askToolModeChange = handler;
+      },
+    },
     on(event: string, hook: (event: unknown, ctx: CommandContext) => unknown) {
       hooks.set(event, hook);
     },
@@ -170,7 +179,10 @@ function fixture(
     registerCommand(command: string, definition: { handler: Handler }) {
       if (command === "task") handler = definition.handler;
     },
-    getActiveTools: () => ["read"],
+    getActiveTools: () => [...activeTools],
+    setActiveTools: (tools: string[]) => {
+      activeTools = [...tools];
+    },
     getAllTools: () => [{ name: "read" }],
     getSessionName: () => name,
     setSessionName: (value: string) => {
@@ -363,6 +375,16 @@ function fixture(
     cwd,
     contextPath,
     configPath,
+    activeTools: () => [...activeTools],
+    toolModeDenial() {
+      let denial: string | undefined;
+      askToolModeChange?.({
+        deny: (reason) => {
+          denial = reason;
+        },
+      });
+      return denial;
+    },
     shortcuts,
     artifactChoices,
     overlays,
@@ -548,7 +570,10 @@ for (const [phase, state, instruction, skill] of [
     assert.ok(
       f.entryMessages().some(({ content }) => content.includes(stalePath)),
     );
+    const startupTools = f.activeTools();
     const prompt = assertContextEntry(f);
+    assert.deepEqual(startupTools, prompt.tools);
+    assert.match(f.toolModeDenial() ?? "", /task phase controls tool access/);
     assert.match(prompt.text, instruction);
     assert.ok(prompt.text.includes(`configured phase skill "${skill}"`));
     assert.ok(prompt.tools.includes("read"));
@@ -570,6 +595,15 @@ for (const [phase, state, instruction, skill] of [
     assert.equal(f.checkWrite()?.block ?? false, writable === false);
   });
 }
+
+it("does not change tools or veto mode changes in an ordinary session", async (t) => {
+  const f = fixture(t);
+  const ordinary = join(f.cwd, "ordinary.jsonl");
+  writeFileSync(ordinary, "[]");
+  await f.open(ordinary);
+  assert.deepEqual(f.activeTools(), ["read", "write"]);
+  assert.equal(f.toolModeDenial(), undefined);
+});
 
 for (const phase of ["manual-review", "complete"] as const) {
   it(`resolves ${phase} skill overrides by scope and honors null`, async (t) => {
@@ -667,6 +701,8 @@ it("discovers an indexed task but refuses to advance it from an archived session
       ?.includes(`- ${id} · current · ${f.cwd} · ${f.statePath} ·`),
   );
   await f.open(archived);
+  assert.deepEqual(f.activeTools(), []);
+  assert.ok(f.toolModeDenial());
   const before = readFileSync(f.statePath, "utf8");
   const switchCount = f.switches.length;
   await f.run("next");

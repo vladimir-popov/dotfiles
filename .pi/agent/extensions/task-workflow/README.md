@@ -805,8 +805,10 @@ markers when present.
 
 ### Safety mechanisms
 
-The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks
-calls to other tools. The artifact tool is always retained in active task phases, including when
+The extension applies the phase's tool set when opening its session and selects it again in
+`before_agent_start`. A `tool_call` hook still checks calls against the phase's rules. The phase
+owns tool access in task sessions, so `pi-modes` refuses `/ro` and Alt+R mode changes with a warning.
+The artifact tool is always retained in active task phases, including when
 `phaseTools` replaces the default list; Complete exposes only `read` and artifact editing. Research, Roadmap,
 Step preparation, Review, Manual review, and Commit use read-only tools by default. `/task next`
 captures a baseline before switching from Step preparation to the writable Implementation session.

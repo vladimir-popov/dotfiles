@@ -101,6 +101,7 @@ function fixture(
   let assessedWindows: DiscussionWindows | undefined;
   let handler: Command["handler"] | undefined;
   taskExtension({
+    events: { on() {} },
     on() {},
     registerTool() {},
     registerShortcut() {},

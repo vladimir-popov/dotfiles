@@ -218,6 +218,26 @@ function configuredPhaseTools(
   return includeArtifactTool(phase, baseTools, additionalTools, ARTIFACT_TOOL);
 }
 
+function phaseActiveTools(
+  pi: ExtensionAPI,
+  config: Config,
+  phase: Phase,
+): string[] {
+  if (phase !== "implement") return configuredPhaseTools(pi, config, phase);
+  return [
+    ...new Set([
+      ...pi.getActiveTools(),
+      "read",
+      "bash",
+      "edit",
+      "write",
+      ...READ_TOOLS,
+      ARTIFACT_TOOL,
+      ...(config.additionalPhaseTools?.implement || []),
+    ]),
+  ];
+}
+
 function researchAllowedTools(pi: ExtensionAPI): string[] {
   const tools = pi.getAllTools();
   const availableNames = new Set(tools.map((tool) => tool.name));
@@ -3974,15 +3994,30 @@ export default function taskExtension(
   });
 
   let completionContext: ExtensionContext | undefined;
+  pi.events.on("tool-mode:before-change", (request) => {
+    if (
+      completionContext &&
+      taskLink(completionContext) &&
+      typeof request?.deny === "function"
+    ) {
+      request.deny("The task phase controls tool access in this session.");
+    }
+  });
   pi.on("session_start", async (_event, ctx) => {
     completionContext = ctx;
     const state = visibleTask(ctx);
+    const active = state && sessionMatches(ctx, state);
+    if (taskLink(ctx)) {
+      pi.setActiveTools(
+        active ? phaseActiveTools(pi, effectiveConfig(state), state.phase) : [],
+      );
+    }
     if (!state) {
       ctx.ui.setWidget(PHASE_WIDGET, undefined);
       return;
     }
     updatePhaseUi(appVersion, pi, ctx, state, true);
-    if (!sessionMatches(ctx, state)) return;
+    if (!active) return;
     try {
       await selectPhaseModel(pi, ctx, state, state.phase, state.currentStep);
     } catch (error) {
@@ -3994,6 +4029,7 @@ export default function taskExtension(
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    completionContext = undefined;
     ctx.ui.setWidget(PHASE_WIDGET, undefined);
   });
   pi.on("agent_start", (_event, ctx) => {
@@ -4056,20 +4092,11 @@ export default function taskExtension(
     }
     const writable = state.phase === "implement";
     const config = effectiveConfig(state);
-    event.systemPromptOptions.selectedTools = writable
-      ? [
-          ...new Set([
-            ...pi.getActiveTools(),
-            "read",
-            "bash",
-            "edit",
-            "write",
-            ...READ_TOOLS,
-            ARTIFACT_TOOL,
-            ...(config.additionalPhaseTools?.implement || []),
-          ]),
-        ]
-      : configuredPhaseTools(pi, config, state.phase);
+    event.systemPromptOptions.selectedTools = phaseActiveTools(
+      pi,
+      config,
+      state.phase,
+    );
     const contextEntry = `Start with the canonical context file: ${state.contextPath}. Use this path, not any older path in the conversation. Read it first on phase or mode entry, after resuming if needed to establish current context, or whenever it may have changed. Otherwise, reuse a current copy already read in this phase. Open linked notes and other files in the task's context directory only as needed.`;
     const common = `Task ${state.id}. Phase ${state.phase}, step ${state.currentStep}. ${contextEntry} ${ARTIFACT_OPERATION_RULE} ${ARTIFACT_LANGUAGE_RULE} Only /task commands change phases. Do not edit state.json, implementation diffs, saved session files, or project code outside the Implementation phase. ${state.phase === "commit" ? "This is the separate commit phase; task-artifact edits are allowed, but do not edit project code." : state.phase === "manual-review" ? "This is the manual review phase; do not edit project code or commit." : state.phase === "complete" ? "The task is complete; do not edit project code." : ""}`;
     const retainKnowledge =

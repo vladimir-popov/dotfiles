@@ -10,6 +10,7 @@ function createHarness(options: {
   confirm?: () => Promise<boolean>;
   idle?: boolean;
   draft?: string;
+  denyModeChange?: string;
 } = {}) {
   const events = new Map<string, Handler>();
   let commandHandler: Handler | undefined;
@@ -21,6 +22,12 @@ function createHarness(options: {
   let confirmations = 0;
 
   const pi = {
+    events: {
+      emit(channel: string, request: { deny(reason: string): void }) {
+        assert.equal(channel, "tool-mode:before-change");
+        if (options.denyModeChange) request.deny(options.denyModeChange);
+      },
+    },
     on(name: string, handler: Handler) {
       events.set(name, handler);
     },
@@ -66,7 +73,8 @@ function createHarness(options: {
       assert.ok(handler, `Expected shortcut ${key}`);
       await handler(context);
     },
-    event: (name: string) => name === "session_start"
+    setActiveTools: pi.setActiveTools,
+    event: (name: string) => ["session_start", "resources_discover", "agent_start", "agent_settled"].includes(name)
       ? (...args: any[]) => events.get(name)!(args[0] ?? {}, context)
       : events.get(name)!,
     context,
@@ -120,6 +128,34 @@ for (const idle of [true, false]) {
     assert.equal(harness.context.ui.getEditorText(), draft);
   });
 }
+
+test("refreshes the footer after other session_start handlers change the active tools", async () => {
+  const harness = createHarness({ activeTools: ["read", "write"] });
+  await harness.event("session_start")();
+  assert.equal(harness.statuses.get("pi-modes"), "🚀");
+  harness.setActiveTools(["read"]);
+  await harness.event("resources_discover")();
+  assert.equal(harness.statuses.get("pi-modes"), "👀");
+  harness.setActiveTools(["read", "write"]);
+  await harness.event("agent_start")();
+  assert.equal(harness.statuses.get("pi-modes"), "🚀");
+});
+
+test("an external veto blocks every toggle and explains the restriction", async () => {
+  const reason = "The task phase controls tool access in this session.";
+  const harness = createHarness({ activeTools: ["read", "write"], denyModeChange: reason });
+  await harness.event("session_start")();
+  harness.setActiveTools(["read"]);
+  await harness.event("resources_discover")();
+  for (const attempt of [() => harness.press("alt+r"), ...["on", "off", "toggle", ""].map((args) => () => harness.command(args))]) {
+    await attempt();
+    assert.equal(harness.notifications.at(-1), `Mode unchanged: ${reason}`);
+    assert.deepEqual(harness.activeTools(), ["read"]);
+    assert.equal(harness.statuses.get("pi-modes"), "👀");
+  }
+  await harness.command("status");
+  assert.equal(harness.notifications.at(-1), reason);
+});
 
 test("status classifies active tools and lists unknown tools", async () => {
   const knownTools = ["read", "write", "bash", "custom", "other"];

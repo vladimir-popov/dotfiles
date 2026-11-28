@@ -36,7 +36,21 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
     ctx.ui.setStatus("pi-modes", indicator);
   }
 
+  function modeChangeDenial(): string | undefined {
+    let reason: string | undefined;
+    // Tool-set owners can veto synchronously without pi-modes knowing about them.
+    pi.events.emit("tool-mode:before-change", {
+      deny: (message: string) => { reason ??= message; },
+    });
+    return reason;
+  }
+
   function setMode(enabled: boolean, ctx: ExtensionContext): void {
+    const denial = modeChangeDenial();
+    if (denial) {
+      ctx.ui.notify(`Mode unchanged: ${denial}`, "warning");
+      return;
+    }
     readOnly = enabled;
     if (readOnly) {
       const knownTools = new Set(pi.getAllTools().map((tool) => tool.name));
@@ -62,6 +76,11 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
     updateStatus(ctx);
   });
 
+  // Pi dispatches resource discovery after all session_start handlers finish.
+  pi.on("resources_discover", (_event, ctx) => updateStatus(ctx));
+  pi.on("agent_start", (_event, ctx) => updateStatus(ctx));
+  pi.on("agent_settled", (_event, ctx) => updateStatus(ctx));
+
   pi.registerCommand("ro", {
     description: "Switch read-only mode on or off",
     handler: async (args, ctx) => {
@@ -84,7 +103,7 @@ export default function readOnlyModeExtension(pi: ExtensionAPI): void {
           toggleMode(ctx);
           return;
         case "status":
-          ctx.ui.notify(`Read-only mode is ${readOnly ? "on" : "off"}.`, "info");
+          ctx.ui.notify(modeChangeDenial() ?? `Read-only mode is ${readOnly ? "on" : "off"}.`, "info");
           return;
         default:
           ctx.ui.notify(`${USAGE}\nUnknown argument: ${tokens[0]}`, "warning");
