@@ -1100,9 +1100,14 @@ it("opens Step preparation for the next roadmap item after Commit", async (t) =>
     "roadmap.md",
     roadmap.trimEnd() + "\n2. **Add coverage** — Test the updated value.\n",
   );
+  const baselines = join(dirname(f.statePath), "baselines");
+  const baseline = join(baselines, "implementation-step-1");
+  mkdirSync(baseline, { recursive: true });
+  f.writeState({ ...f.state(), pendingBaselineDir: baseline });
   await f.run("next");
   assert.equal(f.state().phase, "prepare", f.notices.join("\n"));
   assert.equal(f.state().currentStep, 2);
+  assert.deepEqual(readdirSync(baselines), []);
   assert.deepEqual(f.state().sessions?.prepare, { "2": f.session() });
   assert.match(
     f.messages.at(-1)!.content,
@@ -1398,6 +1403,10 @@ it("retains Commit evidence on a no-Git retry and cleans up only after explicit 
   );
   mkdirSync(baseline);
   writeFileSync(join(baseline, "manifest.json"), "{}");
+  const baselines = join(dirname(f.statePath), "baselines");
+  const leftover = join(baselines, "implementation-leftover");
+  mkdirSync(leftover, { recursive: true });
+  writeFileSync(join(leftover, "manifest.json"), "{}");
   const diff = join(dirname(f.contextPath), "implementation-1.diff");
   const report = join(dirname(f.contextPath), "review-1-round-0.md");
   writeFileSync(diff, "# example.ts\n");
@@ -1409,11 +1418,17 @@ it("retains Commit evidence on a no-Git retry and cleans up only after explicit 
     /Git repository not detected.*remains open/,
   );
   assert.equal(readFileSync(f.statePath, "utf8"), before);
-  assert.ok([baseline, diff, report].every((path) => existsSync(path)));
+  assert.ok(
+    [baseline, leftover, diff, report].every((path) => existsSync(path)),
+  );
   await f.run("accept");
   assert.equal(f.state().phase, "complete");
   assert.equal(f.state().pendingBaselineDir, undefined);
-  assert.ok([baseline, diff, report].every((path) => !existsSync(path)));
+  assert.ok(
+    [baseline, baselines, diff, report].every((path) => !existsSync(path)),
+  );
+  assert.ok(existsSync(f.contextPath));
+  assert.ok(existsSync(f.session()));
   assert.equal(f.modelCalls.length, 0);
 });
 

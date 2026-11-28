@@ -3520,6 +3520,7 @@ async function finishCommitPhase(
     acceptedDifferences = mismatched;
   }
   const more = n < stepCount(state);
+  if (!more) assertSafeTaskStatePath(state.projectRoot, taskStatePath(state));
   delete state.commitPendingFiles;
   delete state.commitPendingHashes;
   delete state.commitReady;
@@ -3557,6 +3558,11 @@ async function finishCommitPhase(
   delete state.reviewPaused;
   delete state.reviewDeferredFindings;
   delete state.reviewNeedsFull;
+  if (!more)
+    rmSync(join(runtimeDir(state), "baselines"), {
+      recursive: true,
+      force: true,
+    });
   state.phase = more ? "prepare" : "complete";
   if (more) state.currentStep = n + 1;
   saveState(state);

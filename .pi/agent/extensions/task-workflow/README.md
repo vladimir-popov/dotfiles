@@ -689,6 +689,8 @@ kickoff references the current automated report or includes the manual findings 
 a separate conversation and sees task artifacts, the current implementation diff, and code it
 reads. Each repeated review is a new conversation, so it checks the repaired code independently.
 Sessions and baselines are saved under the task directory, separate from its `context/` artifacts.
+Completing the final step removes the entire `baselines/` directory, while saved sessions and
+durable artifacts are kept.
 Existing tasks still in preparation reuse their saved discussion as the Step preparation session.
 Tasks already coding keep their existing Implementation session. Opening an older task without a
 session map creates a saved session for its current phase; earlier conversations without a saved
