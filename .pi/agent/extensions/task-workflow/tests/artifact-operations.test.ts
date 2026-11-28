@@ -175,6 +175,7 @@ describe("phase artifact access", () => {
     const phases = [
       "research",
       "roadmap",
+      "prepare",
       "implement",
       "review",
       "manual-review",
@@ -191,7 +192,7 @@ describe("phase artifact access", () => {
       assert.ok(allowed.includes("task_write_artifact"), phase);
       if (phase !== "complete")
         assert.deepEqual(allowed, ["read", "task_write_artifact", "search"]);
-      else assert.deepEqual(allowed, ["task_write_artifact"]);
+      else assert.deepEqual(allowed, ["read", "task_write_artifact"]);
     }
   });
 });

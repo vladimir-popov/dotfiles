@@ -100,21 +100,28 @@ The extension also recognizes historical tasks stored under
 `.agents/projects/<task-id>/`. Project settings remain in `.agents/task-workflow/config.json`.
 The full task directories contain local data; add them to `.gitignore` if desired.
 
-### Optional phase skills
+### Phase templates and skills
 
-The extension owns the review contract: the approved scope is reviewed read-only, the workflow
-cannot advance, and the coordinator saves exactly one final artifact at the extension-selected
-path using `task_write_artifact`. The existing report structure and single-agent procedure are
-the defaults. An available skill configured in `skills.review` may define the review procedure,
-including delegating checks to subagents and consolidating their findings, but cannot override
-that contract or allow subagents to write the artifact. Tools needed by a procedure must be
-explicitly enabled with `reviewTools`; this does not grant them in other phases. If the skill is
-missing or unavailable, the built-in procedure applies.
+Every phase has a built-in instruction template and a default Pi skill. Skills supplement the
+template; they cannot change allowed tools, artifacts, or transitions. In particular, Manual
+review helps the user inspect the diff and does not run another automated review.
 
-The commit session may use `skills.commit`. The separate commit-message generation request
-does not receive the skill contents. Its built-in prompt provides the commit-message rules
-regardless of configuration, and references the configured commit skill by name when one is
-set. A missing skill does not block the workflow.
+| Phase key       | Default skill        |
+| --------------- | -------------------- |
+| `research`      | `task-research`      |
+| `roadmap`       | `task-roadmap`       |
+| `prepare`       | `task-prepare`       |
+| `implement`     | `public-api-docs`    |
+| `review`        | `task-review`        |
+| `manual-review` | `task-manual-review` |
+| `commit`        | `commit-message`     |
+| `complete`      | `task-complete`      |
+
+Use `skills.<phase>` to select another skill by name, or set it to `null` to use only the
+built-in template. Prepare has an independent skill; it no longer inherits the Implementation
+skill. An unavailable skill does not block the phase. The separate Commit drafting call reads
+the effective Commit skill from Pi's skill catalog when available. The skill can ask for a title
+only or a title with a body.
 
 ## 🚀 Usage
 
@@ -541,12 +548,12 @@ Pending-result instruction:
 > continues if Git is unavailable. This is the separate commit phase.
 
 **Commit-message preparation.** Commit-message generation is a separate model call. The extension
-supplies the implementation summary and step diff, requests an English JSON object with a concise
-title and body grounded only in those changes, then displays the result. With `autoCommit: true`,
-the extension commits eligible reviewed changes automatically; otherwise it proposes a message and
-waits for the user to commit. If the model response is unstructured, manual mode presents a labeled
-fallback based on changed file names and the implementation summary; auto-commit mode skips the
-commit and asks the user to retry.
+supplies the implementation summary and step diff and requests a plain-text English message grounded
+in those changes. The first non-empty line is the title; any remaining text is the optional body.
+With `autoCommit: true`, the extension commits eligible reviewed changes automatically; otherwise it
+proposes a message and waits for the user to commit. A title alone is valid. If the model returns no
+title, manual mode presents a labeled fallback based on changed file names and the implementation
+summary; auto-commit mode skips the commit and asks the user to retry.
 
 **Session message.** Commit has a separate session and no separate hidden kickoff. Its visible
 phase message introduces the phase and explains how to obtain or retry the result:
@@ -682,11 +689,8 @@ with different models for implementation and review:
     }
   },
   "skills": {
-    "research": null,
-    "roadmap": null,
-    "implement": null,
-    "review": null,
-    "commit": null
+    "manual-review": "task-manual-review",
+    "complete": null
   },
   "additionalPhaseTools": {
     "research": ["my_web_search"],
@@ -711,7 +715,7 @@ The model IDs above are examples. Use a provider and model available in your Pi 
 | `deleteMode`          | `trash` or `permanent`; `trash`                                                      | Controls how selected task data is deleted. `trash` moves it to the OS trash; `permanent` removes it without using the trash and cannot be undone. The value resolves task → project → global → built-in default. A trash failure stops deletion; Pi asks separately before saving `permanent` for the task and retrying remaining paths. |
 | `statusColors`        | Object; bright green, bright black, blue, blue                                       | Colors for `taskName`, `currentSettings`, `currentPhase`, and `phaseDescription`, respectively. Each value accepts an ANSI color name (`black`, `red`, `green`, `yellow`, `blue`, `purple`, `cyan`, `white`, or a `bright`-prefixed variant), a 0–255 palette index, or a hex color such as `#RRGGBB`. Unspecified values use their defaults.                                                                                                                                                                                            |
 | `phaseModels`         | Object; `{}`                                                                         | Model overrides by phase. Valid keys: `research`, `roadmap`, `prepare`, `implement`, `review`. If `prepare` is omitted, it falls back to `implement`. Each value is a model object or `null`; omitted keys and `null` leave Pi's current model in place.                                                                                                                                                                                                                                                                     |
-| `skills`              | Object; `{}`                                                                         | Maps phase names to Pi skill names. Valid keys: `research`, `roadmap`, `prepare`, `implement`, `review`, `commit`. If `prepare` is omitted, it falls back to `implement`. Each value is a skill name or `null`; omitted entries inherit from the broader scope, while `null` explicitly disables the skill. An available review skill may define the procedure, within the extension-owned contract. A missing skill does not block the phase. Use names such as `roadmap-planning`, not paths to `SKILL.md`.                                                                                     |
+| `skills`              | Object; [per-phase defaults](#phase-templates-and-skills) | Maps any phase to a Pi skill name or `null`. An omitted entry inherits that phase’s setting from broader scopes. A missing skill does not block the phase. |
 | `phaseTools`          | Object; built-in phase-specific tool sets                                                    | Optional replacement allowlists by phase, including `manual-review`. A configured list replaces the phase's built-in user-tool list. `prepare` falls back to the legacy `implement` list if omitted; coding does not use this allowlist. The internal `task_write_artifact` remains available in every phase, including Commit and Complete. Prefer `additionalPhaseTools` when you only want to grant extra extension tools without replacing defaults. |
 | `additionalPhaseTools`| Object; `{}`                                                                               | Maps phases, including `manual-review`, to arrays of extra tool names, added to that phase's normal allowlist. This is the recommended way to enable tools from other extensions while retaining defaults (including discovered read-only web tools in Research). If `prepare` is omitted, it falls back to `implement`. Implementation also enables active Pi tools plus `read`, `bash`, `edit`, and `write`. Entries resolve by phase across global → project → task scopes; a more local list replaces the same phase's broader list. |
 | `reviewTools`         | Array of tool names; `[]`                                                            | Replaces the additional review tool list from broader scopes. These tools are added to the automated review's built-in set: `read`, `grep`, `find`, `ls`, and `task_write_artifact`. The same `reviewTools` are available in manual review; `task_write_artifact` is always included. Add only tools the configured procedure needs and that you trust for read-only project work. For example, enable a delegation tool explicitly with `"reviewTools": ["subagent"]` (use the actual tool name provided by your environment).                                                                                                                                                                                                                                                                                                              |
@@ -799,7 +803,7 @@ markers when present.
 
 The `before_agent_start` hook shows only the phase's allowed tools. A `tool_call` hook also blocks
 calls to other tools. The artifact tool is always retained in active task phases, including when
-`phaseTools` replaces the default list; Complete exposes only artifact editing. Research, Roadmap,
+`phaseTools` replaces the default list; Complete exposes only `read` and artifact editing. Research, Roadmap,
 Step preparation, Review, Manual review, and Commit use read-only tools by default. `/task next`
 captures a baseline before switching from Step preparation to the writable Implementation session.
 Implementation includes `pi.getActiveTools()` plus `read`, `bash`, `edit`, and `write`.

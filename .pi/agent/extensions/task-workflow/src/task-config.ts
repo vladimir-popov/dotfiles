@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { TaskState } from "./phase-model.ts";
+import { TASK_PHASES, type Phase, type TaskState } from "./phase-model.ts";
+import { PHASE_DEFINITIONS } from "./phase-prompts.ts";
 import { parseArguments } from "./task-arguments.ts";
 import { runtimeDir, type TaskLayout } from "./task-state.ts";
 
@@ -13,11 +14,8 @@ export type PhaseModel = {
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 };
 
-type SkillPhase =
-  "research" | "roadmap" | "prepare" | "implement" | "review" | "commit";
-
 /** Workflow phases that accept configurable tool lists. */
-export type ToolPhase = SkillPhase | "manual-review";
+export type ToolPhase = Exclude<Phase, "complete">;
 
 /** Configured mechanism for removing task files. */
 export type DeleteMode = "trash" | "permanent";
@@ -36,7 +34,7 @@ export type Config = {
       PhaseModel | null
     >
   >;
-  skills?: Partial<Record<SkillPhase, string | null>>;
+  skills?: Partial<Record<Phase, string | null>>;
   phaseTools?: Partial<Record<ToolPhase, string[]>>;
   additionalPhaseTools?: Partial<Record<ToolPhase, string[]>>;
   reviewTools?: string[];
@@ -117,14 +115,7 @@ export function materializedConfig(config: Config): Config {
     autoCommit: config.autoCommit ?? false,
     manualReview: config.manualReview ?? true,
     phaseModels: config.phaseModels ?? {},
-    skills: {
-      research: config.skills?.research ?? null,
-      roadmap: config.skills?.roadmap ?? null,
-      prepare: configuredPhaseSkill(config, "prepare") ?? null,
-      implement: config.skills?.implement ?? null,
-      review: config.skills?.review ?? null,
-      commit: config.skills?.commit ?? null,
-    },
+    skills: effectivePhaseSkills(config),
     reviewTools: config.reviewTools ?? [],
     allowTreeNavigation: config.allowTreeNavigation ?? false,
     hotkeys: { ...DEFAULT_HOTKEYS, ...config.hotkeys },
@@ -139,21 +130,22 @@ export function materializedConfig(config: Config): Config {
   };
 }
 
-/** Read a phase skill override. Prepare inherits Implement if omitted; null disables the skill. */
+/** Resolve a phase skill after scope merging. An explicit null disables the default. */
 export function configuredPhaseSkill(
   config: Config,
-  phase: SkillPhase,
-): string | null | undefined {
+  phase: Phase,
+): string | null {
   const skill = config.skills?.[phase];
-  return phase === "prepare" && skill === undefined
-    ? config.skills?.implement
-    : skill;
+  return skill === undefined ? PHASE_DEFINITIONS[phase].defaultSkill : skill;
 }
 
-/** Return the configured Review skill name or its disabled label. */
-export function reviewSkillName(config: Config): string {
-  const skill = configuredPhaseSkill(config, "review");
-  return skill ?? "(disabled)";
+/** List the effective skill names (or null) for every workflow phase. */
+export function effectivePhaseSkills(
+  config: Config,
+): Record<Phase, string | null> {
+  return Object.fromEntries(
+    TASK_PHASES.map((phase) => [phase, configuredPhaseSkill(config, phase)]),
+  ) as Record<Phase, string | null>;
 }
 
 /** Bind scoped configuration reads to the host color parser.
@@ -193,6 +185,25 @@ export function createTaskConfig<Color>(
       typeof values.manualReview !== "boolean"
     )
       throw new Error(`manualReview must be a boolean: ${path}`);
+    if (values.skills !== undefined) {
+      if (
+        !values.skills ||
+        typeof values.skills !== "object" ||
+        Array.isArray(values.skills)
+      )
+        throw new Error(`skills must be an object: ${path}`);
+      for (const [phase, skill] of Object.entries(values.skills)) {
+        if (!TASK_PHASES.some((candidate) => candidate === phase))
+          throw new Error(`Unknown skills phase ${phase}: ${path}`);
+        if (
+          skill !== null &&
+          (typeof skill !== "string" ||
+            !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill) ||
+            skill.length > 64)
+        )
+          throw new Error(`Invalid skills.${phase}: ${path}`);
+      }
+    }
     for (const key of ["include", "exclude"] as const) {
       const patterns = values[key];
       if (patterns === undefined || (key === "include" && patterns === null))
@@ -356,36 +367,6 @@ export function createTaskConfig<Color>(
       typeof values.allowTreeNavigation !== "boolean"
     )
       throw new Error(`allowTreeNavigation must be a boolean: ${path}`);
-    if (values.skills !== undefined) {
-      if (
-        !values.skills ||
-        typeof values.skills !== "object" ||
-        Array.isArray(values.skills)
-      )
-        throw new Error(`skills must be an object: ${path}`);
-      for (const [phase, skill] of Object.entries(values.skills)) {
-        if (
-          !(
-            [
-              "research",
-              "roadmap",
-              "prepare",
-              "implement",
-              "review",
-              "commit",
-            ] as string[]
-          ).includes(phase)
-        )
-          throw new Error(`Unknown skills phase ${phase}: ${path}`);
-        if (
-          skill !== null &&
-          (typeof skill !== "string" ||
-            !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill) ||
-            skill.length > 64)
-        )
-          throw new Error(`Invalid skills.${phase}: ${path}`);
-      }
-    }
     if (values.phaseTools !== undefined) {
       if (
         !values.phaseTools ||

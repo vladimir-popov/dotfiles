@@ -246,7 +246,7 @@ export function sessionPhaseMatches(
 
 /**
  * Adds the internal artifact tool after phase-specific allowlists, including in Commit and Complete.
- * Complete remains limited to artifact editing; other phases retain their configured tools.
+ * Complete allows reading context and skills plus artifact editing, with no extra tools.
  */
 export function includeArtifactTool(
   phase: string,
@@ -254,6 +254,6 @@ export function includeArtifactTool(
   additionalTools: string[],
   artifactTool: string,
 ): string[] {
-  if (phase === "complete") return [artifactTool];
+  if (phase === "complete") return ["read", artifactTool];
   return [...new Set([...baseTools, artifactTool, ...additionalTools])];
 }

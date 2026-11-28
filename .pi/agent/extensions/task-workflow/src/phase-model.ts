@@ -1,13 +1,17 @@
-/** Persisted workflow phases used by task state and saved session links. */
-export type Phase =
-  | "research"
-  | "roadmap"
-  | "prepare"
-  | "implement"
-  | "review"
-  | "manual-review"
-  | "commit"
-  | "complete";
+/** Persisted workflow phases, in their usual progression order. */
+export const TASK_PHASES = [
+  "research",
+  "roadmap",
+  "prepare",
+  "implement",
+  "review",
+  "manual-review",
+  "commit",
+  "complete",
+] as const;
+
+/** Phase identifier used by task state, sessions, and per-phase settings. */
+export type Phase = (typeof TASK_PHASES)[number];
 
 /** Saved session paths; step maps use stringified steps and rounds use append order. */
 export type SessionRefs = {

@@ -1,17 +1,8 @@
 import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { setSessionFor, type TaskState } from "./phase-model.ts";
+import { setSessionFor, TASK_PHASES, type TaskState } from "./phase-model.ts";
 
-const TASK_PHASES: ReadonlySet<string> = new Set([
-  "research",
-  "roadmap",
-  "prepare",
-  "implement",
-  "review",
-  "manual-review",
-  "commit",
-  "complete",
-]);
+const taskPhaseNames: ReadonlySet<string> = new Set(TASK_PHASES);
 
 /** Recognized project-local layouts; only the current layout is used for new tasks. */
 export type TaskLayout = "current" | "historical";
@@ -183,7 +174,7 @@ export function validateDiscoveredState(state: TaskState): void {
     typeof state.contextPath !== "string" ||
     !isAbsolute(state.projectRoot) ||
     !isAbsolute(state.contextPath) ||
-    !TASK_PHASES.has(state.phase) ||
+    !taskPhaseNames.has(state.phase) ||
     !Number.isInteger(state.currentStep) ||
     state.currentStep < 1 ||
     !Array.isArray(state.completedSteps) ||

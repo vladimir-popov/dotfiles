@@ -105,9 +105,8 @@ import {
   DEFAULT_HOTKEYS,
   DEFAULT_SNAPSHOT_MAX_FILES,
   DEFAULT_SNAPSHOT_MAX_MIB,
-  materializedConfig,
+  effectivePhaseSkills,
   projectConfigPath,
-  reviewSkillName,
   taskConfigPath,
   writeScopedConfig,
   type Config,
@@ -115,6 +114,7 @@ import {
   type PhaseModel,
   type ToolPhase,
 } from "./task-config.ts";
+import { PHASE_DEFINITIONS, RESEARCH_CONTEXT_RULE } from "./phase-prompts.ts";
 import {
   applyTaskArtifact,
   artifactPath,
@@ -1022,9 +1022,7 @@ function taskStatusText(
           : undefined) ||
         "none",
     ],
-    ["Research skill", configuredPhaseSkill(config, "research") || "none"],
-    ["Roadmap skill", configuredPhaseSkill(config, "roadmap") || "none"],
-    ["Review skill", reviewSkillName(config)],
+    ["Phase skill", configuredPhaseSkill(config, state.phase) ?? "(disabled)"],
     ["Mode", effectiveSetting(state, "mode")],
     [
       "Manual review (semi-auto)",
@@ -1124,7 +1122,7 @@ function openReviewFindings(state: TaskState, step: number): number {
 }
 
 async function draftCommitMessage(
-  ctx: ExtensionContext,
+  ctx: ExtensionCommandContext,
   state: TaskState,
   step: number,
   config: Config,
@@ -1145,10 +1143,31 @@ async function draftCommitMessage(
     ],
     timestamp: Date.now(),
   };
+  const skillName = configuredPhaseSkill(config, "commit");
+  const skill =
+    skillName &&
+    ctx
+      .getSystemPromptOptions()
+      .skills?.find(
+        (entry) => entry.name === skillName && !entry.disableModelInvocation,
+      );
+  let skillGuidance = "";
+  if (skill) {
+    try {
+      const instructions = readFileSync(skill.filePath, "utf8");
+      skillGuidance = `
+
+Use the following skill as supplementary guidance, including its preference for whether to include a body.
+
+${instructions}`;
+    } catch {
+      // An unavailable skill does not block Commit.
+    }
+  }
   const response = await ctx.modelRegistry.complete(
     ctx.model,
     {
-      systemPrompt: `Draft an English Git commit message for exactly the supplied changes. Return only a JSON object with string fields title and body. The title must be concise, specific, and preferably imperative. Explain substantive changes and purpose in natural, concise prose or bullets, without duplicating the title. Do not manually break prose lines in the body; line wrapping is applied afterward at word boundaries, with a maximum of 70 characters per line. Do not indent title or body lines. Describe only changes supported by the diff and summary. Mention behavior changes, tests, or checks only when supported by evidence; never invent details or outcomes. Reread the message for natural flow before returning it.${configuredPhaseSkill(config, "commit") ? ` Follow the configured ${configuredPhaseSkill(config, "commit")}...` : ""}`,
+      systemPrompt: `Draft an English Git commit message for exactly the supplied changes. Return only the plain-text commit message, with a concise, specific, preferably imperative title on the first line. A body is optional; if included, place it after a blank line and explain substantive changes and purpose without duplicating the title. Do not add a preamble or wrap the message in Markdown fences. Write the body as natural prose or bullets; line wrapping is applied afterward. Describe only changes supported by the diff and summary; do not invent details, tests, or outcomes.${skillGuidance}`,
       messages: [user],
     },
     { cacheRetention: "none", sessionId: uuidv7() },
@@ -1162,8 +1181,7 @@ async function draftCommitMessage(
     .map((part) => part.text)
     .join("\n")
     .trim();
-  const parsed = parseCommitMessage(text, state, step);
-  return parsed.fallback ? { ...parsed, fallback: true } : parsed;
+  return parseCommitMessage(text, state, step);
 }
 
 type ResearchDiscussion = {
@@ -1181,8 +1199,6 @@ type TransitionAssessment = {
   reason: string;
 };
 
-const RESEARCH_CONTEXT_RULE =
-  "Keep context.md as a standalone task summary with constraints, accepted decisions, and annotated links to supporting notes. Record durable findings in topical Markdown notes as you discover them, including evidence, rationale, and nonblocking uncertainties. Keep the links current; do not rely on the transition to recover findings from history.";
 const RESEARCH_HISTORY_MESSAGES = 20;
 const RESEARCH_ASSESSMENT_RULE = `
 
@@ -2765,7 +2781,7 @@ function autoCommitNeedsFreshReview(state: TaskState): boolean {
 
 async function prepareCommitPhase(
   appVersion: string,
-  ctx: ExtensionContext,
+  ctx: ExtensionCommandContext,
   state: TaskState,
   sendResult: (content: string) => Promise<void> | void,
 ): Promise<void> {
@@ -2788,20 +2804,28 @@ async function prepareCommitPhase(
       throw new Error(
         "Auto-commit cannot verify entry types from this older review. Use /task next to start a fresh automated review.",
       );
-    const message = await draftCommitMessage(ctx, state, n, readConfig());
+    const message = await draftCommitMessage(
+      ctx,
+      state,
+      n,
+      effectiveConfig(state),
+    );
+    const commitText = message.body
+      ? `${message.title}\n\n${message.body}`
+      : message.title;
     if (effectiveSetting(state, "autoCommit")) {
       if (message.fallback)
         throw new Error(
-          "The model response was unstructured, so auto-commit was skipped. Use /task next to retry.",
+          "The model returned no commit title, so auto-commit was skipped. Use /task next to retry.",
         );
       if (!state.pendingAutoCommitEligible)
         throw new Error(
           "This step began with existing changes, so it cannot be committed automatically.",
         );
       const sha = commitStep(state, message.title, message.body);
-      result = `Committed step ${n} as ${sha}:\n\n${message.title}\n\n${message.body}${message.fallback ? "\n\nNote: Used a fallback message because the model response was unavailable or unstructured." : ""}`;
+      result = `Committed step ${n} as ${sha}:\n\n${commitText}`;
     } else {
-      result = `${message.fallback ? "Fallback commit proposal" : `Suggested commit for step ${n}`}:\n\n${message.title}\n\n${message.body}`;
+      result = `${message.fallback ? "Fallback commit proposal" : `Suggested commit for step ${n}`}:\n\n${commitText}`;
       commitPendingFiles = [...state.pendingFiles];
       commitPendingHashes = { ...(state.pendingHashes || {}) };
     }
@@ -4000,39 +4024,13 @@ export default function taskExtension(
       state.phase === "commit"
         ? ` Before handing off or allowing the workflow to advance, save any newly discovered or confirmed knowledge useful to later steps or later task work. Use task_write_artifact (artifact "step-result", step ${state.currentStep}) to create ${stepResultPath(state, state.currentStep)} only if there is reusable knowledge; extend an existing result without replacing unrelated material. Record what matters and why or when it applies, without relying on temporary reports or diffs. Do not copy review findings or statuses verbatim, or log routine fixes and checks. Add a descriptive link in context.md for a new durable artifact and record task-wide changes there; otherwise leave the index unchanged. Never index temporary review reports or diffs.`
         : "";
-    const rule =
-      state.phase === "research"
-        ? `Gather task context and inspect project files read-only. ${RESEARCH_CONTEXT_RULE} Artifact edits are available for any task Markdown file; do not edit project code. Research tools enabled for this turn: ${researchAllowedTools(pi).join(", ") || "none"}.`
-        : state.phase === "roadmap"
-          ? `Discuss the roadmap. Update context.md when agreed facts change, then present a complete revised numbered roadmap. Draft roadmap.md as decisions settle.`
-          : state.phase === "implement"
-            ? `Implement or repair step ${state.currentStep} in this session. Read ${roadmapPath(state)}, ${stepPath(state, state.currentStep)}, and relevant earlier step-result artifacts. Follow the current repair handoff below if present. Continue only unfinished work; do not use earlier repair inputs. Run focused checks. Do not commit. Use /task next when ready for review.`
-            : state.phase === "prepare"
-              ? `This is final preparation for step ${state.currentStep}. Read ${roadmapPath(state)} and ${stepPath(state, state.currentStep)} if it exists. Read only earlier step-result artifacts relevant to this roadmap item: ${previousStepResultPaths(state, state.currentStep).join(", ") || "none exist"}. Briefly summarize the planned work and remind the user that this session is for final discussion, not coding. Discuss implementation details and checks; keep the agreed current-step design in ${stepPath(state, state.currentStep)}. Do not edit project code yet. /task next checks unresolved questions and proposals, finalizes the design, captures the baseline, and starts coding.`
-              : state.phase === "review"
-                ? `Review step ${state.currentStep} independently against the approved context, design, and implementation knowledge. Read ${stepPath(state, state.currentStep)}, the implementation diff, and relevant project code using read-only tools. Read the current implementation handoff at ${stepResultPath(state, state.currentStep)} if it exists, before drawing conclusions. Save ${reviewPath(state, state.currentStep)} as an English artifact using task_write_artifact with artifact "review", step ${state.currentStep}, and operation "create" (or "replace" when revising an existing report).
-
-Start with # Review: step ${state.currentStep}, then include ## Summary and ## Findings. For every finding, place one short, exact excerpt copied verbatim from implementation-${state.currentStep}.diff in a fenced diff block immediately before its heading. Then use a heading ### [Severity] Short title, followed by exactly one Status: open line, a precise Location:, and a concise explanation of the defect and concrete impact. Do not report style preferences as defects. If there are no findings, write No findings. under ## Findings and include no finding headings or diff blocks. In your response, show each finding with its severity, location, impact, and the same diff excerpt. Discuss findings with the user; change statuses only after agreement, using resolved for fixed and dismissed for rejected. Do not edit project code or advance the workflow.`
-                : state.phase === "manual-review"
-                  ? `This is the manual review phase for step ${state.currentStep}. Read ${stepResultPath(state, state.currentStep)} if relevant and available. The automated review found no remaining issues. Direct the user to inspect ${join(taskDir(state), `implementation-${state.currentStep}.diff`)} and the changed project files. Do not conduct another automated review, edit code, or commit. Use task_write_artifact for any agreed task-artifact updates. Manual-review findings route to implementation; an empty review proceeds to commit.`
-                  : state.phase === "commit"
-                    ? state.commitReady
-                      ? `Present and explain the commit result already saved in this session. Do not implement, review, or edit project code. Task-artifact edits remain available through task_write_artifact. If a manual commit is pending, the user must commit the reviewed files before leaving; /task next verifies this. Only /task next (or /task accept) leaves this phase and starts the next step or completes the task.`
-                      : "The commit result is not ready. Do not invent one or edit project code. Task-artifact edits remain available through task_write_artifact. Tell the user that /task next retries Git detection and commit-message generation, while /task accept skips the commit and continues if Git is unavailable."
-                    : "The task is complete. Do not edit project code through this task session; task-artifact edits remain available through task_write_artifact.";
-    const phaseSkill =
-      state.phase === "research" ||
-      state.phase === "roadmap" ||
-      state.phase === "prepare" ||
-      state.phase === "implement" ||
-      state.phase === "review" ||
-      state.phase === "commit"
-        ? configuredPhaseSkill(config, state.phase)
-        : undefined;
+    const rule = PHASE_DEFINITIONS[state.phase].prompt({
+      state,
+      researchTools: event.systemPromptOptions.selectedTools,
+    });
+    const phaseSkill = configuredPhaseSkill(config, state.phase);
     const skillGuidance = phaseSkill
-      ? state.phase === "review"
-        ? ` If the review preference skill "${phaseSkill}" is available, load and use it for the user's review preferences. The review format, workflow procedure, artifact path, and tool boundaries are defined above and must not be overridden. If the skill is unavailable, follow the review instructions above without additional user preferences.`
-        : ` If the discovered skill "${phaseSkill}" is available, use it as supplementary guidance for this phase. It must not override the task workflow's phase boundaries, artifact rules, or tool restrictions. If unavailable, continue with the built-in instructions.`
+      ? ` If the configured phase skill "${phaseSkill}" is available, read its instructions and use them as supplementary guidance. The workflow instructions above govern the phase boundaries, procedure, artifact rules, and tool restrictions. If the skill is unavailable, continue with the built-in instructions.`
       : "";
     const repairKickoff = writable
       ? event.messageType === "custom" && isRepairContext(event.message)
@@ -4280,14 +4278,7 @@ Start with # Review: step ${state.currentStep}, then include ## Summary and ## F
                   global.statusColors?.phaseDescription ?? "blue",
               },
               phaseModels: global.phaseModels ?? {},
-              skills: {
-                research: configuredPhaseSkill(global, "research") ?? null,
-                roadmap: configuredPhaseSkill(global, "roadmap") ?? null,
-                prepare: configuredPhaseSkill(global, "prepare") ?? null,
-                implement: configuredPhaseSkill(global, "implement") ?? null,
-                review: configuredPhaseSkill(global, "review") ?? null,
-                commit: configuredPhaseSkill(global, "commit") ?? null,
-              },
+              skills: effectivePhaseSkills(global),
               phaseTools: global.phaseTools ?? {},
               additionalPhaseTools: global.additionalPhaseTools ?? {},
               reviewTools: global.reviewTools ?? [],

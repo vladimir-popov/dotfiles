@@ -119,6 +119,7 @@ function fixture(
   const switches: string[] = [];
   const dispatchedCommands: string[] = [];
   const modelCalls: { systemPrompt: string; input: string }[] = [];
+  let commitDraft = "Update example value\n\nUse the new value.";
   let session = join(temp, "unlinked.jsonl");
   let cancelNextSwitch = false;
   let name: string | undefined;
@@ -174,6 +175,11 @@ function fixture(
     mode: "print",
     isIdle: () => true,
     model: { contextWindow: 128_000, maxTokens: 4096 },
+    getSystemPromptOptions: () => ({
+      skills: [
+        { name: "fixture-commit", filePath: join(temp, "commit-skill.md") },
+      ],
+    }),
     ui: {
       async confirm(title: string, description: string) {
         confirmations.push({ title, description });
@@ -251,10 +257,7 @@ function fixture(
             : systemPrompt.includes("Write the complete agreed implementation")
               ? codingDesign
               : systemPrompt.startsWith("Draft an English Git commit message")
-                ? JSON.stringify({
-                    title: "Update example value",
-                    body: "Use the new value.",
-                  })
+                ? commitDraft
                 : assert.fail(
                     `Unexpected model call: ${systemPrompt.slice(0, 80)}`,
                   );
@@ -422,6 +425,9 @@ function fixture(
     setManualFindings: (findings: string[]) => {
       manualReviewFindings = findings;
     },
+    setCommitDraft: (text: string) => {
+      commitDraft = text;
+    },
     checkWrite: () =>
       fire("tool_call", { toolName: "write" }) as
         { block: boolean; reason: string } | undefined,
@@ -477,16 +483,26 @@ function assertReviewHandoff(f: Fixture, prompt: string) {
   );
 }
 
-for (const [phase, state, instruction] of [
-  ["research", {}, /Gather task context/],
-  ["roadmap", {}, /Discuss the roadmap/],
-  ["prepare", {}, /final preparation/],
-  ["implement", {}, /Implement or repair/],
-  ["review", {}, /implementation diff/],
-  ["manual-review", {}, /manual review phase/],
-  ["commit", { commitReady: false }, /commit result is not ready/],
-  ["commit", { commitReady: true }, /commit result already saved/],
-  ["complete", { completedSteps: [1] }, /task is complete/],
+for (const [phase, state, instruction, skill] of [
+  ["research", {}, /Gather task context/, "task-research"],
+  ["roadmap", {}, /Discuss the roadmap/, "task-roadmap"],
+  ["prepare", {}, /final preparation/, "task-prepare"],
+  ["implement", {}, /Implement or repair/, "public-api-docs"],
+  ["review", {}, /implementation diff/, "task-review"],
+  ["manual-review", {}, /manual review phase/, "task-manual-review"],
+  [
+    "commit",
+    { commitReady: false },
+    /commit result is not ready/,
+    "commit-message",
+  ],
+  [
+    "commit",
+    { commitReady: true },
+    /commit result already saved/,
+    "commit-message",
+  ],
+  ["complete", { completedSteps: [1] }, /task is complete/, "task-complete"],
 ] as const) {
   it(`quietly reopens ${phase}: ${instruction.source}`, async (t) => {
     const f = fixture(t);
@@ -503,6 +519,8 @@ for (const [phase, state, instruction] of [
     );
     const prompt = assertContextEntry(f);
     assert.match(prompt.text, instruction);
+    assert.ok(prompt.text.includes(`configured phase skill "${skill}"`));
+    assert.ok(prompt.tools.includes("read"));
     if (phase === "review") assertReviewHandoff(f, prompt.text);
     const writable = phase === "implement";
     if (writable || ["review", "manual-review", "commit"].includes(phase)) {
@@ -519,6 +537,27 @@ for (const [phase, state, instruction] of [
     }
     assert.equal(prompt.tools.includes("write"), writable);
     assert.equal(f.checkWrite()?.block ?? false, writable === false);
+  });
+}
+
+for (const phase of ["manual-review", "complete"] as const) {
+  it(`resolves ${phase} skill overrides by scope and honors null`, async (t) => {
+    const f = fixture(t);
+    await f.open(f.savedPhase(phase));
+    const projectConfig = join(dirname(dirname(f.statePath)), "config.json");
+    const taskConfig = join(dirname(f.statePath), "config.json");
+    const writeSkill = (path: string, value: string | null) =>
+      writeFileSync(path, JSON.stringify({ skills: { [phase]: value } }));
+    writeSkill(f.configPath, "global-skill");
+    assert.match(f.prompt().text, /configured phase skill "global-skill"/);
+    writeSkill(projectConfig, "project-skill");
+    assert.match(f.prompt().text, /configured phase skill "project-skill"/);
+    writeSkill(taskConfig, "task-skill");
+    assert.match(f.prompt().text, /configured phase skill "task-skill"/);
+    writeSkill(taskConfig, null);
+    assert.doesNotMatch(f.prompt().text, /configured phase skill/);
+    writeSkill(projectConfig, "invalid skill");
+    assert.throws(() => f.prompt(), new RegExp(`Invalid skills\\.${phase}`));
   });
 }
 
@@ -777,7 +816,7 @@ it("keeps the preparation session active and recaptures the baseline after a can
   );
 });
 
-it("supports independent preparation tools and skill with legacy implementation settings as defaults", async (t) => {
+it("supports independent preparation skills and preserves the legacy tool defaults", async (t) => {
   const f = fixture(t);
   await f.open(f.savedPhase("prepare"));
   const legacy = {
@@ -787,7 +826,7 @@ it("supports independent preparation tools and skill with legacy implementation 
   };
   writeFileSync(f.configPath, JSON.stringify(legacy));
   assert.deepEqual(f.prompt().tools, ["grep", "task_write_artifact", "find"]);
-  assert.match(f.prompt().text, /coding-skill/);
+  assert.match(f.prompt().text, /configured phase skill "task-prepare"/);
   writeFileSync(
     f.configPath,
     JSON.stringify({
@@ -797,7 +836,7 @@ it("supports independent preparation tools and skill with legacy implementation 
     }),
   );
   assert.deepEqual(f.prompt().tools, ["read", "task_write_artifact"]);
-  assert.doesNotMatch(f.prompt().text, /coding-skill/);
+  assert.doesNotMatch(f.prompt().text, /configured phase skill/);
   writeFileSync(f.source, baselineSource);
   await f.run("next");
   assert.equal(f.state().phase, "implement", f.notices.join("\n"));
@@ -1238,6 +1277,16 @@ it("carries automated and manual repairs through verified Commit and preserves r
   assert.match(reviewedDiff, /\+export const value = 7;/);
   await f.run("next");
   const beforeCommit = f.messages.length;
+  writeFileSync(
+    join(dirname(f.configPath), "commit-skill.md"),
+    "Fixture commit drafting guidance.",
+  );
+  writeFileSync(
+    join(dirname(f.statePath), "config.json"),
+    JSON.stringify({
+      skills: { commit: "fixture-commit" },
+    }),
+  );
   await f.run("next");
   assert.equal(f.state().phase, "commit", f.notices.join("\n"));
   assert.equal(f.state().commitReady, true, f.notices.join("\n"));
@@ -1268,6 +1317,12 @@ it("carries automated and manual repairs through verified Commit and preserves r
   );
   const draft = f.modelCalls.at(-1)!;
   assert.match(draft.systemPrompt, /^Draft an English Git commit message/);
+  assert.match(draft.systemPrompt, /plain-text commit message/);
+  assert.match(draft.systemPrompt, /Fixture commit drafting guidance\./);
+  assert.match(
+    f.messages.at(-1)?.content ?? "",
+    /Update example value\n\nUse the new value\.$/,
+  );
   assert.ok(draft.input.endsWith(reviewedDiff));
   assert.ok(draft.input.includes(`Worker summary:\n${transcriptMarker}`));
   assert.ok(
@@ -1674,16 +1729,45 @@ it("rejects a committed gitlink in place of a reviewed deletion", async (t) => {
   assert.ok(!readdirSync(artifacts).includes(report));
 });
 
-it("finishes semi-auto Commit without a model turn or a placeholder result", async (t) => {
+it("does not auto-commit an empty model response", async (t) => {
   const f = fixture(t);
   await f.open(f.savedPhase("prepare"));
   const git = initGit(f);
+  const initialHead = git("rev-parse", "HEAD");
+  writeFileSync(f.configPath, JSON.stringify({ autoCommit: true }));
+  f.setCommitDraft(" \n\n");
+  await f.run("next");
+  writeFileSync(f.source, "export const value = 6;\n");
+  await f.run("next");
+  assert.equal(f.state().phase, "review", f.notices.join("\n"));
+  f.writeArtifact(
+    "review-1-round-0.md",
+    "# Review: step 1\n\n## Findings\n\nNo findings.\n",
+  );
+  f.writeState({ ...f.state(), reviewPending: false });
+  await f.run("next");
+  assert.equal(f.state().phase, "commit", f.notices.join("\n"));
+  assert.notEqual(f.state().commitReady, true);
+  assert.match(f.notices.at(-1) ?? "", /returned no commit title/);
+  assert.equal(git("rev-parse", "HEAD"), initialHead);
+});
+
+it("finishes semi-auto Commit with a title-only message and no agent turn", async (t) => {
+  const f = fixture(t);
+  await f.open(f.savedPhase("prepare"));
+  const git = initGit(f);
+  f.setCommitDraft("Update example value");
+  writeFileSync(
+    join(dirname(f.configPath), "commit-skill.md"),
+    "Return only a title.",
+  );
   writeFileSync(
     f.configPath,
     JSON.stringify({
       mode: "semi-auto",
       autoCommit: true,
       manualReview: false,
+      skills: { commit: "fixture-commit" },
     }),
   );
   const originalContext = readFileSync(f.contextPath, "utf8");
@@ -1721,8 +1805,16 @@ it("finishes semi-auto Commit without a model turn or a placeholder result", asy
       ({ triggerTurn, session }) => !triggerTurn && session === f.session(),
     ),
   );
-  assert.match(commitMessages[0].content, /Committed step 1 as/);
+  assert.match(
+    commitMessages[0].content,
+    /Committed step 1 as .*:\n\nUpdate example value$/,
+  );
   assert.match(commitMessages[1].content, /All planned steps are complete/);
+  assert.match(
+    f.modelCalls.at(-1)?.systemPrompt ?? "",
+    /Return only a title\./,
+  );
+  assert.equal(git("log", "-1", "--format=%B"), "Update example value");
   assert.equal(
     f.modelCalls.length,
     beforeCommitCalls + 2,

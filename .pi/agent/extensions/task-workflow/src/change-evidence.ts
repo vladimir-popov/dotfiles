@@ -406,8 +406,7 @@ export function commitStep(
     "--only",
     "-m",
     title,
-    "-m",
-    body,
+    ...(body ? ["-m", body] : []),
     "--",
     ...files,
   ]);
